@@ -467,6 +467,187 @@ def test_unacked_queryset_filter_by_repoid_and_commit_prefix(patched_broker):
     assert [r.delivery_tag for r in rows] == ["t-match"]
 
 
+# ---- ComputeComparison hydration ------------------------------------------
+
+
+def test_unacked_queryset_hydrates_comparison_rows(patched_broker, monkeypatch):
+    """`ComputeComparisonTask` envelopes only carry `comparison_id`.
+    The unacked queryset hydrates `(repoid, commitid)` from the
+    `compare_commitcomparison` row before exposing the materialised
+    list, so the changelist columns and `repoid`/`commitid` filters
+    behave the same as for every other task.
+    """
+
+    from redis_admin import queryset as redis_admin_queryset
+
+    monkeypatch.setattr(
+        redis_admin_queryset,
+        "_resolve_comparison_repo_commits",
+        lambda ids: {1: (10, "deadbeef")},
+    )
+
+    _push_unacked(
+        patched_broker,
+        delivery_tag="cc-1",
+        routing_key="celery",
+        envelope=_build_envelope(
+            task="app.tasks.compute_comparison.ComputeComparison",
+            kwargs={"comparison_id": 1},
+        ),
+    )
+
+    rows = list(
+        UnackedQueueQuerySet(UnackedQueueItem).filter(routing_key__exact="celery")
+    )
+
+    assert len(rows) == 1
+    assert rows[0].repoid == 10
+    assert rows[0].commitid == "deadbeef"
+
+
+def test_unacked_queryset_filter_by_repoid_after_comparison_hydration(
+    patched_broker, monkeypatch
+):
+    """A `repoid__exact` filter must narrow ComputeComparison rows
+    against the resolved `(repoid, commitid)`, not the raw
+    `comparison_id` — that's the point of running the hydrate pass
+    before `_matches_filters` walks the row list.
+    """
+
+    from redis_admin import queryset as redis_admin_queryset
+
+    monkeypatch.setattr(
+        redis_admin_queryset,
+        "_resolve_comparison_repo_commits",
+        lambda ids: {1: (10, "aaa"), 2: (20, "bbb")},
+    )
+
+    _push_unacked(
+        patched_broker,
+        delivery_tag="cc-1",
+        routing_key="celery",
+        envelope=_build_envelope(
+            task="app.tasks.compute_comparison.ComputeComparison",
+            kwargs={"comparison_id": 1},
+        ),
+    )
+    _push_unacked(
+        patched_broker,
+        delivery_tag="cc-2",
+        routing_key="celery",
+        envelope=_build_envelope(
+            task="app.tasks.compute_comparison.ComputeComparison",
+            kwargs={"comparison_id": 2},
+        ),
+    )
+
+    rows = list(
+        UnackedQueueQuerySet(UnackedQueueItem).filter(
+            routing_key__exact="celery",
+            repoid__exact=20,
+        )
+    )
+
+    assert [r.delivery_tag for r in rows] == ["cc-2"]
+    assert rows[0].commitid == "bbb"
+
+
+def test_unacked_queryset_get_hydrates_singleton_comparison_row(
+    patched_broker, monkeypatch
+):
+    """The `get(pk_token=...)` path bypasses `_materialise` for
+    delivery_tags outside the bounded display window. It must still
+    run the hydrate pass on the singleton row so the change_form
+    sees the resolved repoid/commitid.
+    """
+
+    from redis_admin import queryset as redis_admin_queryset
+
+    monkeypatch.setattr(
+        redis_admin_queryset,
+        "_resolve_comparison_repo_commits",
+        lambda ids: {99: (4242, "feedface")},
+    )
+
+    _push_unacked(
+        patched_broker,
+        delivery_tag="cc-99",
+        routing_key="celery",
+        envelope=_build_envelope(
+            task="app.tasks.compute_comparison.ComputeComparison",
+            kwargs={"comparison_id": 99},
+        ),
+    )
+
+    row = UnackedQueueQuerySet(UnackedQueueItem).get(pk_token="unacked#cc-99")
+
+    assert row.repoid == 4242
+    assert row.commitid == "feedface"
+
+
+def test_stream_unacked_frequency_aggregate_resolves_comparison_buckets(
+    patched_broker, monkeypatch
+):
+    """The unacked chart's 4-tuple bucket key must surface
+    ComputeComparison messages under their resolved
+    `(routing_key, task, repoid, commitid)` instead of collapsing
+    every one into a single all-None row alongside the routing_key.
+    """
+
+    from redis_admin import queryset as redis_admin_queryset
+
+    monkeypatch.setattr(
+        redis_admin_queryset,
+        "_resolve_comparison_repo_commits",
+        lambda ids: {1: (10, "aaa"), 2: (20, "bbb")},
+    )
+
+    _push_unacked(
+        patched_broker,
+        delivery_tag="cc-1a",
+        routing_key="celery",
+        envelope=_build_envelope(
+            task="app.tasks.compute_comparison.ComputeComparison",
+            kwargs={"comparison_id": 1},
+        ),
+    )
+    _push_unacked(
+        patched_broker,
+        delivery_tag="cc-1b",
+        routing_key="celery",
+        envelope=_build_envelope(
+            task="app.tasks.compute_comparison.ComputeComparison",
+            kwargs={"comparison_id": 1},
+        ),
+    )
+    _push_unacked(
+        patched_broker,
+        delivery_tag="cc-2",
+        routing_key="celery",
+        envelope=_build_envelope(
+            task="app.tasks.compute_comparison.ComputeComparison",
+            kwargs={"comparison_id": 2},
+        ),
+    )
+
+    buckets, total = _stream_unacked_frequency_aggregate(patched_broker)
+
+    assert total == 3
+    keys = {(b.routing_key, b.task_name, b.repoid, b.commitid) for b in buckets}
+    assert (
+        "celery",
+        "app.tasks.compute_comparison.ComputeComparison",
+        10,
+        "aaa",
+    ) in keys
+    assert (
+        "celery",
+        "app.tasks.compute_comparison.ComputeComparison",
+        20,
+        "bbb",
+    ) in keys
+
+
 # ---- frequency aggregator --------------------------------------------------
 
 
