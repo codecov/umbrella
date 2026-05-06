@@ -36,6 +36,7 @@ from django.test import Client as DjClient
 from django.test import TestCase
 
 from redis_admin import conn as redis_admin_conn
+from redis_admin import queryset as redis_admin_queryset
 from redis_admin import settings as redis_admin_settings
 from redis_admin.admin import CeleryBrokerQueueAdmin, _resolve_repo_displays
 from redis_admin.families import parse_celery_envelope
@@ -155,6 +156,373 @@ def test_parse_envelope_handles_string_int_repoid():
     meta = parse_celery_envelope(envelope)
 
     assert meta.repoid == 1234
+
+
+def test_parse_envelope_aliases_repo_id_and_commit_sha():
+    """`UploadBreadcrumbTask` carries snake_case `repo_id`/`commit_sha`
+    rather than the canonical `repoid`/`commitid`. Surface them so the
+    admin renders structured columns and accepts repoid/commitid
+    filters on those messages.
+    """
+
+    envelope = _build_envelope(
+        task="app.tasks.upload_breadcrumb.UploadBreadcrumbTask",
+        kwargs={
+            "repo_id": 18802842,
+            "commit_sha": "af73fb73310312d4d2633449e50e6e141191c28c",
+            "upload_ids": [],
+        },
+    )
+
+    meta = parse_celery_envelope(envelope)
+
+    assert meta.repoid == 18802842
+    assert meta.commitid == "af73fb73310312d4d2633449e50e6e141191c28c"
+
+
+def test_parse_envelope_repoid_canonical_wins_over_alias():
+    """When both `repoid` and `repo_id` are present (defensive belt-and-
+    braces), prefer the canonical name so a task that sets both stays
+    consistent with every other call site.
+    """
+
+    envelope = _build_envelope(
+        kwargs={"repoid": 1, "repo_id": 2, "commitid": "abc", "commit_sha": "xyz"},
+    )
+
+    meta = parse_celery_envelope(envelope)
+
+    assert meta.repoid == 1
+    assert meta.commitid == "abc"
+
+
+def test_parse_envelope_extracts_comparison_id():
+    """`ComputeComparisonTask` only carries `comparison_id` in kwargs;
+    the queryset's hydrate pass turns it into `(repoid, commitid)`,
+    but the parser surface keeps it on `CeleryEnvelopeMeta` so the
+    queryset has something to hydrate from.
+    """
+
+    envelope = _build_envelope(
+        task="app.tasks.compute_comparison.ComputeComparison",
+        kwargs={"comparison_id": 7777},
+    )
+
+    meta = parse_celery_envelope(envelope)
+
+    assert meta.comparison_id == 7777
+    assert meta.repoid is None
+    assert meta.commitid is None
+
+
+def test_parse_envelope_comparison_id_handles_string_int():
+    """JSON ints sometimes round-trip as strings; the comparison_id
+    coercion mirrors `repoid` so a stringified value is still picked
+    up by the chart hydration pass.
+    """
+
+    envelope = _build_envelope(kwargs={"comparison_id": "42"})
+
+    meta = parse_celery_envelope(envelope)
+
+    assert meta.comparison_id == 42
+
+
+# ---- ComputeComparison hydration ------------------------------------------
+
+
+def test_materialise_hydrates_comparison_rows_from_db(patched_broker, monkeypatch):
+    """A `ComputeComparisonTask` envelope only carries `comparison_id`,
+    but after `_materialise` the row should expose the resolved
+    `(repoid, commitid)` pair so the changelist can render and filter
+    on those columns.
+    """
+
+    monkeypatch.setattr(
+        redis_admin_queryset,
+        "_resolve_comparison_repo_commits",
+        lambda ids: {7777: (4242, "deadbeef")},
+    )
+
+    _push(
+        patched_broker,
+        "notify",
+        task="app.tasks.compute_comparison.ComputeComparison",
+        kwargs={"comparison_id": 7777},
+    )
+
+    rows = list(CeleryBrokerQueueQuerySet(CeleryBrokerQueue, queue_name="notify"))
+
+    assert len(rows) == 1
+    assert rows[0].repoid == 4242
+    assert rows[0].commitid == "deadbeef"
+
+
+def test_materialise_comparison_filter_by_repoid_after_hydration(
+    patched_broker, monkeypatch
+):
+    """Hydration must run before `_matches_filters`, so a
+    `repoid__exact` filter pushed down from the changelist still
+    narrows ComputeComparisonTask rows whose envelope only carries
+    `comparison_id`.
+    """
+
+    monkeypatch.setattr(
+        redis_admin_queryset,
+        "_resolve_comparison_repo_commits",
+        lambda ids: {1: (10, "aaa"), 2: (20, "bbb")},
+    )
+
+    _push(
+        patched_broker,
+        "notify",
+        task="app.tasks.compute_comparison.ComputeComparison",
+        kwargs={"comparison_id": 1},
+    )
+    _push(
+        patched_broker,
+        "notify",
+        task="app.tasks.compute_comparison.ComputeComparison",
+        kwargs={"comparison_id": 2},
+    )
+
+    rows = list(
+        CeleryBrokerQueueQuerySet(CeleryBrokerQueue, queue_name="notify").filter(
+            repoid__exact=20
+        )
+    )
+
+    assert {r.repoid for r in rows} == {20}
+    assert {r.commitid for r in rows} == {"bbb"}
+
+
+def test_materialise_uses_one_orm_call_for_full_window(patched_broker, monkeypatch):
+    """The hydrate helper must batch every comparison_id in the
+    materialised window into a single ORM lookup so a 100-deep
+    queue of ComputeComparison messages doesn't issue 100 queries.
+    """
+
+    call_count = {"n": 0}
+
+    def _fake_resolver(ids):
+        call_count["n"] += 1
+        return {cid: (100 + cid, f"sha-{cid}") for cid in ids}
+
+    monkeypatch.setattr(
+        redis_admin_queryset,
+        "_resolve_comparison_repo_commits",
+        _fake_resolver,
+    )
+
+    for cid in range(1, 11):
+        _push(
+            patched_broker,
+            "notify",
+            task="app.tasks.compute_comparison.ComputeComparison",
+            kwargs={"comparison_id": cid},
+        )
+
+    rows = list(CeleryBrokerQueueQuerySet(CeleryBrokerQueue, queue_name="notify"))
+
+    assert len(rows) == 10
+    assert call_count["n"] == 1
+
+
+def test_materialise_skips_resolver_when_no_comparison_ids(patched_broker, monkeypatch):
+    """A queue carrying only ordinary repoid/commitid envelopes (i.e.
+    the hot path) must not pay the ORM round-trip — operators run
+    this admin without a CommitComparison-app deployment in some
+    tests.
+    """
+
+    call_count = {"n": 0}
+
+    def _fake_resolver(ids):
+        call_count["n"] += 1
+        return {}
+
+    monkeypatch.setattr(
+        redis_admin_queryset,
+        "_resolve_comparison_repo_commits",
+        _fake_resolver,
+    )
+
+    _push(
+        patched_broker,
+        "notify",
+        task="app.tasks.notify.NotifyTask",
+        kwargs={"repoid": 1, "commitid": "a"},
+    )
+
+    rows = list(CeleryBrokerQueueQuerySet(CeleryBrokerQueue, queue_name="notify"))
+
+    assert len(rows) == 1
+    assert call_count["n"] == 0
+
+
+def test_materialise_keeps_comparison_id_when_resolution_returns_empty(
+    patched_broker, monkeypatch
+):
+    """If the lookup misses (id deleted, ORM unavailable), the row
+    falls back to bare `(None, None)` rather than crashing the
+    changelist render.
+    """
+
+    monkeypatch.setattr(
+        redis_admin_queryset,
+        "_resolve_comparison_repo_commits",
+        lambda ids: {},
+    )
+
+    _push(
+        patched_broker,
+        "notify",
+        task="app.tasks.compute_comparison.ComputeComparison",
+        kwargs={"comparison_id": 9999},
+    )
+
+    rows = list(CeleryBrokerQueueQuerySet(CeleryBrokerQueue, queue_name="notify"))
+
+    assert len(rows) == 1
+    assert rows[0].repoid is None
+    assert rows[0].commitid is None
+    assert rows[0]._comparison_id == 9999
+
+
+def test_stream_frequency_aggregate_resolves_comparison_buckets(
+    patched_broker, monkeypatch
+):
+    """The chart aggregator must surface ComputeComparison messages
+    under their resolved `(task, repoid, commitid)` bucket rather
+    than collapsing every one into the all-None row.
+    """
+
+    monkeypatch.setattr(
+        redis_admin_queryset,
+        "_resolve_comparison_repo_commits",
+        lambda ids: {1: (10, "aaa"), 2: (20, "bbb")},
+    )
+
+    _push(
+        patched_broker,
+        "notify",
+        task="app.tasks.compute_comparison.ComputeComparison",
+        kwargs={"comparison_id": 1},
+    )
+    _push(
+        patched_broker,
+        "notify",
+        task="app.tasks.compute_comparison.ComputeComparison",
+        kwargs={"comparison_id": 1},
+    )
+    _push(
+        patched_broker,
+        "notify",
+        task="app.tasks.compute_comparison.ComputeComparison",
+        kwargs={"comparison_id": 2},
+    )
+
+    buckets, total = _stream_frequency_aggregate(patched_broker, "notify")
+
+    assert total == 3
+    keys = {(b.task_name, b.repoid, b.commitid) for b in buckets}
+    assert (
+        "app.tasks.compute_comparison.ComputeComparison",
+        10,
+        "aaa",
+    ) in keys
+    assert (
+        "app.tasks.compute_comparison.ComputeComparison",
+        20,
+        "bbb",
+    ) in keys
+
+
+def test_resolve_comparison_repo_commits_returns_empty_for_falsy_ids():
+    """Falsy ids (0 / None) must skip the ORM round-trip entirely so
+    `comparison_id=0` payloads don't pull a doomed empty IN()."""
+
+    from redis_admin.queryset import _resolve_comparison_repo_commits  # noqa: PLC0415
+
+    assert _resolve_comparison_repo_commits([]) == {}
+    assert _resolve_comparison_repo_commits([0, None]) == {}
+
+
+def test_resolve_comparison_repo_commits_batches_real_orm_call(monkeypatch):
+    """Happy path: the resolver calls `CommitComparison.objects.filter`
+    once and shapes `(id, repoid, commitid)` tuples into the
+    `{cid: (repoid, commitid)}` mapping the hydrate helpers consume.
+    """
+
+    from redis_admin.queryset import _resolve_comparison_repo_commits  # noqa: PLC0415
+    from shared.django_apps.compare import models as compare_models  # noqa: PLC0415
+
+    captured: dict[str, Any] = {}
+
+    class _FakeQuerySet:
+        def values_list(self, *fields):
+            captured["fields"] = fields
+            return [(1, 10, "aaa"), (2, 20, "bbb")]
+
+    class _FakeManager:
+        def filter(self, **kwargs):
+            captured["filter_kwargs"] = kwargs
+            return _FakeQuerySet()
+
+    monkeypatch.setattr(compare_models.CommitComparison, "objects", _FakeManager())
+
+    result = _resolve_comparison_repo_commits([1, 2, 0])
+
+    assert result == {1: (10, "aaa"), 2: (20, "bbb")}
+    assert captured["filter_kwargs"] == {"id__in": {1, 2}}
+    assert captured["fields"] == (
+        "id",
+        "compare_commit__repository_id",
+        "compare_commit__commitid",
+    )
+
+
+def test_hydrate_comparison_rows_skips_rows_with_repoid_already_set(
+    patched_broker, monkeypatch
+):
+    """Mixed page: ordinary `repoid`/`commitid` rows are left alone
+    (no resolver call for them) and a row whose `comparison_id` isn't
+    in the resolver mapping keeps its bare comparison_id rather than
+    spuriously getting nulled.
+    """
+
+    monkeypatch.setattr(
+        redis_admin_queryset,
+        "_resolve_comparison_repo_commits",
+        lambda ids: {1: (10, "aaa")},  # 9999 deliberately missing
+    )
+
+    _push(
+        patched_broker,
+        "notify",
+        task="app.tasks.notify.NotifyTask",
+        kwargs={"repoid": 7, "commitid": "preset"},
+    )
+    _push(
+        patched_broker,
+        "notify",
+        task="app.tasks.compute_comparison.ComputeComparison",
+        kwargs={"comparison_id": 1},
+    )
+    _push(
+        patched_broker,
+        "notify",
+        task="app.tasks.compute_comparison.ComputeComparison",
+        kwargs={"comparison_id": 9999},
+    )
+
+    rows = list(CeleryBrokerQueueQuerySet(CeleryBrokerQueue, queue_name="notify"))
+    by_idx = {r.index_in_queue: r for r in rows}
+
+    assert by_idx[0].repoid == 7 and by_idx[0].commitid == "preset"
+    assert by_idx[1].repoid == 10 and by_idx[1].commitid == "aaa"
+    assert by_idx[2].repoid is None and by_idx[2].commitid is None
+    assert by_idx[2]._comparison_id == 9999
 
 
 def test_parse_envelope_rejects_bool_in_int_fields():
