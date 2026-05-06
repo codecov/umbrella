@@ -1,4 +1,5 @@
 import logging
+import os
 import tempfile
 from enum import Enum
 
@@ -47,13 +48,17 @@ class BundleAnalysisReportLoader:
         path = StoragePaths.bundle_report.path(
             repo_key=self.repo_key, report_key=report_key
         )
-        _, db_path = tempfile.mkstemp(prefix="bundle_analysis_")
-
-        with open(db_path, "w+b") as f:
-            try:
+        fd, db_path = tempfile.mkstemp(prefix="bundle_analysis_")
+        os.close(fd)
+        try:
+            with open(db_path, "w+b") as f:
                 self.storage_service.read_file(self.bucket_name, path, file_obj=f)
-            except FileNotInStorageError:
-                return None
+        except FileNotInStorageError:
+            os.unlink(db_path)
+            return None
+        except Exception:
+            os.unlink(db_path)
+            raise
         return BundleAnalysisReport(db_path)
 
     @sentry_sdk.trace

@@ -1,3 +1,4 @@
+import os
 import tempfile
 from pathlib import Path
 from unittest import TestCase
@@ -21,7 +22,7 @@ from shared.bundle_analysis.models import (
     Session,
     get_db_session,
 )
-from shared.storage.exceptions import PutRequestRateLimitError
+from shared.storage.exceptions import FileNotInStorageError, PutRequestRateLimitError
 
 sample_bundle_stats_path = (
     Path(__file__).parent.parent.parent / "samples" / "sample_bundle_stats.json"
@@ -433,6 +434,56 @@ def test_save_load_bundle_report(mock_storage):
     finally:
         created_report.cleanup()
         report.cleanup()
+
+
+def test_load_cleans_up_tempfile_on_file_not_found(mock_storage):
+    loader = BundleAnalysisReportLoader(None)
+    captured_path = []
+
+    real_mkstemp = tempfile.mkstemp
+
+    def capturing_mkstemp(*args, **kwargs):
+        fd, path = real_mkstemp(*args, **kwargs)
+        captured_path.append(path)
+        return fd, path
+
+    with patch("tempfile.mkstemp", side_effect=capturing_mkstemp):
+        with patch(
+            "shared.storage.memory.MemoryStorageService.read_file",
+            side_effect=FileNotInStorageError(),
+        ):
+            result = loader.load("nonexistent-key")
+
+    assert result is None
+    assert len(captured_path) == 1
+    assert not os.path.exists(captured_path[0]), (
+        f"Temp file not cleaned up: {captured_path[0]}"
+    )
+
+
+def test_load_cleans_up_tempfile_on_unexpected_error(mock_storage):
+    loader = BundleAnalysisReportLoader(None)
+    captured_path = []
+
+    real_mkstemp = tempfile.mkstemp
+
+    def capturing_mkstemp(*args, **kwargs):
+        fd, path = real_mkstemp(*args, **kwargs)
+        captured_path.append(path)
+        return fd, path
+
+    with patch("tempfile.mkstemp", side_effect=capturing_mkstemp):
+        with patch(
+            "shared.storage.memory.MemoryStorageService.read_file",
+            side_effect=RuntimeError("storage exploded"),
+        ):
+            with pytest.raises(RuntimeError, match="storage exploded"):
+                loader.load("some-key")
+
+    assert len(captured_path) == 1
+    assert not os.path.exists(captured_path[0]), (
+        f"Temp file not cleaned up: {captured_path[0]}"
+    )
 
 
 def test_reupload_bundle_report():
