@@ -340,6 +340,15 @@ def parse_celery_envelope(decoded: str) -> CeleryEnvelopeMeta:
     has repoid+commitid, sync_pull has repoid+pullid, sync_repos
     has ownerid only) so callers should treat every field as
     independently optional.
+
+    `UploadBreadcrumbTask` and a few sibling handlers
+    (`transplant_report`, `process_flakes`, `detect_flakes`) carry
+    `repo_id` / `commit_sha` instead of the canonical
+    `repoid` / `commitid`; both shapes are accepted so the admin
+    surfaces a structured `(repoid, commitid)` for those messages.
+    `ComputeComparisonTask` carries only `comparison_id` — the
+    queryset later batch-resolves that to a `(repoid, commitid)`
+    pair via `compare_commitcomparison`.
     """
 
     try:
@@ -378,16 +387,15 @@ def parse_celery_envelope(decoded: str) -> CeleryEnvelopeMeta:
         if isinstance(body, list) and len(body) >= 2 and isinstance(body[1], dict):
             kwargs = body[1]
             repoid = _coerce_int(kwargs.get("repoid"))
+            if repoid is None:
+                repoid = _coerce_int(kwargs.get("repo_id"))
             cid = kwargs.get("commitid")
+            if not (isinstance(cid, str) and cid):
+                cid = kwargs.get("commit_sha")
             if isinstance(cid, str) and cid:
                 commitid = cid
             ownerid = _coerce_int(kwargs.get("ownerid"))
             pullid = _coerce_int(kwargs.get("pullid"))
-            # `ComputeComparisonTask` carries only `comparison_id`
-            # in its kwargs — pull it into a dedicated field so the
-            # queryset's post-materialisation hydration path can
-            # batch-resolve it to a `(repoid, commitid)` pair via
-            # the `compare_commitcomparison` table.
             comparison_id = _coerce_int(kwargs.get("comparison_id"))
     return CeleryEnvelopeMeta(
         task=task,
