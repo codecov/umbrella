@@ -16,8 +16,9 @@ from __future__ import annotations
 
 import datetime as _dt
 import json
+import logging
 from collections import Counter
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 from typing import Any
 
@@ -37,7 +38,108 @@ from .families import (
     _resolve_celery_queue_names as _celery_queue_names,  # noqa: PLC2701
 )
 
+log = logging.getLogger(__name__)
+
 _UNSET: Any = object()
+
+
+# `ComputeComparisonTask` envelopes carry only `comparison_id`; the
+# `(repoid, commitid)` pair the changelist filters and displays on
+# lives in the `compare_commitcomparison` row that id points at. The
+# helpers below batch-resolve those ids in one Django ORM query at
+# materialise time so the `repoid`/`commitid` pushdown still narrows
+# correctly on those messages.
+
+
+@sentry_sdk.trace
+def _resolve_comparison_repo_commits(
+    comparison_ids: Iterable[int],
+) -> dict[int, tuple[int | None, str | None]]:
+    """Batch-fetch `{comparison_id: (repoid, commitid)}` for `ids`.
+
+    Returns `{}` on any error so the changelist degrades to "show
+    bare comparison_id" rather than 500-ing.
+    """
+
+    ids = {cid for cid in comparison_ids if cid}
+    if not ids:
+        return {}
+    try:
+        from shared.django_apps.compare.models import (  # noqa: PLC0415
+            CommitComparison,
+        )
+    except Exception:  # pragma: no cover - defensive: missing app
+        log.warning(
+            "redis_admin: CommitComparison import failed; "
+            "ComputeComparison rows will not be hydrated"
+        )
+        return {}
+    try:
+        rows = CommitComparison.objects.filter(id__in=ids).values_list(
+            "id",
+            "compare_commit__repository_id",
+            "compare_commit__commitid",
+        )
+        return {row[0]: (row[1], row[2]) for row in rows}
+    except Exception:  # pragma: no cover - defensive: DB hiccup
+        log.warning(
+            "redis_admin: CommitComparison hydration failed; "
+            "falling back to bare comparison_id",
+            exc_info=True,
+        )
+        return {}
+
+
+def _hydrate_comparison_rows(rows: list) -> None:
+    """Patch `repoid` / `commitid` on rows whose envelope only carried
+    a `comparison_id`."""
+
+    pending_ids: set[int] = set()
+    for row in rows:
+        cid = getattr(row, "_comparison_id", None)
+        if cid and row.repoid is None:
+            pending_ids.add(cid)
+    if not pending_ids:
+        return
+    mapping = _resolve_comparison_repo_commits(pending_ids)
+    if not mapping:
+        return
+    for row in rows:
+        cid = getattr(row, "_comparison_id", None)
+        if not cid or row.repoid is not None:
+            continue
+        resolved = mapping.get(cid)
+        if not resolved:
+            continue
+        repoid, commitid = resolved
+        if repoid is not None:
+            row.repoid = repoid
+        if commitid:
+            row.commitid = commitid
+
+
+def _merge_comparison_counter_into_main(
+    comparison_counter: Counter[tuple[str | None, int]],
+    counter: Counter[tuple[str | None, int | None, str | None]],
+) -> None:
+    """Fold a `(task, comparison_id)` side-counter into the main
+    `(task, repoid, commitid)` chart counter via one batched lookup.
+
+    Resolutions that fail collapse into the `(task, None, None)`
+    bucket so we don't drop counts.
+    """
+
+    if not comparison_counter:
+        return
+    ids = {cid for _, cid in comparison_counter if cid}
+    mapping = _resolve_comparison_repo_commits(ids) if ids else {}
+    for (task, cid), count in comparison_counter.items():
+        resolved = mapping.get(cid)
+        if resolved is None:
+            counter[(task, None, None)] += count
+            continue
+        repoid, commitid = resolved
+        counter[(task, repoid, commitid or None)] += count
 
 
 def _ordering_key(obj: Any, attr: str) -> tuple:
@@ -1138,6 +1240,7 @@ def _stream_frequency_aggregate(
 
     cap = redis_admin_settings.CELERY_BROKER_SCAN_LIMIT
     counter: Counter[tuple[str | None, int | None, str | None]] = Counter()
+    comparison_counter: Counter[tuple[str | None, int]] = Counter()
     total = 0
 
     depth = int(redis.llen(queue_name) or 0)
@@ -1150,8 +1253,18 @@ def _stream_frequency_aggregate(
             if meta.task is None and meta.repoid is None and meta.commitid is None:
                 total += 1
                 continue
+            if (
+                meta.comparison_id is not None
+                and meta.repoid is None
+                and not meta.commitid
+            ):
+                comparison_counter[(meta.task, meta.comparison_id)] += 1
+                total += 1
+                continue
             counter[(meta.task, meta.repoid, meta.commitid)] += 1
             total += 1
+
+    _merge_comparison_counter_into_main(comparison_counter, counter)
 
     if not counter or total == 0:
         return [], 0
@@ -1439,6 +1552,7 @@ class CeleryBrokerQueueQuerySet:
             payload_preview="",
         )
         row._kwargs_for_preview = meta.kwargs
+        row._comparison_id = meta.comparison_id
         return row
 
     def _build_summary_row(self, queue: str, depth: int) -> Any:
@@ -1515,6 +1629,9 @@ class CeleryBrokerQueueQuerySet:
             decoded = _decode_value(raw)
             meta = parse_celery_envelope(decoded)
             rows.append(self._build_row(offset, meta))
+        # Hydrate before the per-request cache snapshot so a downstream
+        # `_clone()` reads already-resolved (repoid, commitid).
+        _hydrate_comparison_rows(rows)
         self._write_request_cache(rows)
         return rows
 
