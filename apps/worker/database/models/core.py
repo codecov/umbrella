@@ -149,7 +149,7 @@ class Owner(CodecovBaseModel):
         foreign_keys="GithubAppInstallation.ownerid",
         cascade="all, delete",
         passive_deletes=True,
-        order_by="GithubAppInstallation.id",
+        order_by="GithubAppInstallation.id_",
     )
 
     # TODO: Create association between `User` and `Owner` mirroring `codecov-api`
