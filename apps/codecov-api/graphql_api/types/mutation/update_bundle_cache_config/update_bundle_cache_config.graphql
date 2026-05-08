@@ -1,4 +1,4 @@
-union UpdateBundleCacheConfigError = UnauthenticatedError | ValidationError
+union UpdateBundleCacheConfigError = UnauthenticatedError | UnauthorizedError | ValidationError
 
 type UpdateBundleCacheConfigResult {
   bundleName: String
