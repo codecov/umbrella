@@ -9,7 +9,7 @@ class DjangoSQLAlchemyOwnerWrapper:
     @staticmethod
     def get_github_app_installations(owner: Owner | Any):
         if _is_django_model(owner):
-            return owner.github_app_installations.all()
+            return owner.github_app_installations.order_by("id")
         else:
             return owner.github_app_installations
 

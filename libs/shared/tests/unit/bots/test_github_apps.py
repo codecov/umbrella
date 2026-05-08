@@ -18,6 +18,7 @@ from shared.django_apps.codecov_auth.models import (
 )
 from shared.django_apps.codecov_auth.tests.factories import OwnerFactory
 from shared.github import InvalidInstallationError
+from shared.orms.owner_helper import DjangoSQLAlchemyOwnerWrapper
 from shared.typings.torngit import GithubInstallationInfo
 
 
@@ -251,3 +252,26 @@ class TestGettingGitHubAppTokenSideEffect:
         installations[0].refresh_from_db()
         installations[1].refresh_from_db()
         assert all(installation.is_suspended == False for installation in installations)
+
+
+class TestGithubAppInstallationsOrdering:
+    @pytest.mark.django_db
+    def test_get_github_app_installations_returns_apps_in_id_order(self):
+        owner = OwnerFactory(service="github")
+        app_1 = GithubAppInstallation.objects.create(
+            owner=owner, installation_id=100, app_id=10, pem_path="pem1"
+        )
+        app_2 = GithubAppInstallation.objects.create(
+            owner=owner, installation_id=200, app_id=20, pem_path="pem2"
+        )
+        app_3 = GithubAppInstallation.objects.create(
+            owner=owner, installation_id=300, app_id=30, pem_path="pem3"
+        )
+        # Delete app_1 and recreate to get a higher ID, breaking natural insertion order
+        app_1.delete()
+        app_1_new = GithubAppInstallation.objects.create(
+            owner=owner, installation_id=100, app_id=10, pem_path="pem1"
+        )
+        expected = sorted([app_1_new, app_2, app_3], key=lambda x: x.id)
+        result = list(DjangoSQLAlchemyOwnerWrapper.get_github_app_installations(owner))
+        assert result == expected
