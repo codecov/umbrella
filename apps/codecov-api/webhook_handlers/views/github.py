@@ -28,6 +28,7 @@ from shared.helpers.redis import get_redis_connection
 from utils.config import get_config
 from webhook_handlers.constants import (
     GitHubHTTPHeaders,
+    GitHubPullRequestActions,
     GitHubWebhookEvents,
     WebhookHandlerErrorMessages,
 )
@@ -316,15 +317,17 @@ class GithubWebhookHandler(APIView):
         if not repo.active:
             return Response(data=WebhookHandlerErrorMessages.SKIP_NOT_ACTIVE)
 
-        action, pullid = request.data.get("action"), request.data.get("number")
+        action = request.data.get("action")
+        pullid = request.data.get("number")
 
-        if action in ["opened", "closed", "reopened", "synchronize", "labeled"]:
-            TaskService().pulls_sync(repoid=repo.repoid, pullid=pullid)
-
-        elif action == "edited":
+        if action == GitHubPullRequestActions.EDITED:
             Pull.objects.filter(repository=repo, pullid=pullid).update(
                 title=request.data.get("pull_request", {}).get("title")
             )
+            return Response()
+
+        if action in GitHubPullRequestActions.PULLS_SYNC_ACTIONS:
+            TaskService().pulls_sync(repoid=repo.repoid, pullid=pullid)
 
         return Response()
 
