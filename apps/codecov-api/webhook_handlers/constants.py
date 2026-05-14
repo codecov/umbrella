@@ -24,21 +24,22 @@ class GitHubWebhookEvents:
 
 
 class GitHubPullRequestActions:
-    OPENED = "opened"
     CLOSED = "closed"
+    LABELED = "labeled"
+    OPENED = "opened"
+    READY_FOR_REVIEW = "ready_for_review"
     REOPENED = "reopened"
     SYNCHRONIZE = "synchronize"
-    LABELED = "labeled"
+
     EDITED = "edited"
-    READY_FOR_REVIEW = "ready_for_review"
 
     PULLS_SYNC_ACTIONS = [
-        OPENED,
         CLOSED,
+        LABELED,
+        OPENED,
+        READY_FOR_REVIEW,
         REOPENED,
         SYNCHRONIZE,
-        LABELED,
-        READY_FOR_REVIEW,
     ]
 
 
