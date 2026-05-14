@@ -23,6 +23,26 @@ class GitHubWebhookEvents:
     repository_events = [PULL_REQUEST, DELETE, PUSH, PUBLIC, STATUS, REPOSITORY, MEMBER]
 
 
+class GitHubPullRequestActions:
+    CLOSED = "closed"
+    LABELED = "labeled"
+    OPENED = "opened"
+    READY_FOR_REVIEW = "ready_for_review"
+    REOPENED = "reopened"
+    SYNCHRONIZE = "synchronize"
+
+    EDITED = "edited"
+
+    PULLS_SYNC_ACTIONS = [
+        CLOSED,
+        LABELED,
+        OPENED,
+        READY_FOR_REVIEW,
+        REOPENED,
+        SYNCHRONIZE,
+    ]
+
+
 class BitbucketHTTPHeaders:
     EVENT = "HTTP_X_EVENT_KEY"
     UUID = "HTTP_X_HOOK_UUID"

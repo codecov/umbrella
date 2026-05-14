@@ -509,6 +509,21 @@ class GithubWebhookHandlerTests(APITestCase):
             [call(repoid=self.repo.repoid, pullid=pull.pullid)] * len(valid_actions)
         )
 
+    @patch("services.task.TaskService.pulls_sync")
+    def test_pull_request_ready_for_review_triggers_pulls_sync(self, pulls_sync_mock):
+        pull = PullFactory(repository=self.repo)
+        self._post_event_data(
+            event=GitHubWebhookEvents.PULL_REQUEST,
+            data={
+                "repository": {"id": self.repo.service_id},
+                "action": "ready_for_review",
+                "number": pull.pullid,
+            },
+        )
+        pulls_sync_mock.assert_called_once_with(
+            repoid=self.repo.repoid, pullid=pull.pullid
+        )
+
     def test_pull_request_updates_title_if_edited(self):
         pull = PullFactory(repository=self.repo)
         new_title = "brand new dang title"
