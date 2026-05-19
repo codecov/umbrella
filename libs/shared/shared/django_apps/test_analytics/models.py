@@ -25,6 +25,12 @@ class Flake(models.Model):
     class Meta:
         app_label = TEST_ANALYTICS_APP_LABEL
         db_table = "test_analytics_flake"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["repoid", "test_id"],
+                name="test_analytics_flake_repoid_test_id_unique",
+            ),
+        ]
         indexes = [
             models.Index(fields=["repoid"]),
             models.Index(fields=["test_id"]),
