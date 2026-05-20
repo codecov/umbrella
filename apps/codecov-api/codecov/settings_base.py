@@ -457,6 +457,11 @@ if SENTRY_DSN is not None:
     SENTRY_BADGE_SAMPLE_RATE = float(
         get_config("services", "sentry", "badge_sample_rate", default="0.001")
     )
+    SENTRY_WEBHOOK_GITHUB_SAMPLE_RATE = float(
+        get_config(
+            "services", "sentry", "webhook_github_sample_rate", default="0.001"
+        )
+    )
     sentry_sdk.init(
         dsn=SENTRY_DSN,
         event_scrubber=EventScrubber(denylist=SENTRY_DENY_LIST),
@@ -473,6 +478,7 @@ if SENTRY_DSN is not None:
         traces_sampler=make_traces_sampler(
             default_rate=SENTRY_SAMPLE_RATE,
             badge_rate=SENTRY_BADGE_SAMPLE_RATE,
+            webhook_github_rate=SENTRY_WEBHOOK_GITHUB_SAMPLE_RATE,
         ),
         enable_backpressure_handling=False,
         profiles_sample_rate=float(

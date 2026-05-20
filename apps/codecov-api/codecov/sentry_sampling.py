@@ -1,7 +1,7 @@
 """Route-aware ``traces_sampler`` for the Sentry SDK.
 
 The codecov-api WSGI app handles a handful of route families that emit a lot
-of requests but carry no debugging signal:
+of requests but carry low per-request debugging signal:
 
 * ``/``, ``/health/``, ``/api_health/`` — Kubernetes / load-balancer health
   probes.
@@ -9,6 +9,9 @@ of requests but carry no debugging signal:
 * ``/{service}/{owner}/{repo}/.../badge.{ext}`` — coverage and bundle badge
   SVGs. These are extremely high-volume and CDN-cacheable, and we never need
   per-request traces to debug them.
+* ``/webhooks/github`` — the GitHub webhook handler. By far the highest-volume
+  transaction in the app, and most events are uniform (push / status); we
+  only need a small fraction sampled for latency and error visibility.
 
 Everything else falls back to the default sample rate from ``settings``.
 
@@ -38,6 +41,11 @@ _HEALTH_PATHS = frozenset({"/", "/health", "/health/", "/api_health", "/api_heal
 
 # Path prefix for the Prometheus scrape endpoint.
 _MONITORING_PREFIX = "/monitoring/"
+
+# Exact paths for the GitHub webhook handler. Other webhook providers
+# (gitlab, bitbucket, github_enterprise, etc.) are intentionally excluded —
+# only the github route is high-volume enough to need its own sample rate.
+_WEBHOOK_GITHUB_PATHS = frozenset({"/webhooks/github", "/webhooks/github/"})
 
 SamplingContext = Mapping[str, Any]
 TracesSampler = Callable[[SamplingContext], float]
@@ -69,6 +77,7 @@ def make_traces_sampler(
     *,
     default_rate: float,
     badge_rate: float,
+    webhook_github_rate: float,
 ) -> TracesSampler:
     """Build a ``traces_sampler`` closure with the given fallback rates.
 
@@ -81,6 +90,11 @@ def make_traces_sampler(
         Sample rate applied to badge SVG endpoints. These are high-volume
         and low-variance; ``0.001`` (0.1%) keeps enough samples for latency
         monitoring without paying for full traces on every request.
+    webhook_github_rate:
+        Sample rate applied to ``/webhooks/github``. This is the single
+        highest-volume transaction in the app and most events are uniform;
+        ``0.001`` (0.1%) preserves latency and error visibility without
+        tracing every callback.
     """
 
     def traces_sampler(sampling_context: SamplingContext) -> float:
@@ -99,6 +113,8 @@ def make_traces_sampler(
             return 0.0
         if path.startswith(_MONITORING_PREFIX):
             return 0.0
+        if path in _WEBHOOK_GITHUB_PATHS:
+            return webhook_github_rate
         if _BADGE_PATH_RE.search(path):
             return badge_rate
 

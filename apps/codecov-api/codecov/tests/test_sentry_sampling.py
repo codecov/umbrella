@@ -5,7 +5,9 @@ from codecov.sentry_sampling import make_traces_sampler
 
 @pytest.fixture
 def sampler():
-    return make_traces_sampler(default_rate=0.5, badge_rate=0.001)
+    return make_traces_sampler(
+        default_rate=0.5, badge_rate=0.001, webhook_github_rate=0.001
+    )
 
 
 def wsgi_ctx(path: str) -> dict:
@@ -76,11 +78,38 @@ class TestBadgeRoutes:
         assert sampler(wsgi_ctx(path)) == 0.5
 
 
+class TestWebhookGithub:
+    @pytest.mark.parametrize(
+        "path",
+        ["/webhooks/github", "/webhooks/github/"],
+    )
+    def test_github_webhook_uses_webhook_rate(self, sampler, path):
+        assert sampler(wsgi_ctx(path)) == 0.001
+
+    @pytest.mark.parametrize(
+        "path",
+        [
+            # other providers stay on the default rate
+            "/webhooks/github_enterprise",
+            "/webhooks/gitlab",
+            "/webhooks/gitlab_enterprise",
+            "/webhooks/bitbucket",
+            "/webhooks/bitbucket_server",
+            "/webhooks/stripe",
+            "/webhooks/sentry",
+            # unrelated paths that happen to share the prefix
+            "/webhooks/github-status",
+            "/webhooks/github/extra",
+        ],
+    )
+    def test_other_webhook_routes_fall_through(self, sampler, path):
+        assert sampler(wsgi_ctx(path)) == 0.5
+
+
 class TestDefaultRate:
     @pytest.mark.parametrize(
         "path",
         [
-            "/webhooks/github",
             "/upload/v4/",
             "/api/v2/github/codecov/repos/example/file_report/foo.py/",
             "/billing/",
@@ -111,8 +140,13 @@ class TestParentSampled:
         assert sampler(ctx) == 1.0
 
     def test_parent_sampled_false_always_drops(self, sampler):
-        ctx = {**wsgi_ctx("/webhooks/github"), "parent_sampled": False}
+        ctx = {**wsgi_ctx("/api/v2/foo"), "parent_sampled": False}
         assert sampler(ctx) == 0.0
+
+    def test_parent_sampled_overrides_webhook_rate(self, sampler):
+        # Upstream "trace this webhook" wins over the 0.1% default sampler.
+        ctx = {**wsgi_ctx("/webhooks/github"), "parent_sampled": True}
+        assert sampler(ctx) == 1.0
 
     def test_parent_sampled_none_falls_through_to_path_rules(self, sampler):
         ctx = {**wsgi_ctx("/monitoring/metrics"), "parent_sampled": None}
@@ -121,13 +155,25 @@ class TestParentSampled:
 
 class TestConfigurability:
     def test_default_rate_is_honored(self):
-        sampler = make_traces_sampler(default_rate=0.25, badge_rate=0.01)
-        assert sampler(wsgi_ctx("/webhooks/github")) == 0.25
+        sampler = make_traces_sampler(
+            default_rate=0.25, badge_rate=0.01, webhook_github_rate=0.01
+        )
+        assert sampler(wsgi_ctx("/api/v2/foo")) == 0.25
 
     def test_badge_rate_is_honored(self):
-        sampler = make_traces_sampler(default_rate=1.0, badge_rate=0.0)
+        sampler = make_traces_sampler(
+            default_rate=1.0, badge_rate=0.0, webhook_github_rate=1.0
+        )
         assert sampler(wsgi_ctx("/gh/codecov/example/graph/badge.svg")) == 0.0
 
+    def test_webhook_github_rate_is_honored(self):
+        sampler = make_traces_sampler(
+            default_rate=1.0, badge_rate=1.0, webhook_github_rate=0.0
+        )
+        assert sampler(wsgi_ctx("/webhooks/github")) == 0.0
+
     def test_health_drops_regardless_of_default(self):
-        sampler = make_traces_sampler(default_rate=1.0, badge_rate=1.0)
+        sampler = make_traces_sampler(
+            default_rate=1.0, badge_rate=1.0, webhook_github_rate=1.0
+        )
         assert sampler(wsgi_ctx("/health/")) == 0.0
