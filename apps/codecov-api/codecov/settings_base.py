@@ -455,7 +455,7 @@ if SENTRY_DSN is not None:
         get_config("services", "sentry", "sample_rate", default="1.0")
     )
     SENTRY_BADGE_SAMPLE_RATE = float(
-        get_config("services", "sentry", "badge_sample_rate", default="0.01")
+        get_config("services", "sentry", "badge_sample_rate", default="0.001")
     )
     sentry_sdk.init(
         dsn=SENTRY_DSN,

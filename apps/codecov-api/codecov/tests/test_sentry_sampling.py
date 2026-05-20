@@ -5,7 +5,7 @@ from codecov.sentry_sampling import make_traces_sampler
 
 @pytest.fixture
 def sampler():
-    return make_traces_sampler(default_rate=0.5, badge_rate=0.01)
+    return make_traces_sampler(default_rate=0.5, badge_rate=0.001)
 
 
 def wsgi_ctx(path: str) -> dict:
@@ -56,7 +56,7 @@ class TestBadgeRoutes:
         ],
     )
     def test_badge_paths_use_badge_rate(self, sampler, path):
-        assert sampler(wsgi_ctx(path)) == 0.01
+        assert sampler(wsgi_ctx(path)) == 0.001
 
     @pytest.mark.parametrize(
         "path",

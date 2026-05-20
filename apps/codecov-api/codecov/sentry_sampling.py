@@ -79,7 +79,7 @@ def make_traces_sampler(
         low-value route. Should mirror the previous ``traces_sample_rate``.
     badge_rate:
         Sample rate applied to badge SVG endpoints. These are high-volume
-        and low-variance; ``0.01`` (1%) keeps enough samples for latency
+        and low-variance; ``0.001`` (0.1%) keeps enough samples for latency
         monitoring without paying for full traces on every request.
     """
 
