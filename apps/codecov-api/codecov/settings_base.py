@@ -458,9 +458,7 @@ if SENTRY_DSN is not None:
         get_config("services", "sentry", "badge_sample_rate", default="0.001")
     )
     SENTRY_WEBHOOK_GITHUB_SAMPLE_RATE = float(
-        get_config(
-            "services", "sentry", "webhook_github_sample_rate", default="0.001"
-        )
+        get_config("services", "sentry", "webhook_github_sample_rate", default="0.001")
     )
     sentry_sdk.init(
         dsn=SENTRY_DSN,
