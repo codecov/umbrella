@@ -44,7 +44,7 @@ def initialize_sentry() -> None:
         enable_backpressure_handling=False,
         integrations=[
             CeleryIntegration(monitor_beat_tasks=True),
-            DjangoIntegration(signals_spans=False),
+            DjangoIntegration(signals_spans=False, middleware_spans=False),
             SqlalchemyIntegration(),
             RedisIntegration(cache_prefixes=["cache:"]),
             HttpxIntegration(),

@@ -460,7 +460,7 @@ if SENTRY_DSN is not None:
             "enable_logs": True,
         },
         integrations=[
-            DjangoIntegration(signals_spans=False),
+            DjangoIntegration(signals_spans=False, middleware_spans=False),
             CeleryIntegration(),
             RedisIntegration(cache_prefixes=["cache:"]),
             HttpxIntegration(),
