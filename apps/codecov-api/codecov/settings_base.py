@@ -8,6 +8,7 @@ from sentry_sdk.integrations.httpx import HttpxIntegration
 from sentry_sdk.integrations.redis import RedisIntegration
 from sentry_sdk.scrubber import DEFAULT_DENYLIST, EventScrubber
 
+from codecov.sentry_sampling import make_traces_sampler
 from shared.django_apps.db_settings import *
 from shared.helpers.redis import get_redis_url
 from shared.license import startup_license_logging
@@ -453,6 +454,12 @@ if SENTRY_DSN is not None:
     SENTRY_SAMPLE_RATE = float(
         get_config("services", "sentry", "sample_rate", default="1.0")
     )
+    SENTRY_BADGE_SAMPLE_RATE = float(
+        get_config("services", "sentry", "badge_sample_rate", default="0.001")
+    )
+    SENTRY_WEBHOOK_GITHUB_SAMPLE_RATE = float(
+        get_config("services", "sentry", "webhook_github_sample_rate", default="0.001")
+    )
     sentry_sdk.init(
         dsn=SENTRY_DSN,
         event_scrubber=EventScrubber(denylist=SENTRY_DENY_LIST),
@@ -466,7 +473,11 @@ if SENTRY_DSN is not None:
             HttpxIntegration(),
         ],
         environment=SENTRY_ENV,
-        traces_sample_rate=SENTRY_SAMPLE_RATE,
+        traces_sampler=make_traces_sampler(
+            default_rate=SENTRY_SAMPLE_RATE,
+            badge_rate=SENTRY_BADGE_SAMPLE_RATE,
+            webhook_github_rate=SENTRY_WEBHOOK_GITHUB_SAMPLE_RATE,
+        ),
         enable_backpressure_handling=False,
         profiles_sample_rate=float(
             get_config("services", "sentry", "profile_sample_rate", default="0.01")
