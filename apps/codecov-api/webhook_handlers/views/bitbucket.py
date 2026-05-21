@@ -125,7 +125,7 @@ class BitbucketWebhookHandler(APIView):
             username=repo.author.username,
             sync_teams=False,
             sync_repos=True,
-            using_integration=True,
+            using_integration=False,
         )
         return Response()
 

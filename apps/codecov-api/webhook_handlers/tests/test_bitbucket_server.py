@@ -257,7 +257,7 @@ class TestBitbucketServerWebhookHandler(APITestCase):
             username=self.repo.author.username,
             sync_teams=False,
             sync_repos=True,
-            using_integration=True,
+            using_integration=False,
         )
 
     @patch("webhook_handlers.views.bitbucket_server.TaskService.refresh")
@@ -284,5 +284,5 @@ class TestBitbucketServerWebhookHandler(APITestCase):
             username=self.repo.author.username,
             sync_teams=False,
             sync_repos=True,
-            using_integration=True,
+            using_integration=False,
         )
