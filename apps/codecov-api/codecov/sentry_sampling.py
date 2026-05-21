@@ -15,21 +15,10 @@ of requests but carry low per-request debugging signal:
 
 Everything else falls back to the default sample rate from ``settings``.
 
-Precedence
-----------
-Path-based drops and down-samples take precedence over ``parent_sampled``.
-This is deliberate: the shelter ingress sits in front of ``codecov-api`` and
-initializes its own Sentry SDK with ``traces_sample_rate=1.0``, which means
-every request shelter forwards arrives at api with ``parent_sampled=True``.
-If we honored that first we would re-sample every webhook, badge and health
-probe at 100%, which is the opposite of the goal of this sampler. So we
-apply path rules first, then honor ``parent_sampled`` for everything else
-so distributed traces from internal callers (worker → api, etc.) stay
-coherent on routes we *do* care about.
-
-The factory pattern (:func:`make_traces_sampler`) lets the settings module
-inject the configurable defaults while keeping the matching logic pure and
-unit-testable.
+Path rules take precedence over ``parent_sampled`` — shelter sits in front
+of api with ``traces_sample_rate=1.0`` and would otherwise re-sample every
+webhook/badge/health probe at 100%. ``parent_sampled`` still governs routes
+without a path rule so internal traces (worker → api, etc.) stay coherent.
 """
 
 from __future__ import annotations
@@ -107,9 +96,6 @@ def make_traces_sampler(
     """
 
     def traces_sampler(sampling_context: SamplingContext) -> float:
-        # Path-based rules first: a "drop this route" decision must beat
-        # parent_sampled, otherwise shelter's traces_sample_rate=1.0 in
-        # front of api would re-sample every webhook/badge/health probe.
         path = _extract_path(sampling_context)
         if path:
             if path in _HEALTH_PATHS:
@@ -121,8 +107,6 @@ def make_traces_sampler(
             if _BADGE_PATH_RE.search(path):
                 return badge_rate
 
-        # Otherwise honor upstream sampling decisions so distributed traces
-        # from internal callers (worker → api, etc.) stay coherent.
         parent_sampled = sampling_context.get("parent_sampled")
         if parent_sampled is True:
             return 1.0

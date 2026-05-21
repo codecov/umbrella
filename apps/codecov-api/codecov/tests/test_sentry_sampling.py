@@ -134,10 +134,6 @@ class TestDefaultRate:
 
 
 class TestParentSampled:
-    # Path-based rules take precedence over parent_sampled so the shelter
-    # ingress (traces_sample_rate=1.0) cannot re-sample low-value routes at
-    # 100% via trace propagation. See module docstring for rationale.
-
     @pytest.mark.parametrize(
         "path,expected",
         [
@@ -173,8 +169,6 @@ class TestParentSampled:
         assert sampler(ctx) == expected
 
     def test_parent_sampled_true_wins_on_non_rule_paths(self, sampler):
-        # For routes without a path rule, distributed-trace coherence still
-        # matters — honor what the upstream service decided.
         ctx = {**wsgi_ctx("/api/v2/foo"), "parent_sampled": True}
         assert sampler(ctx) == 1.0
 
@@ -191,8 +185,6 @@ class TestParentSampled:
         assert sampler(ctx) == 0.0
 
     def test_parent_sampled_true_on_non_http_uses_default(self, sampler):
-        # No path to match — only parent decision applies (Celery/cron with
-        # an inbound sentry-trace, etc.).
         ctx = {"parent_sampled": True}
         assert sampler(ctx) == 1.0
 
