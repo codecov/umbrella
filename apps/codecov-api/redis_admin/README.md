@@ -168,15 +168,32 @@ beyond the `BaseCeleryConfig` defaults:
 
 | Config key | Form | Purpose |
 |---|---|---|
-| `setup.redis_admin.celery_queues` | comma-separated string or list | Operator-supplied list of broker queue names (e.g. `uploads,notify,sync,...`). Reads via `shared.config.get_config("setup", "redis_admin", "celery_queues")`, so an env var like `SETUP__REDIS_ADMIN__CELERY_QUEUES=...` works on the API pod. The actual production list lives in private deployment config (it varies per environment), so this isn't shipped with defaults. Each name is `EXISTS`-checked before being yielded — listing a queue that doesn't exist is harmless. |
+| `setup.redis_admin.celery_queues` | comma-separated string or list | Operator-supplied list of broker queue names (e.g. `uploads,notify,sync,...`). Reads via `shared.config.get_config("setup", "redis_admin", "celery_queues")`, so an env var like `SETUP__REDIS_ADMIN__CELERY_QUEUES=...` works on the API pod. The actual production list lives in private deployment config (it varies per environment), so this isn't shipped with defaults. Each name is `EXISTS`-checked before being yielded — listing a queue that doesn't exist is harmless. Optional now that the celery_broker summary unions in live `SCAN ... TYPE list` discovery (see below); use it only when you want a known-but-currently-drained queue to render at `depth=0` even when the broker has never materialised it. |
 
-Without this set the admin's `celery_broker` family only sees
-`celery`, `healthcheck`, and whatever the `enterprise_*` SCAN
-matches; queues like `uploads` / `notify` / `sync` stay invisible
-even when the broker has them, because the API pod doesn't carry
-the worker-side `setup.tasks.*.queue` env vars and so
-`BaseCeleryConfig.task_routes` resolves every route to
-`task_default_queue`.
+The `celery_broker` summary changelist (and the `CeleryQueueFilter`
+sidebar that backs it) does **not** rely on the static enumeration
+alone. On every render it issues a `SCAN ... TYPE list` against the
+broker Redis and unions the result with `_resolve_celery_queue_names()`:
+
+* The broker is a dedicated Redis Memorystore in production
+  (`services.celery_broker`), so every list-typed top-level key on
+  it is a celery queue. Kombu-internal prefixes (`_kombu.*`) and the
+  redis_admin LSET-tombstone prefix are deny-listed.
+* Bounded by `REDIS_ADMIN_MAX_SCAN_KEYS` for the same reason
+  `iter_keys` is bounded; on broker outage / older Redis builds that
+  reject `SCAN ... TYPE`, the helper logs and returns `()` so the
+  summary falls back transparently to the static enumeration.
+* The resolved tuple is cached on the `HttpRequest` so the summary
+  changelist and the sidebar dropdown share one SCAN per page
+  render.
+
+The net effect is that on a typical production deploy the API pod
+sees every queue actually present on the broker — including the
+per-tenant `enterprise_*_dropbox` / `_mixpanel` / `_squareup`
+variants that aren't reachable from `BaseCeleryConfig` because
+worker-side `setup.tasks.*.queue` env vars don't ship to the API
+pod — without the operator having to maintain a static
+`setup.redis_admin.celery_queues` list.
 
 ## Celery broker admin
 
@@ -191,11 +208,11 @@ don't double up between the two admins.
 ### Summary mode (`/admin/redis_admin/celerybrokerqueue/`)
 
 The default landing page when an on-call engineer clicks through
-from Grafana. One row per known celery queue:
+from Grafana. One row per celery queue:
 
 | Column | Source |
 |---|---|
-| `queue_name` | `_resolve_celery_queue_names()` (`BaseCeleryConfig.task_routes` + `celery`/`healthcheck` defaults + operator-supplied `setup.redis_admin.celery_queues`) |
+| `queue_name` | `_resolve_summary_queue_names()` — union of `_resolve_celery_queue_names()` (static: `BaseCeleryConfig.task_routes` + `celery`/`healthcheck` defaults + operator-supplied `setup.redis_admin.celery_queues`) and `_discover_celery_queues_from_broker()` (live `SCAN ... TYPE list` against the broker, with kombu-internal prefixes deny-listed). |
 | `depth` | `LLEN(<queue>)` |
 | `messages` | Drill-in link "view N message(s) →" that re-renders the same admin with `?queue_name__exact=<queue>` |
 
