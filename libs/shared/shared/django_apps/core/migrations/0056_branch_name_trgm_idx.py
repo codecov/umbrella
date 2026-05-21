@@ -29,7 +29,7 @@ class Migration(migrations.Migration):
         migrations.SeparateDatabaseAndState(
             database_operations=[
                 RiskyRunSQL(
-                    sql='CREATE INDEX IF NOT EXISTS "name_trgm_idx" ON "branches" USING gin ((UPPER("name")) gin_trgm_ops)',
+                    sql='CREATE INDEX IF NOT EXISTS "name_trgm_idx" ON "branches" USING gin ((UPPER("branch")) gin_trgm_ops)',
                     reverse_sql='DROP INDEX IF EXISTS "name_trgm_idx"',
                 ),
             ],
