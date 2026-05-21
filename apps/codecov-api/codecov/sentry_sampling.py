@@ -15,12 +15,10 @@ of requests but carry low per-request debugging signal:
 
 Everything else falls back to the default sample rate from ``settings``.
 
-The sampler also honors ``parent_sampled`` so distributed traces initiated
-upstream (e.g. by the shelter ingress) keep a consistent sampling decision.
-
-The factory pattern (:func:`make_traces_sampler`) lets the settings module
-inject the configurable defaults while keeping the matching logic pure and
-unit-testable.
+Path rules take precedence over ``parent_sampled`` — shelter sits in front
+of api with ``traces_sample_rate=1.0`` and would otherwise re-sample every
+webhook/badge/health probe at 100%. ``parent_sampled`` still governs routes
+without a path rule so internal traces (worker → api, etc.) stay coherent.
 """
 
 from __future__ import annotations
@@ -98,25 +96,22 @@ def make_traces_sampler(
     """
 
     def traces_sampler(sampling_context: SamplingContext) -> float:
-        # Honor upstream sampling decisions so distributed traces stay coherent.
+        path = _extract_path(sampling_context)
+        if path:
+            if path in _HEALTH_PATHS:
+                return 0.0
+            if path.startswith(_MONITORING_PREFIX):
+                return 0.0
+            if path in _WEBHOOK_GITHUB_PATHS:
+                return webhook_github_rate
+            if _BADGE_PATH_RE.search(path):
+                return badge_rate
+
         parent_sampled = sampling_context.get("parent_sampled")
         if parent_sampled is True:
             return 1.0
         if parent_sampled is False:
             return 0.0
-
-        path = _extract_path(sampling_context)
-        if not path:
-            return default_rate
-
-        if path in _HEALTH_PATHS:
-            return 0.0
-        if path.startswith(_MONITORING_PREFIX):
-            return 0.0
-        if path in _WEBHOOK_GITHUB_PATHS:
-            return webhook_github_rate
-        if _BADGE_PATH_RE.search(path):
-            return badge_rate
 
         return default_rate
 

@@ -134,23 +134,59 @@ class TestDefaultRate:
 
 
 class TestParentSampled:
-    def test_parent_sampled_true_always_samples(self, sampler):
-        # Even on a normally-dropped path, the upstream decision wins.
-        ctx = {**wsgi_ctx("/monitoring/metrics"), "parent_sampled": True}
+    @pytest.mark.parametrize(
+        "path,expected",
+        [
+            ("/", 0.0),
+            ("/health/", 0.0),
+            ("/api_health/", 0.0),
+            ("/monitoring/metrics", 0.0),
+            ("/webhooks/github", 0.001),
+            ("/webhooks/github/", 0.001),
+            ("/gh/codecov/example/graph/badge.svg", 0.001),
+            ("/gh/codecov/example/branch/main/graph/bundle/web/badge.svg", 0.001),
+        ],
+    )
+    def test_parent_sampled_true_does_not_override_path_rules(
+        self, sampler, path, expected
+    ):
+        ctx = {**wsgi_ctx(path), "parent_sampled": True}
+        assert sampler(ctx) == expected
+
+    @pytest.mark.parametrize(
+        "path,expected",
+        [
+            ("/", 0.0),
+            ("/monitoring/metrics", 0.0),
+            ("/webhooks/github", 0.001),
+            ("/gh/codecov/example/graph/badge.svg", 0.001),
+        ],
+    )
+    def test_parent_sampled_false_does_not_override_path_rules(
+        self, sampler, path, expected
+    ):
+        ctx = {**wsgi_ctx(path), "parent_sampled": False}
+        assert sampler(ctx) == expected
+
+    def test_parent_sampled_true_wins_on_non_rule_paths(self, sampler):
+        ctx = {**wsgi_ctx("/api/v2/foo"), "parent_sampled": True}
         assert sampler(ctx) == 1.0
 
-    def test_parent_sampled_false_always_drops(self, sampler):
+    def test_parent_sampled_false_drops_on_non_rule_paths(self, sampler):
         ctx = {**wsgi_ctx("/api/v2/foo"), "parent_sampled": False}
         assert sampler(ctx) == 0.0
 
-    def test_parent_sampled_overrides_webhook_rate(self, sampler):
-        # Upstream "trace this webhook" wins over the 0.1% default sampler.
-        ctx = {**wsgi_ctx("/webhooks/github"), "parent_sampled": True}
-        assert sampler(ctx) == 1.0
+    def test_parent_sampled_none_falls_through_to_default(self, sampler):
+        ctx = {**wsgi_ctx("/api/v2/foo"), "parent_sampled": None}
+        assert sampler(ctx) == 0.5
 
-    def test_parent_sampled_none_falls_through_to_path_rules(self, sampler):
+    def test_parent_sampled_none_still_uses_path_rules(self, sampler):
         ctx = {**wsgi_ctx("/monitoring/metrics"), "parent_sampled": None}
         assert sampler(ctx) == 0.0
+
+    def test_parent_sampled_true_on_non_http_uses_default(self, sampler):
+        ctx = {"parent_sampled": True}
+        assert sampler(ctx) == 1.0
 
 
 class TestConfigurability:
