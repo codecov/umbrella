@@ -218,9 +218,6 @@ def generate_view_test_analytics_line(
 def generate_view_prevent_analytics_line(
     repo: Repository, commit_branch: str | None
 ) -> str | None:
-    # Disabled: this URL used account.name (a display name) as the Sentry org
-    # slug, which is broken for ~89% of Sentry-linked accounts. Re-enable once
-    # Account carries a real sentry_org_slug.
     return None
 
 
