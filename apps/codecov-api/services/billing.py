@@ -7,7 +7,11 @@ import stripe
 from dateutil.relativedelta import relativedelta
 from django.conf import settings
 
-from billing.constants import REMOVED_INVOICE_STATUSES
+from billing.constants import (
+    CANCELLATION_TASK_SIGNATURE,
+    REMOVED_INVOICE_STATUSES,
+    WEBHOOK_CANCELLATION_TASK_SIGNATURE,
+)
 from codecov_auth.models import Owner, Plan
 from shared.plan.constants import PlanBillingRate, TierName
 from shared.plan.service import PlanService
@@ -30,6 +34,81 @@ def _log_stripe_error(method):
             raise
 
     return catch_and_raise
+
+
+def _create_end_date_schedule(
+    owner,
+    end_date,
+    phase1_plan_id,
+    phase1_quantity,
+    phase2_plan_id=None,
+    phase2_quantity=None,
+    subscription=None,
+    task_signature=CANCELLATION_TASK_SIGNATURE,
+):
+    """
+    Create a subscription schedule that ends at end_date with end_behavior="cancel".
+
+    Phase 1 runs from current period start to current period end and phase 2 runs
+    from current period end to end_date. If phase2_plan_id/phase2_quantity are
+    omitted, phase 2 uses the same plan/quantity as phase 1. If provided, phase 2
+    can use a different plan (e.g. command scheduling a transition to target plan
+    then cancel at end_date).
+
+    If subscription is not provided, it is retrieved from Stripe.
+    """
+    if subscription is None:
+        subscription = stripe.Subscription.retrieve(owner.stripe_subscription_id)
+    current_period_start = subscription["current_period_start"]
+    current_period_end = subscription["current_period_end"]
+
+    if phase2_plan_id is None:
+        phase2_plan_id = phase1_plan_id
+    if phase2_quantity is None:
+        phase2_quantity = phase1_quantity
+
+    end_date_ts = int(end_date.timestamp())
+    metadata = {
+        "task_signature": task_signature,
+        "end_date": end_date.strftime("%Y-%m-%d"),
+        "script_version": "1.0",
+    }
+
+    new_schedule = stripe.SubscriptionSchedule.create(
+        from_subscription=owner.stripe_subscription_id,
+        metadata=metadata,
+    )
+    stripe.SubscriptionSchedule.modify(
+        new_schedule.id,
+        end_behavior="cancel",
+        phases=[
+            {
+                "start_date": current_period_start,
+                "end_date": current_period_end,
+                "items": [
+                    {
+                        "plan": phase1_plan_id,
+                        "price": phase1_plan_id,
+                        "quantity": phase1_quantity,
+                    }
+                ],
+                "proration_behavior": "none",
+            },
+            {
+                "start_date": current_period_end,
+                "end_date": end_date_ts,
+                "items": [
+                    {
+                        "plan": phase2_plan_id,
+                        "price": phase2_plan_id,
+                        "quantity": phase2_quantity,
+                    }
+                ],
+                "proration_behavior": "none",
+            },
+        ],
+    )
+    return new_schedule
 
 
 class AbstractPaymentService(ABC):
@@ -346,13 +425,35 @@ class StripeService(AbstractPaymentService):
 
         # Divide logic bw immediate updates and scheduled updates
         # Immediate updates: when user upgrades seats or plan
-        #   If the user is not in a schedule, update immediately
-        #   If the user is in a schedule, update the existing schedule
+        #   Update immediately
+        #   If the user is in a schedule, release the existing schedule but recreate a new schedule
+        #   for scheduled end date if a phase existed for it in existing schedule
         # Scheduled updates: when the user decreases seats or plan
         #   If the user is not in a schedule, create a schedule
         #   If the user is in a schedule, update the existing schedule
         if is_upgrading:
+            previous_scheduled_end_date = None
             if subscription_schedule_id:
+                existing_schedule = stripe.SubscriptionSchedule.retrieve(
+                    subscription_schedule_id
+                )
+                if existing_schedule.metadata.get("task_signature") in [
+                    CANCELLATION_TASK_SIGNATURE,
+                    WEBHOOK_CANCELLATION_TASK_SIGNATURE,
+                ]:
+                    if existing_schedule.phases:
+                        last_phase = existing_schedule.phases[-1]
+                        end_ts = getattr(last_phase, "end_date", None)
+                        if end_ts is not None:
+                            previous_scheduled_end_date = datetime.fromtimestamp(
+                                end_ts, tz=UTC
+                            )
+                    elif metadata_end_date := existing_schedule.metadata.get(
+                        "end_date"
+                    ):
+                        previous_scheduled_end_date = datetime.fromisoformat(
+                            metadata_end_date
+                        ).replace(tzinfo=UTC)
                 log.info(
                     f"Releasing Stripe schedule for owner {owner.ownerid} to {desired_plan['value']} with {desired_plan['quantity']} seats by user #{self.requesting_user.ownerid}"
                 )
@@ -361,25 +462,76 @@ class StripeService(AbstractPaymentService):
                 f"Updating Stripe subscription for owner {owner.ownerid} to {desired_plan['value']} by user #{self.requesting_user.ownerid}"
             )
 
-            subscription = stripe.Subscription.modify(
-                owner.stripe_subscription_id,
-                cancel_at_period_end=False,
-                items=[
-                    {
-                        "id": subscription["items"]["data"][0]["id"],
-                        "plan": desired_plan_info.stripe_id,
-                        "quantity": desired_plan["quantity"],
-                    }
-                ],
-                metadata=self._get_checkout_session_and_subscription_metadata(owner),
-                proration_behavior=proration_behavior,
-                # TODO: we need to include this arg, but it means we need to remove some of the existing args
-                # on the .modify() call https://docs.stripe.com/billing/subscriptions/pending-updates-reference
-                # payment_behavior="pending_if_incomplete",
-            )
+            try:
+                subscription = stripe.Subscription.modify(
+                    owner.stripe_subscription_id,
+                    cancel_at_period_end=False,
+                    items=[
+                        {
+                            "id": subscription["items"]["data"][0]["id"],
+                            "plan": desired_plan_info.stripe_id,
+                            "quantity": desired_plan["quantity"],
+                        }
+                    ],
+                    metadata=self._get_checkout_session_and_subscription_metadata(
+                        owner
+                    ),
+                    proration_behavior=proration_behavior,
+                    # TODO: we need to include this arg, but it means we need to remove some of the existing args
+                    # on the .modify() call https://docs.stripe.com/billing/subscriptions/pending-updates-reference
+                    # payment_behavior="pending_if_incomplete",
+                )
+            except stripe.StripeError:
+                # Upgrade payment failed but we already released the schedule so add back an end-date schedule so the user doesn't lose it
+                if previous_scheduled_end_date is not None:
+                    subscription = stripe.Subscription.retrieve(
+                        owner.stripe_subscription_id
+                    )
+                    current_plan_id = subscription["items"]["data"][0]["plan"]["id"]
+                    current_quantity = subscription["items"]["data"][0]["quantity"]
+                    _create_end_date_schedule(
+                        owner=owner,
+                        end_date=previous_scheduled_end_date,
+                        phase1_plan_id=current_plan_id,
+                        phase1_quantity=current_quantity,
+                        subscription=subscription,
+                        task_signature=WEBHOOK_CANCELLATION_TASK_SIGNATURE,
+                    )
+                    log.info(
+                        f"Restored end-date schedule for owner {owner.ownerid} after upgrade failure"
+                    )
+                raise
+
             log.info(
                 f"Stripe subscription upgrade attempted for owner {owner.ownerid} by user #{self.requesting_user.ownerid}"
             )
+
+            # If the user had a previous scheduled end date, we need to create a new schedule to replace the end date schedule
+            # that the upgrade is releasing. We wrap this in try/except because the upgrade already succeeded in Stripe -
+            # we don't want a schedule recreation failure to prevent the database update and leave things inconsistent.
+            if previous_scheduled_end_date is not None:
+                try:
+                    _create_end_date_schedule(
+                        owner=owner,
+                        end_date=previous_scheduled_end_date,
+                        phase1_plan_id=desired_plan_info.stripe_id,
+                        phase1_quantity=desired_plan["quantity"],
+                        subscription=subscription,
+                        task_signature=WEBHOOK_CANCELLATION_TASK_SIGNATURE,
+                    )
+                except stripe.StripeError as e:
+                    # Log the error but don't fail the upgrade - the subscription was already modified in Stripe
+                    log.error(
+                        f"Failed to recreate end-date schedule after upgrade for owner {owner.ownerid}. "
+                        f"Original end_date was {previous_scheduled_end_date}. Manual intervention may be required.",
+                        extra={
+                            "ownerid": owner.ownerid,
+                            "stripe_subscription_id": owner.stripe_subscription_id,
+                            "end_date": previous_scheduled_end_date.isoformat(),
+                            "error": str(e),
+                        },
+                    )
+
             indication_of_payment_failure = getattr(
                 subscription, "pending_update", None
             )
