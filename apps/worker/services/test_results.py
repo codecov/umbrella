@@ -4,7 +4,6 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from hashlib import sha256
 from typing import Literal, TypedDict, TypeVar
-from urllib.parse import quote_plus
 
 import sentry_sdk
 
@@ -219,26 +218,10 @@ def generate_view_test_analytics_line(
 def generate_view_prevent_analytics_line(
     repo: Repository, commit_branch: str | None
 ) -> str | None:
-    owner = getattr(repo, "author", None)
-    account = getattr(owner, "account", None) if owner else None
-    account_name = getattr(account, "name", None) if account else None
-    owner_username = getattr(owner, "username", None) if owner else None
-    repo_name = getattr(repo, "name", None)
-
-    if not all([account_name, owner_username, repo_name, commit_branch]):
-        return None
-
-    prevent_url = (
-        f"https://{account_name}.sentry.io/prevent/tests/?preventPeriod=30d"
-        f"&integratedOrgName={quote_plus(owner_username)}"
-        f"&repository={quote_plus(repo_name)}"
-        f"&branch={quote_plus(commit_branch)}"
-    )
-
-    return (
-        "\nTo view more test analytics, go to the "
-        f"[Prevent Tests Dashboard]({prevent_url})"
-    )
+    # Disabled: this URL used account.name (a display name) as the Sentry org
+    # slug, which is broken for ~89% of Sentry-linked accounts. Re-enable once
+    # Account carries a real sentry_org_slug.
+    return None
 
 
 def messagify_failure[T: (str, bytes)](
