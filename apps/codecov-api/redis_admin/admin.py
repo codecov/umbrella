@@ -44,21 +44,33 @@ from .families import FAMILIES, iter_families, iter_keys
 from .families import (
     _resolve_celery_queue_names as _celery_queue_names,  # noqa: PLC2701 - reused for filter lookups
 )
-from .models import CeleryBrokerQueue, RedisLock, RedisQueue, RedisQueueItem
+from .models import (
+    CeleryBrokerQueue,
+    RedisLock,
+    RedisQueue,
+    RedisQueueItem,
+    UnackedQueueItem,
+)
 from .queryset import (
     CeleryBrokerQueueQuerySet,
     RedisItemQuerySet,
+    UnackedQueueQuerySet,
     _build_redis_queue,
     _stream_frequency_aggregate,
     resolve_payload_preview,
 )
 from .services import (
     _CELERY_CLEAR_JOB_TERMINAL_STATES,
+    _UNACKED_CLEAR_JOB_TERMINAL_STATES,
     celery_broker_clear,
     get_celery_broker_clear_job,
+    get_unacked_clear_job,
     redis_delete,
     request_cancel_celery_broker_clear_job,
+    request_cancel_unacked_clear_job,
     start_celery_broker_clear_job,
+    start_unacked_clear_job,
+    unacked_clear,
 )
 
 log = logging.getLogger(__name__)
@@ -377,17 +389,20 @@ class FamilyFilter(admin.SimpleListFilter):
 
 
 class QueueFamilyFilter(FamilyFilter):
-    """`FamilyFilter` for `RedisQueueAdmin` — omits `celery_broker`.
+    """`FamilyFilter` for `RedisQueueAdmin` — omits `celery_broker`
+    and `unacked`.
 
-    The queue changelist hides `celery_broker` rows entirely
-    (`get_queryset` calls `.family_exclude("celery_broker")`) so
-    leaving the value in the dropdown surfaces a clickable option
-    that filters the page to zero rows. Dropping it from the
+    The queue changelist hides `celery_broker` and `unacked` rows
+    entirely (`get_queryset` calls `.family_exclude(...)`) so
+    leaving those values in the dropdown surfaces clickable options
+    that filter the page to zero rows. Dropping them from the
     choice list keeps the sidebar in sync with what the admin can
-    actually display.
+    actually display. `unacked` has its own dedicated admin
+    (`UnackedQueueAdmin`) for the same reason `celery_broker` does:
+    per-message drill-down + frequency chart + clear-by-filter.
     """
 
-    excluded_names = frozenset({"celery_broker"})
+    excluded_names = frozenset({"celery_broker", "unacked"})
 
 
 class LockFamilyFilter(FamilyFilter):
@@ -597,15 +612,15 @@ class RedisQueueAdmin(admin.ModelAdmin):
         return bool(request.user and request.user.is_superuser)
 
     def get_queryset(self, request: HttpRequest):
-        # Hide `celery_broker` queues: they have their own admin
-        # (`CeleryBrokerQueueAdmin`) which understands the
-        # one-row-per-message shape and surfaces a `(repoid,
-        # commitid)` frequency chart on the drill-down page. Showing
-        # them here would offer a redundant, less-informative view
-        # (one row + DEL of the entire queue) and defeat the
-        # discovery flow that points operators at the per-message
-        # admin from Grafana.
-        return super().get_queryset(request).family_exclude("celery_broker")
+        # Hide `celery_broker` and `unacked` queues: each has its own
+        # admin (`CeleryBrokerQueueAdmin`, `UnackedQueueAdmin`) that
+        # understands the one-row-per-message shape and surfaces a
+        # `(repoid, commitid)` frequency chart on the drill-down
+        # page. Showing them here would offer a redundant, less-
+        # informative view (one row + DEL of the entire queue/HASH)
+        # and defeat the discovery flow that points operators at
+        # the per-message admin from Grafana.
+        return super().get_queryset(request).family_exclude("celery_broker", "unacked")
 
     def get_fieldsets(self, request, obj=None):
         # Avoid the default ModelForm-based fieldset detection (which would
@@ -2495,5 +2510,1055 @@ class CeleryBrokerQueueAdmin(admin.ModelAdmin):
             '<a href="{}?{}">view {} message(s) \u2192</a>',
             base,
             query,
+            depth,
+        )
+
+
+# ---- Kombu unacked drill-down admin ---------------------------------------
+#
+# Per-message admin surface for Kombu's unacked HASH (`unacked` +
+# `unacked_index`). Mirrors `CeleryBrokerQueueAdmin` end-to-end:
+# two-mode polymorphic changelist (summary vs per-message),
+# lazy-loaded frequency chart on the detail page, clear-by-filter
+# with chunked background-job worker, dry-run preview / clear all
+# / clear all but lowest-deadline. The differences from the
+# celery_broker admin are:
+#
+# * **Mode switch parameter.** `routing_key__exact=<queue>` flips
+#   detail mode (vs `queue_name__exact` for celery_broker). The
+#   unacked HASH is one global key, so "queue" doesn't apply at
+#   the key level — `routing_key` (the original queue name on
+#   the value side) is the equivalent slice.
+# * **Summary row.** Exactly one row carrying `HLEN(unacked)` as
+#   `depth`, vs one row per known celery queue.
+# * **Frequency chart axis.** Aggregates by
+#   `(routing_key, task_name, repoid, commitid)` rather than the
+#   3-tuple — the unacked HASH spans every queue, so the
+#   routing_key column tells the operator which queue this stuck
+#   message came from.
+# * **Clear contract.** Paired `HDEL unacked <field>` +
+#   `ZREM unacked_index <field>` per match (no LSET-tombstone /
+#   LREM dance — HASH fields don't shift on delete).
+# * **`keep_one`.** Keeps the lowest-`ZSCORE` (soonest visibility-
+#   deadline) match, so the kept example is the one Kombu's
+#   restore-loop is most likely to re-enqueue first — which is
+#   what the operator's debug tooling will catch.
+
+
+class UnackedRoutingKeyFilter(admin.SimpleListFilter):
+    """Sidebar dropdown of `routing_key` values present in the unacked HASH.
+
+    Mirrors `CeleryQueueFilter` for the unacked admin: the
+    well-known celery queue names from `BaseCeleryConfig` are
+    surfaced as picker options so an on-call engineer who sees a
+    spike in a specific queue can click straight through to its
+    in-flight messages. Selecting a value flips the changelist
+    from summary to detail mode.
+
+    We deliberately don't enumerate the *actual* routing_keys
+    present in the live HASH (which would require an HSCAN +
+    decode pass per page render); instead we enumerate the same
+    canonical list `families.celery_broker.fixed_keys` uses, so
+    the picker is always in sync with the broker's expected
+    queue set even when the unacked HASH happens to be empty.
+    """
+
+    title = "routing key"
+    parameter_name = "routing_key__exact"
+
+    def lookups(self, request, model_admin):
+        return tuple((name, name) for name in _celery_queue_names())
+
+    def queryset(self, request, queryset):
+        value = self.value()
+        if not value:
+            return queryset
+        return queryset.filter(routing_key__exact=value)
+
+
+class UnackedTaskFilter(admin.SimpleListFilter):
+    """Dropdown of `task_name` values currently observed in the
+    unacked HASH for the selected `routing_key`.
+
+    Same shape as `CeleryBrokerTaskFilter` but reads from the
+    unacked queryset; only meaningful in detail mode (when
+    `routing_key__exact` is set), so `lookups` returns `()` in
+    summary mode and the filter renders as "All" only.
+    """
+
+    title = "task"
+    parameter_name = "unacked_task"
+
+    def lookups(self, request, model_admin):
+        routing_key = request.GET.get("routing_key__exact")
+        if not routing_key:
+            return ()
+        try:
+            qs = UnackedQueueQuerySet(
+                UnackedQueueItem, routing_key=routing_key
+            )._fetch_all()
+        except Exception:  # pragma: no cover - defensive
+            return ()
+        seen: list[tuple[str, str]] = []
+        seen_set: set[str] = set()
+        for row in qs:
+            name = row.task_name
+            if name and name not in seen_set:
+                seen_set.add(name)
+                seen.append((name, name))
+        seen.sort()
+        return tuple(seen)
+
+    def queryset(self, request, queryset):
+        value = self.value()
+        if value:
+            return queryset.filter(task_name__exact=value)
+        return queryset
+
+
+class UnackedRepoidFilter(admin.SimpleListFilter):
+    """Free-text repoid filter for the unacked admin. Same shape
+    as `CeleryBrokerRepoidFilter`.
+    """
+
+    title = "repoid"
+    parameter_name = "repoid"
+
+    def lookups(self, request, model_admin):
+        return ()
+
+    def queryset(self, request, queryset):
+        value = self.value()
+        if value:
+            return queryset.filter(repoid__exact=value)
+        return queryset
+
+    def has_output(self) -> bool:  # pragma: no cover - admin convention
+        return False
+
+
+class UnackedCommitFilter(admin.SimpleListFilter):
+    """Same shape as `CeleryBrokerCommitFilter` for unacked."""
+
+    title = "commit"
+    parameter_name = "commitid"
+
+    def lookups(self, request, model_admin):
+        return ()
+
+    def queryset(self, request, queryset):
+        value = self.value()
+        if value:
+            return queryset.filter(commitid__startswith=value)
+        return queryset
+
+    def has_output(self) -> bool:  # pragma: no cover - admin convention
+        return False
+
+
+def _parse_unacked_search_term(term: str) -> dict[str, str]:
+    """Pull `key:value` tokens out of the unacked search bar.
+
+    Mirrors `_parse_celery_search_term` plus a `routing_key:` /
+    `rk:` shorthand so an operator can paste a queue name without
+    leaving the search field. Other recognised keys: `repoid`,
+    `commit` / `commitid`, `task` / `task_name`, `task_id`,
+    `ownerid`, `pullid`, `delivery_tag` / `tag`. Bare tokens
+    become `task_name__icontains`.
+    """
+
+    bare: list[str] = []
+    out: dict[str, str] = {}
+    for tok in term.split():
+        if ":" in tok:
+            key, _, value = tok.partition(":")
+            key = key.strip().lower()
+            value = value.strip()
+            if not value:
+                continue
+            if key == "repoid":
+                out["repoid__exact"] = value
+            elif key in ("commit", "commitid"):
+                out["commitid__startswith"] = value
+            elif key in ("task", "task_name"):
+                out["task_name__exact"] = value
+            elif key == "task_id":
+                out["task_id__exact"] = value
+            elif key == "ownerid":
+                out["ownerid__exact"] = value
+            elif key == "pullid":
+                out["pullid__exact"] = value
+            elif key in ("rk", "routing_key", "queue", "queue_name"):
+                out["routing_key__exact"] = value
+            elif key in ("tag", "delivery_tag"):
+                out["delivery_tag__exact"] = value
+            else:
+                bare.append(tok)
+        else:
+            bare.append(tok)
+    if bare:
+        out["task_name__icontains"] = " ".join(bare)
+    return out
+
+
+@admin.register(UnackedQueueItem)
+class UnackedQueueAdmin(admin.ModelAdmin):
+    """Two-mode admin for Kombu's unacked HASH.
+
+    Summary mode (no `routing_key__exact`) renders one row carrying
+    `HLEN(unacked)`. Detail mode (`?routing_key__exact=<queue>`)
+    renders one row per HASH field whose decoded
+    `[envelope, exchange, routing_key]` triple has
+    `routing_key == <queue>`. The same model
+    (`UnackedQueueItem`) backs both modes;
+    `get_list_display` / `get_list_filter` / `get_actions` flip
+    based on URL.
+
+    Mirrors `CeleryBrokerQueueAdmin` so reviewers familiar with
+    that surface can navigate this one by analogy. The two
+    differences worth flagging:
+
+    * The mode-switch parameter is `routing_key__exact` (not
+      `queue_name__exact`) — the unacked HASH is global across
+      queues, and the routing_key dimension lives in the values.
+    * The summary list contains a single row, not one per
+      queue. There's only one unacked HASH per broker, so a
+      multi-row summary would be misleading. Operators looking
+      for per-queue counts should drill in on each queue
+      individually.
+    """
+
+    summary_list_display = ("routing_key_summary", "depth", "messages_link")
+    message_list_display = (
+        "delivery_tag_short",
+        "routing_key",
+        "task_name",
+        "repoid_link",
+        "commitid_link",
+        "ownerid",
+        "pullid",
+        "task_id_short",
+        "visibility_deadline",
+        "payload_preview_truncated",
+    )
+    list_display = message_list_display
+    list_filter = (
+        UnackedRoutingKeyFilter,
+        UnackedTaskFilter,
+        UnackedRepoidFilter,
+        UnackedCommitFilter,
+    )
+    list_per_page = redis_admin_settings.ITEM_PAGE_SIZE
+    show_full_result_count = False
+    # Detail mode default ordering: ZSET deadline ascending so the
+    # message most likely to be re-enqueued by Kombu's restore-loop
+    # surfaces at the top. Summary mode just has the one row, so
+    # ordering is moot — kept here for consistency.
+    ordering = ("visibility_deadline",)
+    summary_ordering: tuple[str, ...] = ("-depth",)
+    search_fields = ("task_name",)
+    search_help_text = (
+        "search by 'rk:notify_celery', 'repoid:1234', 'commit:abc', "
+        "'task:BundleAnalysisProcessor', 'tag:<delivery_tag>', "
+        "'ownerid:N', 'pullid:N'. Bare tokens are matched against "
+        "the task name."
+    )
+    readonly_fields = (
+        "pk_token",
+        "delivery_tag",
+        "routing_key",
+        "exchange",
+        "visibility_deadline",
+        "task_name",
+        "task_id",
+        "repoid",
+        "commitid",
+        "ownerid",
+        "pullid",
+        "payload_preview",
+    )
+    actions = ("clear_dry_run", "clear_selected")
+
+    # ---- Permissions / read-only safety -----------------------------------
+
+    def has_add_permission(self, request: HttpRequest, obj=None) -> bool:
+        return False
+
+    def has_change_permission(self, request: HttpRequest, obj=None) -> bool:
+        return bool(request.user and request.user.is_staff)
+
+    def has_view_permission(self, request: HttpRequest, obj=None) -> bool:
+        return bool(request.user and request.user.is_staff)
+
+    def has_delete_permission(self, request: HttpRequest, obj=None) -> bool:
+        # Staff can dry-run; only superusers can commit a destructive
+        # clear (matches `CeleryBrokerQueueAdmin` and
+        # `RedisQueueAdmin`).
+        return bool(request.user and request.user.is_superuser)
+
+    def lookup_allowed(self, lookup, value) -> bool:
+        if lookup in (
+            "routing_key__exact",
+            "routing_key",
+            "exchange",
+            "exchange__exact",
+            "repoid",
+            "repoid__exact",
+            "commitid",
+            "commitid__startswith",
+            "commitid__exact",
+            "task_name",
+            "task_name__exact",
+            "task_name__icontains",
+            "task_id",
+            "task_id__exact",
+            "ownerid",
+            "ownerid__exact",
+            "pullid",
+            "pullid__exact",
+            "delivery_tag",
+            "delivery_tag__exact",
+        ):
+            return True
+        return super().lookup_allowed(lookup, value)
+
+    @staticmethod
+    def _is_summary_request(request: HttpRequest) -> bool:
+        # Detail mode flips on either:
+        #   - `routing_key__exact=<queue>` — slice to one queue's
+        #     reservations (default drill-in surface, mirrors
+        #     `CeleryBrokerQueueAdmin`'s `queue_name__exact` pivot).
+        #   - `view_all=1` — show every reserved message regardless
+        #     of routing_key. Needed because the unacked HASH is
+        #     one global bucket carrying every queue's
+        #     reservations: the summary row has no single
+        #     routing_key to point at, so the summary's drill-in
+        #     link uses `?view_all=1` to land on detail mode and
+        #     then lets the operator narrow via the sidebar
+        #     `routing_key` filter. Without this, the drill-in
+        #     link looped back to summary mode (Bugbot review on
+        #     PR #911).
+        if request.GET.get("routing_key__exact"):
+            return False
+        if request.GET.get("view_all") == "1":
+            return False
+        return True
+
+    def get_ordering(self, request: HttpRequest):
+        if self._is_summary_request(request):
+            return self.summary_ordering
+        return self.ordering
+
+    def get_list_display(self, request: HttpRequest):
+        if self._is_summary_request(request):
+            return self.summary_list_display
+        return self.message_list_display
+
+    def get_list_display_links(self, request: HttpRequest, list_display):
+        if self._is_summary_request(request):
+            return (None,) if not list_display else None
+        return super().get_list_display_links(request, list_display)
+
+    def get_list_filter(self, request: HttpRequest):
+        if self._is_summary_request(request):
+            # Summary view shows one row; the message-shaped
+            # sidebar filters don't apply. Surface only the
+            # routing_key filter so operators can drill in
+            # without leaving the page.
+            return (UnackedRoutingKeyFilter,)
+        return self.list_filter
+
+    def get_actions(self, request):
+        actions = super().get_actions(request)
+        actions.pop("delete_selected", None)
+        if self._is_summary_request(request):
+            actions.pop("clear_dry_run", None)
+            actions.pop("clear_selected", None)
+        return actions
+
+    def get_queryset(self, request: HttpRequest):
+        # Bypass ChangeList's `.filter(**lookup_params)` plumbing so
+        # the `routing_key__exact` flip between summary and detail
+        # mode survives even when no list_filter is declared on the
+        # URL.
+        queryset = self.model._default_manager.all()
+        routing_key = request.GET.get("routing_key__exact")
+        if routing_key:
+            queryset = queryset.filter(routing_key__exact=routing_key)
+        elif request.GET.get("view_all") == "1":
+            # Summary drill-in passes `view_all=1` so the queryset
+            # joins the admin in detail mode (`is_summary_mode()`
+            # returns False) without scoping to a single
+            # routing_key. Without this the queryset stayed in
+            # summary mode and `_materialise_summary` produced a
+            # single dashes-row under the detail columns (Bugbot
+            # review on PR #911).
+            queryset.view_all = True
+        # Plumb the request through so the changelist and the
+        # frequency-chart context builder share a single HSCAN +
+        # parse pass per render. Mirrors the celery_broker pattern.
+        queryset._request = request
+        return queryset
+
+    def changelist_view(self, request: HttpRequest, extra_context=None):
+        ctx = dict(extra_context or {})
+        if not self._is_summary_request(request):
+            ctx["routing_key"] = request.GET.get("routing_key__exact", "")
+            ctx["scan_limit_label"] = (
+                f"{redis_admin_settings.CELERY_BROKER_SCAN_LIMIT:,}"
+            )
+        return super().changelist_view(request, ctx)
+
+    def _build_frequency_chart_context(
+        self, request: HttpRequest, routing_key: str
+    ) -> dict | None:
+        """Compute the unacked frequency-chart payload for a routing_key.
+
+        Returns `None` when the chart should not render (no
+        buckets, broker outage). Mirrors
+        `CeleryBrokerQueueAdmin._build_frequency_chart_context`
+        but aggregates over the full HASH (then filters to
+        `routing_key` matches) rather than a per-queue LRANGE.
+
+        We construct the queryset under the routing_key scope so
+        the queryset's cached path picks up the materialised rows
+        when the changelist already populated the per-request
+        cache; the streaming path is the fallback for direct hits
+        on the chart-fragment URL.
+        """
+
+        try:
+            qs = UnackedQueueQuerySet(
+                UnackedQueueItem,
+                routing_key=routing_key,
+                request=request,
+            )
+            buckets = qs.frequency_by_routing_task_repo_commit()
+        except Exception:  # pragma: no cover - broker outage path
+            return None
+        if not buckets:
+            return None
+        try:
+            client = _conn.get_connection(kind="broker")
+            hlen = client.hlen("unacked")
+            total_depth = int(hlen) if isinstance(hlen, int) and hlen >= 0 else 0
+        except Exception:  # pragma: no cover - defensive
+            total_depth = sum(b.count for b in buckets)
+        # `total_visible` mirrors the celery_broker chart's
+        # `len(_fetch_all())` — for unacked we use the sum of
+        # bucket counts (the pct denominator was the sample
+        # window when the streaming path ran; the cached path
+        # already normalised on the materialised rows).
+        total_visible = sum(b.count for b in buckets) or total_depth
+        try:
+            clear_url = reverse("admin:redis_admin_unackedqueueitem_clear_by_filter")
+        except NoReverseMatch:  # pragma: no cover - URL is wired below
+            clear_url = ""
+        repo_displays = _resolve_repo_displays(b.repoid for b in buckets)
+        rows: list[dict[str, Any]] = []
+        for bucket in buckets:
+            display = repo_displays.get(bucket.repoid) if bucket.repoid else None
+            change_url: str | None = None
+            if bucket.repoid is not None:
+                try:
+                    change_url = reverse(
+                        "admin:core_repository_change", args=[bucket.repoid]
+                    )
+                except NoReverseMatch:  # pragma: no cover - admin always wires this
+                    change_url = None
+            rows.append(
+                {
+                    "routing_key": bucket.routing_key,
+                    "task_name": bucket.task_name,
+                    "repoid": bucket.repoid,
+                    "repo_display": display,
+                    "repo_change_url": change_url,
+                    "commitid": bucket.commitid,
+                    "count": bucket.count,
+                    "pct": bucket.pct,
+                }
+            )
+        return {
+            "routing_key": routing_key,
+            "buckets": rows,
+            "total_visible": total_visible,
+            "total_depth": total_depth,
+            "can_clear": request.user.is_superuser,
+            "clear_by_filter_url": clear_url,
+        }
+
+    def chart_fragment_view(
+        self, request: HttpRequest, routing_key: str
+    ) -> HttpResponse:
+        """Render the unacked frequency-chart fragment.
+
+        Same loading dance as
+        `CeleryBrokerQueueAdmin.chart_fragment_view`: fetched
+        async by the changelist's `<script>` on
+        `DOMContentLoaded`, returns 204 when there are no
+        buckets so the JS can drop the loader without rendering
+        an empty chart.
+        """
+
+        if not (request.user and request.user.is_staff):
+            raise PermissionDenied(
+                "redis_admin chart-fragment is restricted to staff users"
+            )
+        chart_ctx = self._build_frequency_chart_context(request, routing_key)
+        if chart_ctx is None:
+            return HttpResponse(status=204)
+        ctx = {
+            **self.admin_site.each_context(request),
+            "chart": chart_ctx,
+        }
+        return render(
+            request,
+            "admin/redis_admin/unackedqueueitem/_frequency_chart.html",
+            ctx,
+            content_type="text/html",
+        )
+
+    def get_urls(self):
+        urls = super().get_urls()
+        opts = self.model._meta
+        clear_url = path(
+            "clear-by-filter/",
+            self.admin_site.admin_view(self.clear_by_filter_view),
+            name=f"{opts.app_label}_{opts.model_name}_clear_by_filter",
+        )
+        clear_progress_url = path(
+            "clear-by-filter/job/<uuid:job_id>/",
+            self.admin_site.admin_view(self.clear_by_filter_progress_view),
+            name=f"{opts.app_label}_{opts.model_name}_clear_by_filter_progress",
+        )
+        clear_status_url = path(
+            "clear-by-filter/job/<uuid:job_id>/status/",
+            self.admin_site.admin_view(self.clear_by_filter_status_view),
+            name=f"{opts.app_label}_{opts.model_name}_clear_by_filter_status",
+        )
+        clear_cancel_url = path(
+            "clear-by-filter/job/<uuid:job_id>/cancel/",
+            self.admin_site.admin_view(self.clear_by_filter_cancel_view),
+            name=f"{opts.app_label}_{opts.model_name}_clear_by_filter_cancel",
+        )
+        chart_fragment_url = path(
+            "<str:routing_key>/chart-fragment/",
+            self.admin_site.admin_view(self.chart_fragment_view),
+            name="unackedqueueitem-chart-fragment",
+        )
+        return [
+            clear_url,
+            clear_progress_url,
+            clear_status_url,
+            clear_cancel_url,
+            chart_fragment_url,
+            *urls,
+        ]
+
+    def clear_by_filter_view(self, request: HttpRequest) -> HttpResponse:
+        """Targeted unacked clear by `(routing_key?, task_name?, repoid?, commitid?)`.
+
+        Mirrors `CeleryBrokerQueueAdmin.clear_by_filter_view` but
+        for the HASH+ZSET unacked layout. Reachable from the
+        frequency chart's per-row "Clear" button. POST actions:
+
+        * `dry_run` — counts matches without mutating; spawns the
+          chunked worker with `dry_run=True` and 302s to the
+          progress page.
+        * `clear_keep_one` — clear every match EXCEPT the
+          lowest-`ZSCORE` (soonest visibility-deadline) one.
+        * `clear_all` — clear every match.
+
+        Both destructive actions gate on a typed-confirmation
+        check (operator must re-type the routing_key, or `unacked`
+        when the filter is wildcard-routing-key).
+
+        ## Zero-Redis-I/O GET render
+
+        Same approximate-count callout pattern as celery_broker:
+        the chart hands us `bucket_count` / `total_visible` /
+        `total_depth` / `bucket_pct` so we can render a
+        "will clear ~X messages (~Y%)" string in pure Python
+        without an HSCAN sweep on the GET. The chunked worker
+        computes the exact count as it walks.
+        """
+
+        if not request.user.is_superuser:
+            raise PermissionDenied(
+                "redis_admin clear-by-filter is restricted to superusers"
+            )
+
+        params = request.POST if request.method == "POST" else request.GET
+        routing_key = (params.get("routing_key") or "").strip()
+        task_name = (params.get("task_name") or "").strip()
+        repoid_raw = (params.get("repoid") or "").strip()
+        commitid = (params.get("commitid") or "").strip()
+        action = (request.POST.get("action") or "").strip()
+
+        opts = self.model._meta
+        changelist_url = reverse(f"admin:{opts.app_label}_{opts.model_name}_changelist")
+        if routing_key:
+            changelist_url = (
+                f"{changelist_url}?{urlencode({'routing_key__exact': routing_key})}"
+            )
+
+        repoid: int | None = None
+        if repoid_raw:
+            try:
+                repoid = int(repoid_raw)
+            except ValueError:
+                messages.error(
+                    request,
+                    f"repoid must be an integer; got {repoid_raw!r}",
+                )
+                return HttpResponseRedirect(changelist_url)
+
+        # At least one narrowing filter is required — otherwise
+        # this view collapses into "clear the whole unacked
+        # HASH", which is too sharp an edge for an admin button
+        # (the operator should be running `redis-cli DEL unacked
+        # unacked_index` directly with full deliberation, not
+        # clicking through here).
+        if not routing_key and repoid is None and not commitid and not task_name:
+            messages.error(
+                request,
+                "Refusing to clear: at least one of routing_key, "
+                "task_name, repoid, or commitid must be set",
+            )
+            return HttpResponseRedirect(changelist_url)
+
+        # Typed-confirm value: prefer routing_key (specific
+        # scope), fall back to the literal `unacked` when the
+        # operator opted for a wildcard routing_key clear (which
+        # is broader and arguably warrants the more solemn
+        # phrasing).
+        expected_confirm = routing_key or "unacked"
+        typed_confirm = (request.POST.get("typed_confirm") or "").strip()
+        confirm_error: str | None = None
+
+        destructive_actions = {"clear_keep_one", "clear_all"}
+        valid_actions = destructive_actions | {"dry_run"}
+
+        if request.method == "POST" and action in valid_actions:
+            if action in destructive_actions and typed_confirm != expected_confirm:
+                confirm_error = f"Typed confirmation must equal {expected_confirm!r}"
+            else:
+                dry_run = action == "dry_run"
+                keep_one = action == "clear_keep_one"
+                job_id = start_unacked_clear_job(
+                    user=request.user,
+                    routing_key=routing_key or None,
+                    task_name=task_name or None,
+                    repoid=repoid,
+                    commitid=commitid or None,
+                    keep_one=keep_one,
+                    dry_run=dry_run,
+                )
+                progress_url = reverse(
+                    f"admin:{opts.app_label}_{opts.model_name}"
+                    "_clear_by_filter_progress",
+                    kwargs={"job_id": job_id},
+                )
+                return HttpResponseRedirect(progress_url)
+
+        bucket_count = _coerce_int(params.get("bucket_count"))
+        total_visible = _coerce_int(params.get("total_visible"))
+        total_depth = _coerce_int(params.get("total_depth"))
+        bucket_pct = _coerce_float(params.get("bucket_pct"))
+        approx: dict[str, Any] | None = None
+        if (
+            bucket_count is not None
+            and total_visible is not None
+            and total_visible > 0
+            and total_depth
+        ):
+            approx = {
+                "count": round(bucket_count / total_visible * total_depth),
+                "pct": bucket_pct,
+                "depth": total_depth,
+            }
+
+        repo_change_url: str | None = None
+        if repoid is not None:
+            try:
+                repo_change_url = reverse("admin:core_repository_change", args=[repoid])
+            except NoReverseMatch:  # pragma: no cover - admin always registered
+                repo_change_url = None
+
+        bucket_count_hint = "" if bucket_count is None else str(bucket_count)
+        bucket_pct_hint = "" if bucket_pct is None else str(bucket_pct)
+        total_visible_hint = "" if total_visible is None else str(total_visible)
+        total_depth_hint = "" if total_depth is None else str(total_depth)
+
+        ctx = {
+            **self.admin_site.each_context(request),
+            "title": (
+                f"Clear unacked ({routing_key}) by filter"
+                if routing_key
+                else "Clear unacked by filter"
+            ),
+            "opts": opts,
+            "routing_key": routing_key,
+            "task_name": task_name,
+            "repoid": repoid,
+            "repo_change_url": repo_change_url,
+            "commitid": commitid,
+            "approx": approx,
+            "bucket_count_hint": bucket_count_hint,
+            "bucket_pct_hint": bucket_pct_hint,
+            "total_visible_hint": total_visible_hint,
+            "total_depth_hint": total_depth_hint,
+            "expected_confirm": expected_confirm,
+            "typed_confirm": typed_confirm,
+            "confirm_error": confirm_error,
+            "changelist_url": changelist_url,
+        }
+        return render(
+            request,
+            "admin/redis_admin/unackedqueueitem/clear_by_filter.html",
+            ctx,
+        )
+
+    # ---- Chunked-clear background-job views ------------------------------
+
+    def _job_progress_context(
+        self, *, job_id: str, job: dict[str, str]
+    ) -> dict[str, Any]:
+        def _int(field: str, default: int = 0) -> int:
+            try:
+                return int(job.get(field) or default)
+            except (TypeError, ValueError):
+                return default
+
+        opts = self.model._meta
+        status_url = reverse(
+            f"admin:{opts.app_label}_{opts.model_name}_clear_by_filter_status",
+            kwargs={"job_id": job_id},
+        )
+        cancel_url = reverse(
+            f"admin:{opts.app_label}_{opts.model_name}_clear_by_filter_cancel",
+            kwargs={"job_id": job_id},
+        )
+        changelist_url = reverse(f"admin:{opts.app_label}_{opts.model_name}_changelist")
+        routing_key = job.get("filter_routing_key", "")
+        if routing_key:
+            changelist_url = (
+                f"{changelist_url}?{urlencode({'routing_key__exact': routing_key})}"
+            )
+
+        status = job.get("status", "pending")
+        return {
+            "job_id": job_id,
+            "job": job,
+            "status": status,
+            "is_terminal": status in _UNACKED_CLEAR_JOB_TERMINAL_STATES,
+            "routing_key": routing_key,
+            "filter_routing_key": routing_key,
+            "filter_task": job.get("filter_task", ""),
+            "filter_repoid": job.get("filter_repoid", ""),
+            "filter_commitid": job.get("filter_commitid", ""),
+            "dry_run": job.get("dry_run") == "1",
+            "keep_one": job.get("keep_one") == "1",
+            "started_at": job.get("started_at", ""),
+            "updated_at": job.get("updated_at", ""),
+            "completed_at": job.get("completed_at", ""),
+            "total_estimated": _int("total_estimated"),
+            "processed": _int("processed"),
+            "matched": _int("matched"),
+            "zrem_removed": _int("zrem_removed"),
+            "passes_run": _int("passes_run"),
+            "error": job.get("error", ""),
+            "cancel_requested": job.get("cancel_requested") == "1",
+            "status_url": status_url,
+            "cancel_url": cancel_url,
+            "changelist_url": changelist_url,
+        }
+
+    def clear_by_filter_progress_view(
+        self, request: HttpRequest, job_id
+    ) -> HttpResponse:
+        if not request.user.is_superuser:
+            raise PermissionDenied(
+                "redis_admin clear-by-filter is restricted to superusers"
+            )
+
+        opts = self.model._meta
+        changelist_url = reverse(f"admin:{opts.app_label}_{opts.model_name}_changelist")
+        job_id_str = str(job_id)
+        job = get_unacked_clear_job(job_id_str)
+        if job is None:
+            messages.error(
+                request,
+                f"Clear job {job_id_str} not found (may have expired or "
+                f"been submitted on a different deployment).",
+            )
+            return HttpResponseRedirect(changelist_url)
+
+        progress_ctx = self._job_progress_context(job_id=job_id_str, job=job)
+        ctx = {
+            **self.admin_site.each_context(request),
+            "title": (
+                f"Clearing unacked "
+                f"({progress_ctx['routing_key'] or '*'}) "
+                f"(job {job_id_str[:8]})"
+            ),
+            "opts": opts,
+            **progress_ctx,
+        }
+        return render(
+            request,
+            "admin/redis_admin/unackedqueueitem/clear_by_filter_progress.html",
+            ctx,
+        )
+
+    def clear_by_filter_status_view(self, request: HttpRequest, job_id) -> HttpResponse:
+        if not request.user.is_superuser:
+            raise PermissionDenied(
+                "redis_admin clear-by-filter is restricted to superusers"
+            )
+
+        job_id_str = str(job_id)
+        job = get_unacked_clear_job(job_id_str)
+        if job is None:
+            return JsonResponse(
+                {"error": "not_found", "job_id": job_id_str}, status=404
+            )
+
+        progress_ctx = self._job_progress_context(job_id=job_id_str, job=job)
+        return JsonResponse(
+            {
+                "job_id": job_id_str,
+                "status": progress_ctx["status"],
+                "is_terminal": progress_ctx["is_terminal"],
+                "routing_key": progress_ctx["routing_key"],
+                "filter_routing_key": progress_ctx["filter_routing_key"],
+                "filter_task": progress_ctx["filter_task"],
+                "filter_repoid": progress_ctx["filter_repoid"],
+                "filter_commitid": progress_ctx["filter_commitid"],
+                "dry_run": progress_ctx["dry_run"],
+                "keep_one": progress_ctx["keep_one"],
+                "started_at": progress_ctx["started_at"],
+                "updated_at": progress_ctx["updated_at"],
+                "completed_at": progress_ctx["completed_at"],
+                "total_estimated": progress_ctx["total_estimated"],
+                "processed": progress_ctx["processed"],
+                "matched": progress_ctx["matched"],
+                "zrem_removed": progress_ctx["zrem_removed"],
+                "passes_run": progress_ctx["passes_run"],
+                "error": progress_ctx["error"],
+                "cancel_requested": progress_ctx["cancel_requested"],
+            }
+        )
+
+    def clear_by_filter_cancel_view(self, request: HttpRequest, job_id) -> HttpResponse:
+        if not request.user.is_superuser:
+            raise PermissionDenied(
+                "redis_admin clear-by-filter is restricted to superusers"
+            )
+        if request.method != "POST":
+            return HttpResponseNotAllowed(["POST"])
+
+        job_id_str = str(job_id)
+        ok = request_cancel_unacked_clear_job(job_id_str)
+        if not ok:
+            return JsonResponse(
+                {"error": "not_found", "job_id": job_id_str}, status=404
+            )
+        job = get_unacked_clear_job(job_id_str) or {}
+        return JsonResponse(
+            {
+                "job_id": job_id_str,
+                "cancel_requested": job.get("cancel_requested") == "1",
+                "status": job.get("status", ""),
+            },
+            status=202,
+        )
+
+    def get_search_results(self, request, queryset, search_term):
+        if not search_term:
+            return queryset, False
+        kwargs = _parse_unacked_search_term(search_term)
+        if not kwargs:
+            return queryset, False
+        try:
+            return queryset.filter(**kwargs), False
+        except NotImplementedError:
+            return queryset.none(), False
+
+    # ---- Change form (per-message inspector) -----------------------------
+
+    def get_fieldsets(self, request, obj=None):
+        return ((None, {"fields": list(self.readonly_fields)}),)
+
+    def changeform_view(self, request, object_id=None, form_url="", extra_context=None):
+        ctx = {
+            "show_save": False,
+            "show_save_and_continue": False,
+            "show_save_and_add_another": False,
+            "show_save_as_new": False,
+        }
+        if extra_context:
+            ctx.update(extra_context)
+        return super().changeform_view(request, object_id, form_url, ctx)
+
+    def save_model(self, request, obj, form, change):
+        raise RuntimeError("UnackedQueueItem rows are read-only.")
+
+    # ---- Bulk clear (dry-run + confirm) ----------------------------------
+
+    @admin.action(
+        description="Dry-run: count what 'clear selected' would clear",
+        permissions=("delete",),
+    )
+    def clear_dry_run(self, request: HttpRequest, queryset) -> None:
+        result = unacked_clear(list(queryset), user=request.user, dry_run=True)
+        self.message_user(
+            request,
+            (
+                f"Dry-run: would clear {result.count} unacked message(s); "
+                f"sample={list(result.sample[:5])}"
+            ),
+            level=messages.INFO,
+        )
+
+    @admin.action(
+        description="Clear selected (dry-run preview, then confirm)",
+        permissions=("delete",),
+    )
+    def clear_selected(self, request: HttpRequest, queryset):
+        """Two-stage clear; HDEL+ZREM path on commit."""
+
+        selected = list(queryset)
+        selected_pks = request.POST.getlist("_selected_action") or [
+            obj.pk for obj in selected
+        ]
+
+        if request.POST.get("confirm") == "yes":
+            result = unacked_clear(selected, user=request.user, dry_run=False)
+            self.message_user(
+                request,
+                f"Cleared {result.count} unacked message(s).",
+                level=messages.SUCCESS,
+            )
+            return None
+
+        dry_run_result = unacked_clear(selected, user=request.user, dry_run=True)
+        opts = self.model._meta
+        ctx = {
+            **self.admin_site.each_context(request),
+            "title": "Confirm clear of selected unacked messages",
+            "opts": opts,
+            "action_name": "clear_selected",
+            "selected": selected,
+            "selected_pks": selected_pks,
+            "dry_run_result": dry_run_result,
+            "media": self.media,
+        }
+        return render(
+            request, "admin/redis_admin/clear_selected_confirmation.html", ctx
+        )
+
+    def delete_queryset(self, request: HttpRequest, queryset) -> None:
+        result = unacked_clear(list(queryset), user=request.user, dry_run=False)
+        self.message_user(
+            request,
+            f"Cleared {result.count} unacked message(s).",
+            level=messages.SUCCESS,
+        )
+
+    def delete_model(self, request: HttpRequest, obj: UnackedQueueItem) -> None:
+        result = unacked_clear([obj], user=request.user, dry_run=False)
+        self.message_user(
+            request,
+            (
+                f"Cleared unacked message {obj.delivery_tag[:12]} "
+                f"({result.count} removed)."
+            ),
+            level=messages.SUCCESS,
+        )
+
+    # ---- Display helpers --------------------------------------------------
+
+    @admin.display(description="routing key")
+    def routing_key_summary(self, obj: UnackedQueueItem) -> str:
+        # Summary mode: there's only one row, so we render a
+        # static `unacked (HASH)` label rather than echoing the
+        # empty `routing_key` field that summary rows carry.
+        return "unacked (HASH)"
+
+    @admin.display(description="repo")
+    def repoid_link(self, obj: UnackedQueueItem) -> str:
+        if obj.repoid is None:
+            return "—"
+        try:
+            url = reverse("admin:core_repository_change", args=[obj.repoid])
+        except NoReverseMatch:
+            return str(obj.repoid)
+        return format_html('<a href="{}">{}</a>', url, obj.repoid)
+
+    @admin.display(description="commit")
+    def commitid_link(self, obj: UnackedQueueItem) -> str:
+        if not obj.commitid:
+            return "—"
+        try:
+            base = reverse("admin:core_commit_changelist")
+        except NoReverseMatch:
+            return obj.commitid[:7]
+        url = f"{base}?{urlencode({'q': obj.commitid})}"
+        return format_html(
+            '<a href="{}" title="{}">{}</a>', url, obj.commitid, obj.commitid[:7]
+        )
+
+    @admin.display(description="task id")
+    def task_id_short(self, obj: UnackedQueueItem) -> str:
+        if not obj.task_id:
+            return "—"
+        short = obj.task_id[:8]
+        return format_html('<span title="{}">{}</span>', obj.task_id, short)
+
+    @admin.display(description="delivery tag")
+    def delivery_tag_short(self, obj: UnackedQueueItem) -> str:
+        # delivery_tag is a kombu UUID; the first 12 chars are
+        # plenty to disambiguate within a single broker's
+        # in-flight set and keep the column narrow.
+        if not obj.delivery_tag:
+            return "—"
+        short = obj.delivery_tag[:12]
+        return format_html('<span title="{}">{}</span>', obj.delivery_tag, short)
+
+    @admin.display(description="payload")
+    def payload_preview_truncated(self, obj: UnackedQueueItem) -> str:
+        return resolve_payload_preview(obj)
+
+    @admin.display(description="messages")
+    def messages_link(self, obj: UnackedQueueItem) -> str:
+        """Drill-in link for the summary row.
+
+        Summary mode renders one row carrying `HLEN(unacked)`;
+        the `messages_link` column points at the same admin URL
+        without a `routing_key__exact` filter, which renders the
+        per-message detail page over the full HASH. From there
+        the operator can apply the routing_key sidebar filter
+        to slice by queue.
+        """
+
+        depth = obj.depth or 0
+        try:
+            base = reverse("admin:redis_admin_unackedqueueitem_changelist")
+        except NoReverseMatch:  # pragma: no cover - defensive
+            return f"{depth} message(s)"
+        # Wildcard routing_key: render every unacked message in
+        # the HASH. The sidebar `routing_key` filter narrows
+        # from there. The summary row has no routing_key value
+        # itself (depth-only marker), so the link adds
+        # `?view_all=1` rather than `?routing_key__exact=<queue>`.
+        # `_is_summary_request` recognises `view_all=1` as the
+        # explicit "show every reservation" flag and flips into
+        # detail mode without filtering — without this the link
+        # looped back to summary mode (Bugbot review on PR #911).
+        url = f"{base}?view_all=1"
+        return format_html(
+            '<a href="{}">view {} unacked message(s) \u2192</a>',
+            url,
             depth,
         )

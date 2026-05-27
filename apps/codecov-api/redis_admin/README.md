@@ -24,6 +24,7 @@ ORM-backed rows — list_display, search, filters, pagination, and
 | `RedisQueue` | Queue families excluding celery: `uploads/*`, `ta_flake_key:*`, `latest_upload/*`, `upload-processing-state/*`, `intermediate-report/*`. Celery broker queues are hidden here (see `CeleryBrokerQueue` row below). | Yes (superuser only) |
 | `RedisQueueItem` | Items inside a single non-celery queue (LIST entries / SET members / HASH fields / STRING value). | Yes (superuser only) |
 | `CeleryBrokerQueue` | Two-mode admin for `celery_broker`. **Summary mode** (no `queue_name__exact`): one row per known queue with `LLEN` and a drill-in link. **Drill-down mode** (`?queue_name__exact=<queue>`): one row per kombu message, with the envelope parsed into `task_name` / `repoid` / `commitid` / `task_id` / `ownerid` / `pullid` columns + a `(repoid, commitid)` frequency chart above the table. The default discovery surface for celery queues. | Yes (superuser only) |
+| `UnackedQueueItem` | Two-mode admin for Kombu's `unacked` HASH + `unacked_index` ZSET (worker-reserved messages). Summary mode: one row with `HLEN(unacked)` as the depth. Detail mode (`?routing_key__exact=<queue>`): one row per reserved message, with `routing_key` / `task_name` / `repoid` / `commitid` / visibility-timeout deadline columns + a `(routing_key, task, repoid, commitid)` frequency chart. Maps the Grafana `redis_key_size{key="unacked"}` panel into a clickable surface. | Yes (superuser only) |
 | `RedisLock` | Lock families: `*_lock_*`, `upload_finisher_gate_*`, `ta_flake_lock:*`, `lock_attempts:*`, `ta_notifier_fence:*`, `coordination_lock:*` | Read-only (always) |
 
 Lock families are flagged `is_deletable=False` in the registry and
@@ -44,6 +45,9 @@ accidentally surfaces them under `RedisQueue`.
 | `/admin/redis_admin/celerybrokerqueue/clear-by-filter/job/<uuid>/` | Progress page for a chunked clear job (HTML, superuser-only). Polls the status JSON view every ~1s; renders a `<progress>` bar, matched / total / drift / pass counters, and a Cancel button. |
 | `/admin/redis_admin/celerybrokerqueue/clear-by-filter/job/<uuid>/status/` | JSON snapshot of a chunked clear job (superuser-only); 404s on unknown / expired ids. |
 | `/admin/redis_admin/celerybrokerqueue/clear-by-filter/job/<uuid>/cancel/` | POST-only cancel endpoint (superuser-only); flags `cancel_requested=1` and returns 202 with the latest snapshot. Cancel lands at the next chunk boundary. |
+| `/admin/redis_admin/unackedqueueitem/` | **Unacked summary** — one row carrying `HLEN(unacked)` as `depth` and a drill-in link |
+| `/admin/redis_admin/unackedqueueitem/?routing_key__exact=<queue>` | **Unacked drill-down** — per-reservation rows for one logical queue, with a `(routing_key, task, repoid, commitid)` frequency chart and per-row `HDEL` + `ZREM` clear semantics |
+| `/admin/redis_admin/unackedqueueitem/clear-by-filter/` | Same flow as the celery broker version, but each clear hits both `unacked` (HDEL) and `unacked_index` (ZREM) so the two keys stay paired (see "Unacked queue admin" below). |
 | `/admin/redis_admin/redislock/` | Browse Redis locks (read-only) |
 | `/admin/redis_admin/redisqueue/clear-by-scope/` | M6 — cross-family clear-by-scope (superuser only) |
 
@@ -452,6 +456,99 @@ reused: `LogEntry.change_message` with `scope =
 "celery_broker_clear"`, count, sample, families. Superuser-only
 (`has_delete_permission`) and dry-run-required (`clear_dry_run`
 must run before the destructive `clear_selected` arms).
+
+## Unacked queue admin
+
+The Grafana broker dashboard surfaces a `redis_key_size{key="unacked",
+cluster="$var_cluster"}` panel — when it climbs, on-call wants the
+same per-message drill-down + frequency chart + clear-by-filter
+flow that `CeleryBrokerQueueAdmin` already gives us for the
+queue-side LISTs. `UnackedQueueAdmin` is that surface; it maps
+the panel's HLEN directly into a clickable admin page.
+
+### Kombu's `unacked` Redis layout
+
+When a Celery worker reserves a message via `BRPOPLPUSH`, Kombu's
+Redis transport — see `kombu.transport.redis.Channel.unacked_key`
+(`"unacked"`) and `Channel.unacked_index_key` (`"unacked_index"`)
+— moves the envelope onto **two coordinated keys**, both on the
+**broker** Redis (not cache):
+
+- `unacked` — a Redis **HASH** keyed by `delivery_tag`
+  (UUID-like). Each value is the JSON-serialised triple
+  `[message_dict, exchange_str, routing_key_str]`. The
+  `routing_key` field tells you which logical queue the message
+  was reserved from. `message_dict["body"]` is base64-encoded
+  JSON of the same celery envelope shape that
+  `redis_admin.families.parse_celery_envelope` already
+  understands, so `task_name` / `repoid` / `commitid` /
+  `task_id` / `ownerid` / `pullid` extraction is reused.
+- `unacked_index` — a Redis **ZSET** with score = visibility-
+  timeout deadline (unix timestamp) and member = `delivery_tag`.
+  Kombu's restore-loop pops the lowest-deadline entries that
+  have aged past the timeout and re-enqueues them at the head
+  of the original list (so a dead worker's reservations don't
+  hang the queue forever).
+
+Because `unacked` and `unacked_index` are paired, a clear
+operation **must** issue both `HDEL unacked <delivery_tag>`
+**and** `ZREM unacked_index <delivery_tag>`. Skipping the ZREM
+leaves a phantom entry in `unacked_index` whose periodic
+restore-loop tick attempts a `HGET unacked <delivery_tag>`,
+finds nothing, and silently no-ops — but it still wastes a
+ZPOPMIN every visibility-timeout tick. The
+`_streaming_unacked_clear` pipeline always batches the two
+commands together (see `services.py`).
+
+### How it differs from `CeleryBrokerQueueAdmin`
+
+| Dimension | `celery_broker` | `unacked` |
+|---|---|---|
+| Storage | one **LIST** per logical queue (`celery`, `notify`, …) | one global **HASH** carrying all reserved messages, regardless of routing_key |
+| Discovery axis | iterate the known queue names from settings | `HSCAN unacked` once; the per-message `routing_key` field tells you which queue each reservation came from |
+| Clear primitive | LSET-tombstone + LREM (race-safe under concurrent BRPOPLPUSH) | `HDEL` + `ZREM` paired in a pipeline (HASH fields don't shift indices, so no tombstone is needed) |
+| Per-row deadline | n/a (queued messages have no per-row deadline) | `ZSCORE unacked_index <delivery_tag>` per visible row; lazily resolved so summary mode skips the ZSCORE round-trip |
+| Frequency chart axes | `(task, repoid, commitid)` | `(routing_key, task, repoid, commitid)` — adds `routing_key` so the operator can see which logical queue's reservations are stuck |
+| `keep_one` semantic | keep the message at the lowest list index (oldest by FIFO order) | keep the lowest-deadline match (most-likely-to-be-restored-next, so the operator keeps the example most likely to reappear in the queue) |
+
+### URLs
+
+| Path | Purpose |
+|---|---|
+| `/admin/redis_admin/unackedqueueitem/` | **Summary** — one row carrying `HLEN(unacked)` as `depth` and a drill-in link |
+| `/admin/redis_admin/unackedqueueitem/?routing_key__exact=<queue>` | **Detail** — one row per reserved message scoped to `routing_key`, with `(routing_key, task, repoid, commitid)` frequency chart on top |
+| `/admin/redis_admin/unackedqueueitem/<routing_key>/chart-fragment/` | Lazy-loaded HTML fragment for the frequency chart (mirrors celery `chart_fragment_view`) |
+| `/admin/redis_admin/unackedqueueitem/clear-by-filter/` | Confirmation page for clearing matched messages. Same chart-hint URL params as celery (`bucket_count`, `bucket_pct`, `total_visible`, `total_depth`) so the page renders **without** Redis I/O. POST exposes dry-run / clear-keep-one / clear-all actions; each spawns a chunked job and 302s to the progress page. |
+| `/admin/redis_admin/unackedqueueitem/clear-by-filter/job/<uuid>/` | Progress page (HTML, superuser-only); polls the JSON status endpoint every ~1s and surfaces a `<progress>` bar, matched / drained / `zrem_removed` / pass counters. |
+| `/admin/redis_admin/unackedqueueitem/clear-by-filter/job/<uuid>/status/` | JSON snapshot of a chunked clear job; 404s on unknown / expired ids. |
+| `/admin/redis_admin/unackedqueueitem/clear-by-filter/job/<uuid>/cancel/` | POST-only cancel endpoint (superuser-only); flags `cancel_requested=1`, returns 202. Cancel lands at the next chunk boundary. |
+
+The `unacked` family is registered in `families.py` with
+`connection_kind="broker"` (it lives on the broker Redis, next
+to the celery queue LISTs) and is excluded from
+`RedisQueueAdmin.get_queryset` via
+`.family_exclude("celery_broker", "unacked")` so the generic
+queue browser doesn't show a dead row that overlaps this
+admin's surface — the discovery flow points operators directly
+from Grafana to this admin, just like `CeleryBrokerQueueAdmin`.
+
+### Operator self-verify
+
+```python
+from redis_admin import conn as _c
+
+r = _c.get_connection(kind="broker")
+print("unacked HLEN:", r.hlen("unacked"))
+print("unacked_index ZCARD:", r.zcard("unacked_index"))
+```
+
+Healthy state: `HLEN ≈ ZCARD`, and both numbers should track
+the active worker reservation count. A persistent gap between
+the two (`HLEN < ZCARD` or vice versa) means a previous clear
+half-completed; visit
+`/admin/redis_admin/unackedqueueitem/?routing_key__exact=<queue>`
+to inspect surviving reservations and re-run a clear job to
+re-pair the keys.
 
 ## Adding a new family
 
