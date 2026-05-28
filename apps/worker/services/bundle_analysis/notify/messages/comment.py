@@ -23,7 +23,7 @@ from shared.bundle_analysis import (
     MissingBundleError,
 )
 from shared.bundle_analysis.comparison import AssetChange, RouteChange
-from shared.torngit.exceptions import TorngitClientError
+from shared.torngit.exceptions import TorngitClientError, TorngitObjectNotFoundError
 from shared.validation.types import BundleThreshold
 
 log = logging.getLogger(__name__)
@@ -104,6 +104,16 @@ class BundleAnalysisCommentMarkdownStrategy(MessageStrategyInterface):
             repository_service = context.repository_service
             changed_files = async_to_sync(repository_service.get_pull_request_files)(
                 pull.pullid
+            )
+        except TorngitObjectNotFoundError:
+            changed_files = None
+            log.warning(
+                "Unable to retrieve PR files: PR no longer exists on provider",
+                extra={
+                    "commit": context.commit.commitid,
+                    "report_key": context.commit_report.external_id,
+                    "pullid": pull.pullid,
+                },
             )
         except Exception:
             changed_files = None
