@@ -512,6 +512,12 @@ class BaseCodecovTask(celery_app.Task):
         `db_session.commit()`, which can leave the session in an unusable state.
         Since we reuse sessions across tasks, this would break future tasks in
         the same process, so we catch both timeout and invalid state exceptions.
+
+        When a timeout occurs during commit, SQLAlchemy may have already called
+        `_prepare()` internally, leaving the SessionTransaction in 'prepared'
+        state. We immediately remove the scoped session from the registry so
+        that subsequent tasks always receive a fresh session, regardless of
+        whether the best-effort retry commit succeeds or fails.
         """
         try:
             db_session.commit()
@@ -521,15 +527,18 @@ class BaseCodecovTask(celery_app.Task):
                 "We had an issue where a timeout happened directly during the DB commit",
                 exc_info=True,
             )
+            # Always remove the scoped session: a timeout mid-commit can leave
+            # the SessionTransaction in 'prepared' state, which would cause
+            # InvalidRequestError for any future task reusing this session.
+            get_db_session.remove()
             try:
                 db_session.commit()
                 db_session.close()
-            except InvalidRequestError:
+            except Exception:
                 log.warning(
                     "DB session cannot be operated on any longer. Closing it and removing it",
                     exc_info=True,
                 )
-                get_db_session.remove()
         except InvalidRequestError:
             log.warning(
                 "DB session cannot be operated on any longer. Closing it and removing it",
