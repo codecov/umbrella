@@ -2724,7 +2724,7 @@ class TestNewFooterSectionWriter:
         )
         assert res == [
             "",
-            "[:umbrella: View full report in Codecov by Sentry](pull.link?dropdown=coverage&src=pr&el=continue).   ",
+            "[:umbrella: View full report in Codecov by Harness](pull.link?dropdown=coverage&src=pr&el=continue).   ",
             ":loudspeaker: Have feedback on the report? [Share it here](https://about.codecov.io/codecov-pr-comment-feedback/).",
         ]
 
@@ -2743,7 +2743,7 @@ class TestNewFooterSectionWriter:
         )
         assert res == [
             "",
-            "[:umbrella: View full report in Codecov by Sentry](pull.link?dropdown=coverage&src=pr&el=continue).   ",
+            "[:umbrella: View full report in Codecov by Harness](pull.link?dropdown=coverage&src=pr&el=continue).   ",
             ":loudspeaker: Have feedback on the report? [Share it here](https://gitlab.com/codecov-open-source/codecov-user-feedback/-/issues/4).",
         ]
 
@@ -2762,7 +2762,7 @@ class TestNewFooterSectionWriter:
         )
         assert res == [
             "",
-            "[:umbrella: View full report in Codecov by Sentry](pull.link?dropdown=coverage&src=pr&el=continue).   ",
+            "[:umbrella: View full report in Codecov by Harness](pull.link?dropdown=coverage&src=pr&el=continue).   ",
             ":loudspeaker: Have feedback on the report? [Share it here](https://gitlab.com/codecov-open-source/codecov-user-feedback/-/issues/4).",
         ]
 
