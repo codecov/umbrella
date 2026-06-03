@@ -109,7 +109,7 @@ interactions:
       | Coverage \u0394 | Complexity \u0394 | |\n|---|---|---|---|\n| [file\\_2.py](None/gh/codecove2e/example-python/pull/4?src=pr&el=tree#diff-ZmlsZV8yLnB5)
       | `50.00% <0.00%> (\u00f8)` | `0.00% <0.00%> (\u00f8%)` | |\n| [file\\_1.go](None/gh/codecove2e/example-python/pull/4?src=pr&el=tree#diff-ZmlsZV8xLmdv)
       | `62.50% <0.00%> (+12.50%)` | `10.00% <0.00%> (-1.00%)` | :arrow_up: |\n\n</details>\n\n[:umbrella:
-      View full report in Codecov by Sentry](None/gh/codecove2e/example-python/pull/4?src=pr&el=continue).   \n:loudspeaker:
+      View full report in Codecov by Harness](None/gh/codecove2e/example-python/pull/4?src=pr&el=continue).   \n:loudspeaker:
       Do you have feedback about the report comment? [Let us know in this issue](https://about.codecov.io/codecov-pr-comment-feedback/?utm_medium=referral&utm_source=github&utm_content=comment&utm_campaign=pr+comments&utm_term=Molly+Taylor).\n"}'
     headers:
       accept:
@@ -168,7 +168,7 @@ interactions:
       _2.py](None/gh/codecove2e/example-python/pull/4?src=pr&el=tree#diff-ZmlsZV8yLnB5)\
       \ | `50.00% <0.00%> (\xF8)` | `0.00% <0.00%> (\xF8%)` | |\\n| [file\\\\_1.go](None/gh/codecove2e/example-python/pull/4?src=pr&el=tree#diff-ZmlsZV8xLmdv)\
       \ | `62.50% <0.00%> (+12.50%)` | `10.00% <0.00%> (-1.00%)` | :arrow_up: |\\\
-      n\\n</details>\\n\\n[:umbrella: View full report in Codecov by Sentry](None/gh/codecove2e/example-python/pull/4?src=pr&el=continue).\
+      n\\n</details>\\n\\n[:umbrella: View full report in Codecov by Harness](None/gh/codecove2e/example-python/pull/4?src=pr&el=continue).\
       \   \\n:loudspeaker: Do you have feedback about the report comment? [Let us\
       \ know in this issue](https://about.codecov.io/codecov-pr-comment-feedback/?utm_medium=referral&utm_source=github&utm_content=comment&utm_campaign=pr+comments&utm_term=Molly+Taylor).\\\
       n\",\"reactions\":{\"url\":\"https://api.github.com/repos/codecove2e/example-python/issues/comments/1253851153/reactions\"\
@@ -692,7 +692,7 @@ interactions:
       [Components](https://app.codecov.io/gh/joseph-sentry/codecov-demo/pull/9/components?src=pr&el=components&utm_medium=referral&utm_source=github&utm_content=comment&utm_campaign=pr+comments&utm_term=Juan+Villarreal)
       | Coverage \u0394 | |\n|---|---|---|\n| [go_files](https://app.codecov.io/gh/joseph-sentry/codecov-demo/pull/9/components?src=pr&el=component&utm_medium=referral&utm_source=github&utm_content=comment&utm_campaign=pr+comments&utm_term=Juan+Villarreal)
       | `62.50% <\u00f8> (+12.50%)` | :arrow_up: |\n\n</details>\n\n[:umbrella: View
-      full report in Codecov by Sentry](https://app.codecov.io/gh/joseph-sentry/codecov-demo/pull/9?src=pr&el=continue&utm_medium=referral&utm_source=github&utm_content=comment&utm_campaign=pr+comments&utm_term=Juan+Villarreal).   \n:loudspeaker:
+      full report in Codecov by Harness](https://app.codecov.io/gh/joseph-sentry/codecov-demo/pull/9?src=pr&el=continue&utm_medium=referral&utm_source=github&utm_content=comment&utm_campaign=pr+comments&utm_term=Juan+Villarreal).   \n:loudspeaker:
       Have feedback on the report? [Share it here](https://about.codecov.io/codecov-pr-comment-feedback/?utm_medium=referral&utm_source=github&utm_content=comment&utm_campaign=pr+comments&utm_term=Juan+Villarreal).\n"}'
     headers:
       accept:
@@ -757,7 +757,7 @@ interactions:
       n\\n| [Components](https://app.codecov.io/gh/joseph-sentry/codecov-demo/pull/9/components?src=pr&el=components&utm_medium=referral&utm_source=github&utm_content=comment&utm_campaign=pr+comments&utm_term=Juan+Villarreal)\
       \ | Coverage \u0394 | |\\n|---|---|---|\\n| [go_files](https://app.codecov.io/gh/joseph-sentry/codecov-demo/pull/9/components?src=pr&el=component&utm_medium=referral&utm_source=github&utm_content=comment&utm_campaign=pr+comments&utm_term=Juan+Villarreal)\
       \ | `62.50% <\xF8> (+12.50%)` | :arrow_up: |\\n\\n</details>\\n\\n[:umbrella:\
-      \ View full report in Codecov by Sentry](https://app.codecov.io/gh/joseph-sentry/codecov-demo/pull/9?src=pr&el=continue&utm_medium=referral&utm_source=github&utm_content=comment&utm_campaign=pr+comments&utm_term=Juan+Villarreal).\
+      \ View full report in Codecov by Harness](https://app.codecov.io/gh/joseph-sentry/codecov-demo/pull/9?src=pr&el=continue&utm_medium=referral&utm_source=github&utm_content=comment&utm_campaign=pr+comments&utm_term=Juan+Villarreal).\
       \   \\n:loudspeaker: Have feedback on the report? [Share it here](https://about.codecov.io/codecov-pr-comment-feedback/?utm_medium=referral&utm_source=github&utm_content=comment&utm_campaign=pr+comments&utm_term=Juan+Villarreal).\\\
       n\",\"reactions\":{\"url\":\"https://api.github.com/repos/joseph-sentry/codecov-demo/issues/comments/1699669323/reactions\"\
       ,\"total_count\":0,\"+1\":0,\"-1\":0,\"laugh\":0,\"hooray\":0,\"confused\":0,\"\
