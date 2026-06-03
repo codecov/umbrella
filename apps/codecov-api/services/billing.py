@@ -284,6 +284,7 @@ class StripeService(AbstractPaymentService):
         # schedule a cancellation at the end of the paid period with no refund
         stripe.Subscription.modify(
             owner.stripe_subscription_id,
+            automatic_tax={"enabled": True},
             cancel_at_period_end=True,
             proration_behavior="none",
         )
@@ -363,6 +364,7 @@ class StripeService(AbstractPaymentService):
 
             subscription = stripe.Subscription.modify(
                 owner.stripe_subscription_id,
+                automatic_tax={"enabled": True},
                 cancel_at_period_end=False,
                 items=[
                     {
@@ -434,6 +436,7 @@ class StripeService(AbstractPaymentService):
 
         stripe.SubscriptionSchedule.modify(
             subscription_schedule_id,
+            default_settings={"automatic_tax": {"enabled": True}},
             end_behavior="release",
             phases=[
                 {
@@ -585,6 +588,7 @@ class StripeService(AbstractPaymentService):
                 if owner.stripe_customer_id
                 else None
             ),
+            automatic_tax={"enabled": True},
         )
         log.info(
             f"Stripe Checkout Session created successfully for owner {owner.ownerid} by user #{self.requesting_user.ownerid}"
@@ -654,7 +658,9 @@ class StripeService(AbstractPaymentService):
                 invoice_settings={"default_payment_method": payment_method},
             )
             stripe.Subscription.modify(
-                owner.stripe_subscription_id, default_payment_method=payment_method
+                owner.stripe_subscription_id,
+                automatic_tax={"enabled": True},
+                default_payment_method=payment_method,
             )
         log.info(
             f"Successfully updated payment method for owner {owner.ownerid} by user #{self.requesting_user.ownerid}",

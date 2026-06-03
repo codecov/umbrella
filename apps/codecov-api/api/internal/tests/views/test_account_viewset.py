@@ -1312,6 +1312,7 @@ class AccountViewSetTests(APITestCase):
 
         modify_subscription_mock.assert_called_once_with(
             self.current_owner.stripe_subscription_id,
+            automatic_tax={"enabled": True},
             default_payment_method=payment_method_id,
         )
 
