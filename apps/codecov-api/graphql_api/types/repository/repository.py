@@ -354,3 +354,18 @@ def resolve_test_analytics(
     resolve_test_analytics defines the data that will get passed to the testAnalytics resolvers
     """
     return repository
+
+
+@repository_bindable.field("testResults")
+async def resolve_repository_test_results(
+    repository: Repository,
+    info: GraphQLResolveInfo,
+    **kwargs,
+):
+    """
+    Convenience shortcut that exposes testResults directly on Repository,
+    delegating to the same resolver used by Repository.testAnalytics.testResults.
+    """
+    from graphql_api.types.test_analytics.test_analytics import resolve_test_results
+
+    return await resolve_test_results(repository, info, **kwargs)
