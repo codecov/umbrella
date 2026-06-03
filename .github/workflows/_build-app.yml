@@ -109,6 +109,10 @@ jobs:
         run: |-
           echo ${{steps.auth.outputs.access_token}} | docker login -u oauth2accesstoken --password-stdin https://us-docker.pkg.dev
 
+      - name: Compute test image artifact name
+        id: artifact
+        run: echo "name=test-app-$(echo '${{ inputs.output_directory }}' | tr '/.' '--')" >> "$GITHUB_OUTPUT"
+
       - name: Cache Test Requirements
         id: cache-test-requirements
         uses: actions/cache@v4
@@ -118,16 +122,6 @@ jobs:
           path: |
             ./test-requirements.tar
           key: ${{ runner.os }}-${{ runner.arch }}-${{ env.cache-name }}-${{ hashFiles('./uv.lock') }}-${{ hashFiles('docker/Dockerfile.requirements') }}-${{ hashFiles('docker/Dockerfile.test-requirements') }}-${{ hashFiles('libs/shared/**') }}
-
-      - name: Cache Test App
-        id: cache-test-app
-        uses: actions/cache@v4
-        env:
-          cache-name: ${{ inputs.repo }}-test-app
-        with:
-          path: |
-            ${{ inputs.output_directory }}/test-app.tar
-          key: ${{ runner.os }}-${{ env.cache-name }}-${{ github.run_id }}
 
       - name: Load test requirements from cache
         if: ${{ steps.cache-test-requirements.outputs.cache-hit == 'true' }}
@@ -146,3 +140,16 @@ jobs:
         run: |
           make ${{ inputs.make_target_prefix }}build.test-app
           make ${{ inputs.make_target_prefix }}save.test-app
+
+      # Hand the test image to the Test job via a run-scoped artifact rather than
+      # actions/cache. The cache is keyed on github.run_id (never reused across
+      # runs) and the ~1GB tarballs blow the repo's 10GB cache budget, so entries
+      # get LRU-evicted mid-run and the Test job fails to load the image.
+      - name: Upload test image
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.artifact.outputs.name }}
+          path: ${{ inputs.output_directory }}/test-app.tar
+          retention-days: 1
+          compression-level: 0
+          if-no-files-found: error
