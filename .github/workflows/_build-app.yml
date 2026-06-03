@@ -87,6 +87,7 @@ jobs:
 
   build-test-app:
     name: Build Test App
+    needs: [build]
     runs-on: ubuntu-large
     steps:
       - name: Checkout
