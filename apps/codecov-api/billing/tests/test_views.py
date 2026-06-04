@@ -1750,7 +1750,9 @@ class StripeWebhookHandlerTests(APITestCase):
         )
 
         subscription_modify_mock.assert_called_once_with(
-            "sub_123", default_payment_method=payment_method
+            "sub_123",
+            automatic_tax={"enabled": True},
+            default_payment_method=payment_method,
         )
 
     @patch("services.billing.stripe.PaymentIntent.retrieve")
@@ -1858,7 +1860,9 @@ class StripeWebhookHandlerTests(APITestCase):
             },
         )
         subscription_modify_mock.assert_called_once_with(
-            "sub_123", default_payment_method=payment_method_retrieve_mock.return_value
+            "sub_123",
+            automatic_tax={"enabled": True},
+            default_payment_method=payment_method_retrieve_mock.return_value,
         )
 
     @patch("logging.Logger.error")
@@ -1978,10 +1982,12 @@ class StripeWebhookHandlerTests(APITestCase):
             [
                 call(
                     "sub_123",
+                    automatic_tax={"enabled": True},
                     default_payment_method=payment_method_retrieve_mock.return_value,
                 ),
                 call(
                     "sub_124",
+                    automatic_tax={"enabled": True},
                     default_payment_method=payment_method_retrieve_mock.return_value,
                 ),
             ]
