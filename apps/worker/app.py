@@ -2,6 +2,7 @@ import logging
 import logging.config
 
 from celery import Celery, signals
+from django.db import close_old_connections
 from pydantic import BaseModel
 
 from helpers.logging_config import get_logging_config_dict
@@ -22,3 +23,8 @@ celery_app.config_from_object("celery_config:CeleryWorkerConfig")
 def init_sentry(**_kwargs):
     if is_sentry_enabled():
         initialize_sentry()
+
+
+@signals.task_prerun.connect
+def close_stale_db_connections(**_kwargs):
+    close_old_connections()
