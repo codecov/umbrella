@@ -221,6 +221,104 @@ class GithubWebhookHandlerTests(APITestCase):
         other_repo.author = self.repo.author
         other_repo.save()
 
+    @patch("webhook_handlers.views.github.TaskService.refresh")
+    def test_repository_renamed_triggers_sync(self, mock_refresh):
+        response = self._post_event_data(
+            event=GitHubWebhookEvents.REPOSITORY,
+            data={
+                "action": "renamed",
+                "repository": {
+                    "id": self.repo.service_id,
+                    "node_id": "abc123",
+                    "owner": {"id": self.repo.author.service_id},
+                },
+            },
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        mock_refresh.assert_called_once_with(
+            ownerid=self.repo.author.ownerid,
+            username=self.repo.author.username,
+            sync_teams=False,
+            sync_repos=True,
+            using_integration=True,
+            repos_affected=[(self.repo.service_id, "abc123")],
+        )
+
+    @patch("webhook_handlers.views.github.TaskService.refresh")
+    def test_repository_transferred_triggers_sync_for_both_owners(self, mock_refresh):
+        new_owner = OwnerFactory(service=Service.GITHUB.value)
+
+        response = self._post_event_data(
+            event=GitHubWebhookEvents.REPOSITORY,
+            data={
+                "action": "transferred",
+                "repository": {
+                    "id": self.repo.service_id,
+                    "node_id": "abc123",
+                    "owner": {"id": new_owner.service_id},
+                },
+            },
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        assert mock_refresh.call_count == 2
+        mock_refresh.assert_any_call(
+            ownerid=self.repo.author.ownerid,
+            username=self.repo.author.username,
+            sync_teams=False,
+            sync_repos=True,
+            using_integration=True,
+        )
+        mock_refresh.assert_any_call(
+            ownerid=new_owner.ownerid,
+            username=new_owner.username,
+            sync_teams=False,
+            sync_repos=True,
+            using_integration=True,
+            repos_affected=[(self.repo.service_id, "abc123")],
+        )
+
+    @patch("webhook_handlers.views.github.TaskService.refresh")
+    def test_repository_transferred_new_owner_not_in_codecov(self, mock_refresh):
+        response = self._post_event_data(
+            event=GitHubWebhookEvents.REPOSITORY,
+            data={
+                "action": "transferred",
+                "repository": {
+                    "id": self.repo.service_id,
+                    "node_id": "abc123",
+                    "owner": {"id": 99999999},
+                },
+            },
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        mock_refresh.assert_called_once_with(
+            ownerid=self.repo.author.ownerid,
+            username=self.repo.author.username,
+            sync_teams=False,
+            sync_repos=True,
+            using_integration=True,
+        )
+
+    @patch("webhook_handlers.views.github.TaskService.refresh")
+    def test_repository_transferred_repo_not_found(self, mock_refresh):
+        response = self._post_event_data(
+            event=GitHubWebhookEvents.REPOSITORY,
+            data={
+                "action": "transferred",
+                "repository": {
+                    "id": 99999999,
+                    "node_id": "abc123",
+                    "owner": {"id": self.repo.author.service_id},
+                },
+            },
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        mock_refresh.assert_not_called()
+
     def test_delete_event_deletes_branch(self):
         branch = BranchFactory(repository=self.repo)
 
