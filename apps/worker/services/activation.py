@@ -1,6 +1,10 @@
 import logging
+import random
+import time
 
+from psycopg2.errors import DeadlockDetected
 from sqlalchemy import func
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.sql import text
 
 from app import celery_app
@@ -89,9 +93,36 @@ def activate_user(db_session, org_ownerid: int, user_ownerid: int) -> bool:
 
     # TODO: we need to decide the best way for this logic to be shared across
     # worker and codecov-api - ideally moving logic from database to application layer
-    (activation_success,) = db_session.query(
-        func.public.try_to_auto_activate(org_ownerid, user_ownerid)
-    ).first()
+    #
+    # Execute try_to_auto_activate in its own savepoint so the exclusive lock on
+    # the `owners` row is released before the outer transaction (which may hold
+    # locks on other rows such as `pulls`) continues.  This prevents the
+    # circular lock-wait (deadlock) that occurs when two concurrent tasks both
+    # hold a pulls-row lock and then race to update the same owners row.
+    # A retry loop handles the rare case where two savepoints still collide.
+    _MAX_DEADLOCK_RETRIES = 3
+    activation_success = None
+    for attempt in range(_MAX_DEADLOCK_RETRIES):
+        try:
+            with db_session.begin_nested():
+                (activation_success,) = db_session.query(
+                    func.public.try_to_auto_activate(org_ownerid, user_ownerid)
+                ).first()
+            break  # savepoint committed successfully
+        except OperationalError as exc:
+            if isinstance(exc.orig, DeadlockDetected) and attempt < _MAX_DEADLOCK_RETRIES - 1:
+                log.warning(
+                    "Deadlock detected during auto-activation, retrying",
+                    extra={
+                        "org_ownerid": org_ownerid,
+                        "author_ownerid": user_ownerid,
+                        "attempt": attempt + 1,
+                    },
+                )
+                # Brief random back-off before retrying to reduce collision probability.
+                time.sleep(random.uniform(0.05, 0.2))
+            else:
+                raise
 
     log.info(
         "Auto activation attempted",
