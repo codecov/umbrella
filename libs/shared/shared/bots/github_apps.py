@@ -112,7 +112,10 @@ def _get_apps_from_weighted_selection(
         )
         if default_apps:
             apps_to_consider.extend(default_apps)
-    if owner_uses_sentry(owner) and installation_name != settings.GITHUB_SENTRY_APP_NAME:
+    if (
+        owner_uses_sentry(owner)
+        and installation_name != settings.GITHUB_SENTRY_APP_NAME
+    ):
         # Sentry-linked owners prefer the Codecov app, but the Sentry app is kept
         # as a fallback in case the preferred app(s) are unavailable.
         sentry_apps = filter(
