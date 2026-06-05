@@ -138,7 +138,43 @@ class TestGetSpecificGithubAppDetails:
 
     @pytest.mark.django_db
     @override_settings(GITHUB_SENTRY_APP_NAME="test_sentry_app")
-    def test_sentry_org_id_overrides_installation_name(self, mocker):
+    def test_sentry_org_prefers_codecov_app_with_sentry_fallback(self, mocker):
+        owner = OwnerFactory(service="github")
+        account = Account.objects.create(name="test_account", sentry_org_id=12345)
+        owner.account = account
+        owner.save()
+
+        codecov_app = GithubAppInstallation(
+            owner=owner,
+            installation_id=1000,
+            app_id=10,
+            name=GITHUB_APP_INSTALLATION_DEFAULT_NAME,
+            pem_path="codecov_pem",
+        )
+        codecov_app.save()
+        sentry_app = GithubAppInstallation(
+            owner=owner,
+            installation_id=2000,
+            app_id=20,
+            name="test_sentry_app",
+            pem_path="sentry_pem",
+        )
+        sentry_app.save()
+
+        result = get_github_app_info_for_owner(
+            owner, installation_name=GITHUB_APP_INSTALLATION_DEFAULT_NAME
+        )
+
+        # The Codecov app is preferred, with the Sentry app kept as a fallback.
+        assert len(result) == 2
+        assert result[0]["installation_id"] == 1000
+        assert result[0]["app_id"] == 10
+        assert result[1]["installation_id"] == 2000
+        assert result[1]["app_id"] == 20
+
+    @pytest.mark.django_db
+    @override_settings(GITHUB_SENTRY_APP_NAME="test_sentry_app")
+    def test_sentry_org_falls_back_to_sentry_app_when_no_codecov_app(self, mocker):
         owner = OwnerFactory(service="github")
         account = Account.objects.create(name="test_account", sentry_org_id=12345)
         owner.account = account
