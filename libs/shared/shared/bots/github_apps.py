@@ -112,6 +112,16 @@ def _get_apps_from_weighted_selection(
         )
         if default_apps:
             apps_to_consider.extend(default_apps)
+    if owner_uses_sentry(owner) and installation_name != settings.GITHUB_SENTRY_APP_NAME:
+        # Sentry-linked owners prefer the Codecov app, but the Sentry app is kept
+        # as a fallback in case the preferred app(s) are unavailable.
+        sentry_apps = filter(
+            lambda obj: _can_use_this_app(
+                obj, settings.GITHUB_SENTRY_APP_NAME, repository
+            ),
+            DjangoSQLAlchemyOwnerWrapper.get_github_app_installations(owner),
+        )
+        apps_to_consider.extend(sentry_apps)
     return apps_to_consider
 
 
@@ -266,9 +276,9 @@ def get_github_app_info_for_owner(
             Any GitHub App info returned needs to cover this repo
         installation_name (str | None): The installation name to search for in the available apps.
             GitHubAppInstallation.name must be equal to installation_name for it to be returned.
-            If the owner has a sentry_org_id linked through their account, this parameter will be
-            overridden and the sentry app will be used instead. If None and no sentry_org_id exists,
-            the installation name will be determined automatically.
+            If the owner has a sentry_org_id linked through their account, the Codecov app is still
+            preferred, but the sentry app is added as a fallback in case the preferred app(s) are
+            unavailable.
 
     Returns:
         (ordered) List[GithubInstallationInfo]: where index 0 is the main app and the others are fallback options
@@ -276,9 +286,6 @@ def get_github_app_info_for_owner(
     Raises:
         NoConfiguredAppsAvailable: Owner has app installations available, but they are all currently rate limited.
     """
-    if owner_uses_sentry(owner):
-        installation_name = settings.GITHUB_SENTRY_APP_NAME
-
     extra_info_to_log = {
         "ownerid": owner.ownerid,
         "repoid": getattr(repository, "repoid", None),
