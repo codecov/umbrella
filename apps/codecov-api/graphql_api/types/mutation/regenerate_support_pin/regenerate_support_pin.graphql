@@ -1,0 +1,6 @@
+union RegenerateSupportPinError = UnauthenticatedError
+
+type RegenerateSupportPinPayload {
+  me: Me
+  error: RegenerateSupportPinError
+}

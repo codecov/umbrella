@@ -28,6 +28,7 @@ from shared.django_apps.codecov_auth.models import (
     Plan,
     StripeBilling,
     Tier,
+    _generate_support_pin,
 )
 from shared.django_apps.codecov_auth.models import User as CodecovUser
 from shared.owner_data_export.config import EXPORT_DAYS_DEFAULT
@@ -227,6 +228,30 @@ def export_owner_data(self, request, queryset):
 
 
 export_owner_data.short_description = "Export owner data (SQL dumps + archives)"
+
+
+def regenerate_support_pin(self, request, queryset):
+    """Regenerate the 6-digit support PIN for the selected owner(s)."""
+    count = 0
+    for owner in queryset:
+        owner.support_pin = _generate_support_pin()
+        owner.save(update_fields=["support_pin", "updatestamp"])
+        History.log(
+            Owner.objects.get(ownerid=owner.ownerid),
+            "Support PIN regenerated",
+            request.user,
+        )
+        count += 1
+
+    self.message_user(
+        request,
+        f"Regenerated support PIN for {count} owner(s).",
+        level=messages.SUCCESS,
+    )
+    return
+
+
+regenerate_support_pin.short_description = "Regenerate support PIN"
 
 
 class AccountsUsersInline(admin.TabularInline):
@@ -674,10 +699,16 @@ class AccountAdmin(AdminMixin, admin.ModelAdmin):
 @admin.register(Owner)
 class OwnerAdmin(AdminMixin, admin.ModelAdmin):
     exclude = ("oauth_token",)
-    list_display = ("name", "username", "email", "service")
+    list_display = ("name", "username", "email", "service", "support_pin")
     readonly_fields = []
     search_fields = ("name__iregex", "username__iregex", "email__iregex", "ownerid")
-    actions = [impersonate_owner, extend_trial, refresh_owner, export_owner_data]
+    actions = [
+        impersonate_owner,
+        extend_trial,
+        refresh_owner,
+        export_owner_data,
+        regenerate_support_pin,
+    ]
     autocomplete_fields = ("bot", "account")
     inlines = [OrgUploadTokenInline]
 
@@ -703,6 +734,7 @@ class OwnerAdmin(AdminMixin, admin.ModelAdmin):
         "user",
         "trial_fired_by",
         "sentry_user_id",
+        "support_pin",
     )
 
     fieldsets = [
@@ -780,6 +812,7 @@ class OwnerAdmin(AdminMixin, admin.ModelAdmin):
                     "did_trial",
                     "createstamp",
                     "updatestamp",
+                    "support_pin",
                 ]
             },
         ),
@@ -816,6 +849,13 @@ class OwnerAdmin(AdminMixin, admin.ModelAdmin):
                 form.base_fields[field_name].required = False
 
         return form
+
+    def get_actions(self, request):
+        actions = super().get_actions(request)
+        # The "Regenerate support PIN" action is only available to staff users.
+        if not (request.user and request.user.is_staff):
+            actions.pop("regenerate_support_pin", None)
+        return actions
 
     def has_add_permission(self, _, obj=None):
         return False

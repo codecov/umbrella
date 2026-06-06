@@ -1,6 +1,7 @@
 import binascii
 import logging
 import os
+import secrets
 import uuid
 from datetime import datetime
 from hashlib import md5
@@ -302,6 +303,15 @@ class Account(BaseModel):
         return
 
 
+def _generate_support_pin() -> str:
+    """Generate a cryptographically random 6-digit support PIN.
+
+    Kept as a 6-char string (not an int) so leading zeros like "042381" are
+    preserved.
+    """
+    return f"{secrets.randbelow(1_000_000):06d}"
+
+
 class Owner(ExportModelOperationsMixin("codecov_auth.owner"), models.Model):
     class Meta:
         db_table = "owners"
@@ -382,6 +392,11 @@ class Owner(ExportModelOperationsMixin("codecov_auth.owner"), models.Model):
     is_superuser = models.BooleanField(null=True, default=False)
     max_upload_limit = models.IntegerField(null=True, default=150, blank=True)
     upload_token_required_for_public_repos = models.BooleanField(default=False)
+
+    # 6-digit PIN a user provides to a support agent to verify their identity.
+    support_pin = models.CharField(
+        max_length=6, null=True, blank=True, default=_generate_support_pin
+    )
 
     sentry_user_id = models.TextField(null=True, blank=True, unique=True)
     sentry_user_data = models.JSONField(null=True)
