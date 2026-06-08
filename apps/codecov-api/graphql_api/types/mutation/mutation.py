@@ -16,6 +16,7 @@ from .delete_component_measurements import (
     resolve_delete_component_measurements,
 )
 from .delete_flag import error_delete_flag, resolve_delete_flag
+from .delete_owner import error_delete_owner, resolve_delete_owner
 from .delete_session import error_delete_session, resolve_delete_session
 from .encode_secret_string import (
     error_encode_secret_string,
@@ -111,6 +112,7 @@ mutation_bindable.field("storeEventMetric")(resolve_store_event_metrics)
 mutation_bindable.field("saveOktaConfig")(resolve_save_okta_config)
 mutation_bindable.field("setUploadTokenRequired")(resolve_set_upload_token_required)
 mutation_bindable.field("updateBundleCacheConfig")(resolve_update_bundle_cache_config)
+mutation_bindable.field("deleteOwner")(resolve_delete_owner)
 
 mutation_resolvers = [
     mutation_bindable,
@@ -143,4 +145,5 @@ mutation_resolvers = [
     error_save_okta_config,
     error_set_upload_token_required,
     error_update_bundle_cache_config,
+    error_delete_owner,
 ]

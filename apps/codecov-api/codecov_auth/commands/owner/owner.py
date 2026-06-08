@@ -1,6 +1,7 @@
 from codecov.commands.base import BaseCommand
 
 from .interactors.cancel_trial import CancelTrialInteractor
+from .interactors.delete_owner import DeleteOwnerInteractor
 from .interactors.create_api_token import CreateApiTokenInteractor
 from .interactors.create_stripe_setup_intent import CreateStripeSetupIntentInteractor
 from .interactors.create_user_token import CreateUserTokenInteractor
@@ -106,3 +107,6 @@ class OwnerCommands(BaseCommand):
 
     def set_upload_token_required(self, input) -> None:
         return self.get_interactor(SetUploadTokenRequiredInteractor).execute(input)
+
+    def delete_owner(self, username: str) -> None:
+        return self.get_interactor(DeleteOwnerInteractor).execute(username)
