@@ -7,6 +7,7 @@ from django.conf import settings
 from django.http import HttpResponseForbidden, HttpResponseNotFound
 from django.test import RequestFactory
 
+from codecov_auth.constants import USE_SENTRY_APP_INDICATOR
 from codecov_auth.middleware import (
     jwt_middleware,
 )
@@ -220,6 +221,55 @@ async def test_sentry_jwt_valid_token_existing_owner(
         mock_queryset.get.assert_called_once_with(
             username="sentry_middleware_check", service="github"
         )
+
+
+@pytest.mark.asyncio
+@pytest.mark.django_db
+async def test_sentry_jwt_valid_token_indicator_disabled(
+    request_factory, sentry_jwt_middleware_instance, valid_jwt_token, mock_owner
+):
+    """Sentry sunset: a valid inbound Sentry JWT still authenticates the owner,
+    but the should_use_sentry_app indicator is forced off (SENTRY_INBOUND_API_ENABLED
+    is False), so no Sentry-UI data is served downstream."""
+    request = request_factory.get("/", HTTP_AUTHORIZATION=f"Bearer {valid_jwt_token}")
+
+    with patch(
+        "codecov_auth.middleware.Owner.objects.select_related"
+    ) as mock_select_related:
+        mock_queryset = mock_select_related.return_value
+        mock_queryset.get.return_value = mock_owner
+
+        response = await sentry_jwt_middleware_instance(request)
+
+        # Auth plumbing is intact: the owner is still resolved...
+        assert not isinstance(response, HttpResponseForbidden)
+        assert request.current_owner == mock_owner
+        # ...but the inbound data path is disabled.
+        assert getattr(request, USE_SENTRY_APP_INDICATOR, False) is False
+
+
+@pytest.mark.asyncio
+@pytest.mark.django_db
+async def test_sentry_jwt_indicator_can_be_re_enabled(
+    request_factory, sentry_jwt_middleware_instance, valid_jwt_token, mock_owner
+):
+    """The path is dormant, not deleted: flipping SENTRY_INBOUND_API_ENABLED back
+    on (e.g. to repurpose it for a Harness supertoken) restores the indicator."""
+    request = request_factory.get("/", HTTP_AUTHORIZATION=f"Bearer {valid_jwt_token}")
+
+    with (
+        patch("codecov_auth.middleware.SENTRY_INBOUND_API_ENABLED", True),
+        patch(
+            "codecov_auth.middleware.Owner.objects.select_related"
+        ) as mock_select_related,
+    ):
+        mock_queryset = mock_select_related.return_value
+        mock_queryset.get.return_value = mock_owner
+
+        await sentry_jwt_middleware_instance(request)
+
+        assert request.current_owner == mock_owner
+        assert getattr(request, USE_SENTRY_APP_INDICATOR, False) is True
 
 
 @pytest.mark.asyncio
