@@ -134,7 +134,7 @@ class RepositoryAdminForm(forms.ModelForm):
 @admin.register(Repository)
 class RepositoryAdmin(AdminMixin, admin.ModelAdmin):
     inlines = [RepositoryTokenInline]
-    list_display = ("name", "service_id", "author")
+    list_display = ("name", "service_id", "author_link")
     search_fields = (
         "name",
         "author__username__exact",
@@ -168,6 +168,16 @@ class RepositoryAdmin(AdminMixin, admin.ModelAdmin):
         "private",
         "webhook_secret",
     )
+
+    @admin.display(description="author", ordering="author")
+    def author_link(self, obj):
+        author = obj.author
+        if author is None:
+            return "-"
+        url = reverse("admin:codecov_auth_owner_change", args=[author.ownerid])
+        return format_html(
+            '<a href="{}">{}/{}</a>', url, author.service, author.username
+        )
 
     def get_search_results(
         self,
