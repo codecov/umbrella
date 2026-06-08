@@ -175,7 +175,9 @@ class RepositoryAdmin(AdminMixin, admin.ModelAdmin):
         if author is None:
             return "-"
         url = reverse("admin:codecov_auth_owner_change", args=[author.ownerid])
-        return format_html('<a href="{}">{}</a>', url, str(author))
+        return format_html(
+            '<a href="{}">{}/{}</a>', url, author.service, author.username
+        )
 
     def get_search_results(
         self,
