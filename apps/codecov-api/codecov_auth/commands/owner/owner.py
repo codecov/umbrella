@@ -12,6 +12,7 @@ from .interactors.get_uploads_number_per_user import GetUploadsNumberPerUserInte
 from .interactors.is_syncing import IsSyncingInteractor
 from .interactors.onboard_user import OnboardUserInteractor
 from .interactors.regenerate_org_upload_token import RegenerateOrgUploadTokenInteractor
+from .interactors.regenerate_support_pin import RegenerateSupportPinInteractor
 from .interactors.revoke_user_token import RevokeUserTokenInteractor
 from .interactors.save_okta_config import SaveOktaConfigInteractor
 from .interactors.save_terms_agreement import SaveTermsAgreementInteractor
@@ -80,6 +81,9 @@ class OwnerCommands(BaseCommand):
 
     def regenerate_org_upload_token(self, owner):
         return self.get_interactor(RegenerateOrgUploadTokenInteractor).execute(owner)
+
+    def regenerate_support_pin(self):
+        return self.get_interactor(RegenerateSupportPinInteractor).execute()
 
     def start_trial(self, org_username: str) -> None:
         return self.get_interactor(StartTrialInteractor).execute(

@@ -147,6 +147,37 @@ class OwnerAdminTest(TestCase):
                 manual_trigger=True,
             )
 
+    def test_owner_admin_regenerate_support_pin(self):
+        owner = OwnerFactory(plan=DEFAULT_FREE_PLAN, support_pin="000000")
+        other_owner = OwnerFactory(plan=DEFAULT_FREE_PLAN, support_pin="000000")
+
+        response = self.client.post(
+            reverse("admin:codecov_auth_owner_changelist"),
+            {
+                "action": "regenerate_support_pin",
+                ACTION_CHECKBOX_NAME: [owner.pk, other_owner.pk],
+            },
+            follow=True,
+        )
+
+        assert "Regenerated support PIN for 2 owner(s)." in str(response.content)
+
+        owner.refresh_from_db()
+        other_owner.refresh_from_db()
+        assert owner.support_pin != "000000"
+        assert len(owner.support_pin) == 6
+        assert owner.support_pin.isdigit()
+        assert other_owner.support_pin != "000000"
+
+    def test_regenerate_support_pin_action_only_available_to_staff(self):
+        request = RequestFactory().get(reverse("admin:codecov_auth_owner_changelist"))
+
+        request.user = self.staff_user
+        assert "regenerate_support_pin" in self.owner_admin.get_actions(request)
+
+        request.user = UserFactory(is_staff=False)
+        assert "regenerate_support_pin" not in self.owner_admin.get_actions(request)
+
     @patch("codecov_auth.admin.TaskService.delete_owner")
     def test_delete_queryset(self, delete_mock):
         user_to_delete = OwnerFactory(plan=DEFAULT_FREE_PLAN)
