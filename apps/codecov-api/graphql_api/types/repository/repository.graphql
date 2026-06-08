@@ -25,6 +25,14 @@ type Repository {
     last: Int
     before: String
   ): PullConnection @cost(complexity: 10, multipliers: ["first", "last"])
+  pullRequests(
+    filters: PullsSetFilters
+    orderingDirection: OrderingDirection
+    first: Int
+    after: String
+    last: Int
+    before: String
+  ): PullConnection @cost(complexity: 10, multipliers: ["first", "last"])
   commits(
     filters: CommitsSetFilters
     first: Int
