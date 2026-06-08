@@ -11,10 +11,7 @@ from shared.django_apps.codecov_auth.models import GithubAppInstallation
 # Sentry's GitHub app, which Codecov historically used for PR notifications
 SENTRY_APP_ID = 12637
 
-# TODO(before merge): 30 days after the ~June 12 trigger/announcement date.
-# Both the trigger date and this value are still moving ("currently" June 12),
-# so confirm the final date with the comms/timeline owner before merge.
-SENTRY_APP_DEPRECATION_DATE = "July 12, 2026"
+SENTRY_APP_DEPRECATION_DATE = "July 8, 2026"
 
 
 def is_owner_only_using_sentry_app(owner_id: int) -> bool:
