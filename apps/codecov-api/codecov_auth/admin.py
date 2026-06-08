@@ -6,7 +6,7 @@ import django.forms as forms
 from django.conf import settings
 from django.contrib import admin, messages
 from django.contrib.admin.models import LogEntry
-from django.db.models import OuterRef, Subquery
+from django.db.models import Count, OuterRef, Subquery
 from django.db.models.fields import BLANK_CHOICE_DASH
 from django.forms import CheckboxInput, Select, Textarea
 from django.http import HttpRequest
@@ -674,7 +674,7 @@ class AccountAdmin(AdminMixin, admin.ModelAdmin):
 @admin.register(Owner)
 class OwnerAdmin(AdminMixin, admin.ModelAdmin):
     exclude = ("oauth_token",)
-    list_display = ("name", "username", "email", "service")
+    list_display = ("username", "name", "repository_count", "email", "service")
     readonly_fields = []
     search_fields = ("name__iregex", "username__iregex", "email__iregex", "ownerid")
     actions = [impersonate_owner, extend_trial, refresh_owner, export_owner_data]
@@ -784,6 +784,17 @@ class OwnerAdmin(AdminMixin, admin.ModelAdmin):
             },
         ),
     ]
+
+    def get_queryset(self, request):
+        return (
+            super()
+            .get_queryset(request)
+            .annotate(repository_count=Count("repository", distinct=True))
+        )
+
+    @admin.display(description="repositories", ordering="repository_count")
+    def repository_count(self, obj):
+        return obj.repository_count
 
     def get_form(self, request, obj=None, change=False, **kwargs):
         form = super().get_form(request, obj, change, **kwargs)
