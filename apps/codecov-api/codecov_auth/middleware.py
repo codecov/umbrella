@@ -198,7 +198,9 @@ def jwt_middleware(get_response):
                 )
 
                 request.current_owner = owner
-                setattr(request, USE_SENTRY_APP_INDICATOR, True)
+                # Inbound supertoken path kept intact but disabled; plumbing is
+                # dormant and reusable if we later repurpose it for a Harness supertoken.
+                setattr(request, USE_SENTRY_APP_INDICATOR, False)
             else:
                 # If the JWT does not contain the organization slug or provider,
                 # we cannot determine the owner
