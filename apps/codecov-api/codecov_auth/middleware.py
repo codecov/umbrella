@@ -13,10 +13,7 @@ from django.http import HttpRequest, HttpResponseForbidden, HttpResponseNotFound
 from django.urls import resolve
 from rest_framework import exceptions
 
-from codecov_auth.constants import (
-    SENTRY_INBOUND_API_ENABLED,
-    USE_SENTRY_APP_INDICATOR,
-)
+from codecov_auth.constants import USE_SENTRY_APP_INDICATOR
 from codecov_auth.models import Owner, Service
 from codecov_auth.utils import get_sentry_jwt_payload
 from utils.services import get_long_service_name
@@ -201,11 +198,9 @@ def jwt_middleware(get_response):
                 )
 
                 request.current_owner = owner
-                # Inbound supertoken path is kept intact but the indicator is
-                # forced off, so no Sentry-UI data is served. Left dormant (not
-                # deleted) so it can be revived/repurposed for a Harness
-                # supertoken; toggle SENTRY_INBOUND_API_ENABLED to re-enable.
-                setattr(request, USE_SENTRY_APP_INDICATOR, SENTRY_INBOUND_API_ENABLED)
+                # Inbound supertoken path kept intact but disabled; plumbing is
+                # dormant and reusable if we later repurpose it for a Harness supertoken.
+                setattr(request, USE_SENTRY_APP_INDICATOR, False)
             else:
                 # If the JWT does not contain the organization slug or provider,
                 # we cannot determine the owner
