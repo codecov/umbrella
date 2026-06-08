@@ -424,7 +424,7 @@ class Owner(ExportModelOperationsMixin("codecov_auth.owner"), models.Model):
     repository_set = RepositoryManager()
 
     def __str__(self):
-        return f"Owner<{self.service}/{self.username}>"
+        return f"{self.service}/{self.username}"
 
     def save(self, *args, **kwargs):
         self.updatestamp = timezone.now()

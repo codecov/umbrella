@@ -516,7 +516,9 @@ class StripeWebhookHandler(APIView):
                 },
             )
             stripe.Subscription.modify(
-                subscription["id"], default_payment_method=new_default_payment_method
+                subscription["id"],
+                automatic_tax={"enabled": True},
+                default_payment_method=new_default_payment_method,
             )
 
     def checkout_session_completed(
@@ -572,6 +574,7 @@ class StripeWebhookHandler(APIView):
                 for owner in owners:
                     stripe.Subscription.modify(
                         owner.stripe_subscription_id,
+                        automatic_tax={"enabled": True},
                         default_payment_method=payment_method,
                     )
             else:
