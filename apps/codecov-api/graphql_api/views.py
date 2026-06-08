@@ -344,9 +344,12 @@ class AsyncGraphqlView(GraphQLAsyncView):
     def error_formatter(self, error: Any, debug: bool = False) -> dict[str, Any]:
         user = self.request.user
         is_anonymous = user.is_anonymous if user else True
-        # the only way to check for a malformed query
-        is_bad_query = "Cannot query field" in error.formatted["message"]
-        if debug or (not is_anonymous and is_bad_query):
+        # GraphQL validation/type errors (e.g. unknown fields, null for non-nullable
+        # args) have no underlying Python exception (original_error is None).
+        # These are client errors and should be returned as-is without logging or
+        # capturing in Sentry.
+        is_client_error = error.original_error is None
+        if debug or (not is_anonymous and is_client_error):
             return format_error(error, debug)
         formatted = error.formatted
         formatted["message"] = "INTERNAL SERVER ERROR"
@@ -363,6 +366,10 @@ class AsyncGraphqlView(GraphQLAsyncView):
             # (e.g., unauthorized, forbidden) that shouldn't be sent to Sentry
             formatted["message"] = str(original_error.detail)
             formatted["type"] = type(original_error).__name__
+        elif is_client_error:
+            # GraphQL validation errors from anonymous users: return the validation
+            # message as-is without logging or capturing to Sentry.
+            pass
         else:
             # otherwise it's not supposed to happen, so we log it
             log.error("GraphQL internal server error", exc_info=original_error)
