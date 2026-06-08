@@ -7,33 +7,26 @@ from shared.plan.constants import DEFAULT_FREE_PLAN
 
 
 def _get_user_plan_from_ownerid(ownerid, *args, **kwargs) -> str:
-    owner = Owner.objects.filter(ownerid=ownerid).first()
-    if owner:
-        return owner.plan
-    return DEFAULT_FREE_PLAN
+    plan = Owner.objects.filter(ownerid=ownerid).values_list("plan", flat=True).first()
+    return plan or DEFAULT_FREE_PLAN
 
 
 def _get_user_plan_from_repoid(repoid, *args, **kwargs) -> str:
-    repo = Repository.objects.filter(repoid=repoid).select_related("author").first()
-    if repo and repo.author:
-        return repo.author.plan
-    return DEFAULT_FREE_PLAN
+    plan = (
+        Repository.objects.filter(repoid=repoid)
+        .values_list("author__plan", flat=True)
+        .first()
+    )
+    return plan or DEFAULT_FREE_PLAN
 
 
 def _get_user_plan_from_comparison_id(comparison_id, *args, **kwargs) -> str:
-    compare_commit = (
+    plan = (
         CommitComparison.objects.filter(id=comparison_id)
-        .select_related("compare_commit__repository__author")
+        .values_list("compare_commit__repository__author__plan", flat=True)
         .first()
     )
-    if (
-        compare_commit
-        and compare_commit.compare_commit
-        and compare_commit.compare_commit.repository
-        and compare_commit.compare_commit.repository.author
-    ):
-        return compare_commit.compare_commit.repository.author.plan
-    return DEFAULT_FREE_PLAN
+    return plan or DEFAULT_FREE_PLAN
 
 
 def _get_user_plan_from_task(task_name: str, task_kwargs: dict) -> str:
