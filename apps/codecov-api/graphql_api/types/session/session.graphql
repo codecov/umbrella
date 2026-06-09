@@ -1,8 +1,8 @@
 type Session {
   sessionid: Int!
   ip: String
-  lastseen: DateTime
-  useragent: String
+  lastSeen: DateTime
+  userAgent: String
   type: String!
   name: String
   lastFour: String!
