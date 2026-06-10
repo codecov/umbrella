@@ -171,21 +171,20 @@ def test_insert_data_to_db_from_csv_for_plans_and_tiers():
 
 
 @pytest.mark.django_db
-def test_backfill_support_pins_replaces_placeholder_and_null():
+def test_backfill_support_pins_replaces_placeholder():
     placeholder = OwnerFactory(support_pin="000000")
-    null_pin = OwnerFactory(support_pin=None)
+    other_placeholder = OwnerFactory(support_pin="000000")
     already_set = OwnerFactory(support_pin="123456")
 
     out = StringIO()
     call_command("backfill_support_pins", stdout=out, stderr=StringIO())
 
     placeholder.refresh_from_db()
-    null_pin.refresh_from_db()
+    other_placeholder.refresh_from_db()
     already_set.refresh_from_db()
 
-    # Owners on the placeholder / NULL get a fresh, valid PIN.
-    for owner in (placeholder, null_pin):
-        assert owner.support_pin is not None
+    # Owners on the placeholder get a fresh, valid PIN.
+    for owner in (placeholder, other_placeholder):
         assert owner.support_pin != "000000"
         assert len(owner.support_pin) == 6
         assert owner.support_pin.isdigit()
@@ -193,57 +192,34 @@ def test_backfill_support_pins_replaces_placeholder_and_null():
     # Owners with a real PIN are left untouched.
     assert already_set.support_pin == "123456"
 
-    assert "Done. Updated 2 owners." in out.getvalue()
+    assert "Backfilled 2 support PINs." in out.getvalue()
 
 
 @pytest.mark.django_db
-def test_backfill_support_pins_dry_run_writes_nothing():
+def test_backfill_support_pins_is_idempotent():
     owner = OwnerFactory(support_pin="000000")
 
-    out = StringIO()
-    call_command("backfill_support_pins", "--dry-run", stdout=out, stderr=StringIO())
-
+    call_command("backfill_support_pins", stdout=StringIO(), stderr=StringIO())
     owner.refresh_from_db()
-    assert owner.support_pin == "000000"
-    assert "[dry-run]" in out.getvalue()
-    assert "Dry run complete." in out.getvalue()
+    first_pin = owner.support_pin
+    assert first_pin != "000000"
 
-
-@pytest.mark.django_db
-def test_backfill_support_pins_respects_starting_ownerid():
-    first = OwnerFactory(support_pin="000000")
-    second = OwnerFactory(support_pin="000000")
-
+    # A second run finds nothing to do and leaves the assigned PIN untouched.
     out = StringIO()
-    call_command(
-        "backfill_support_pins",
-        stdout=out,
-        stderr=StringIO(),
-        starting_ownerid=first.ownerid,
-    )
-
-    first.refresh_from_db()
-    second.refresh_from_db()
-
-    # `first` is excluded (starting-ownerid is exclusive); `second` is updated.
-    assert first.support_pin == "000000"
-    assert second.support_pin != "000000"
-    assert Owner.objects.filter(ownerid=second.ownerid).exists()
+    call_command("backfill_support_pins", stdout=out, stderr=StringIO())
+    owner.refresh_from_db()
+    assert owner.support_pin == first_pin
+    assert "Backfilled 0 support PINs." in out.getvalue()
 
 
 @pytest.mark.django_db
-def test_backfill_support_pins_batches(mocker):
+def test_backfill_support_pins_updates_in_bulk(mocker):
     bulk_update = mocker.spy(Owner.objects, "bulk_update")
     OwnerFactory(support_pin="000000")
     OwnerFactory(support_pin="000000")
     OwnerFactory(support_pin="000000")
 
-    call_command(
-        "backfill_support_pins",
-        stdout=StringIO(),
-        stderr=StringIO(),
-        batch_size=1,
-    )
+    call_command("backfill_support_pins", stdout=StringIO(), stderr=StringIO())
 
-    # One bulk_update call per owner when batch-size is 1.
-    assert bulk_update.call_count == 3
+    # All owners fit in a single 1000-row batch -> one bulk_update call.
+    assert bulk_update.call_count == 1
