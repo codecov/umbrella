@@ -1,5 +1,6 @@
 import csv
 import os
+import re
 import tempfile
 import unittest.mock as mock
 from io import StringIO
@@ -8,7 +9,7 @@ import pytest
 from django.core.management import call_command
 
 from shared.config import ConfigHelper
-from shared.django_apps.codecov_auth.models import Plan, Tier
+from shared.django_apps.codecov_auth.models import Owner, Plan, Tier
 from shared.django_apps.core.tests.factories import OwnerFactory, RepositoryFactory
 from shared.helpers.redis import get_redis_connection
 
@@ -168,3 +169,65 @@ def test_insert_data_to_db_from_csv_for_plans_and_tiers():
 
     # Clean up the temporary file
     os.remove(csv_path)
+
+
+@pytest.mark.django_db
+def test_backfill_support_pins_replaces_placeholder():
+    placeholder = OwnerFactory(support_pin="000000")
+    other_placeholder = OwnerFactory(support_pin="000000")
+    already_set = OwnerFactory(support_pin="123456")
+
+    out = StringIO()
+    call_command("backfill_support_pins", stdout=out, stderr=StringIO())
+
+    placeholder.refresh_from_db()
+    other_placeholder.refresh_from_db()
+    already_set.refresh_from_db()
+
+    # Owners on the placeholder get a fresh, valid PIN.
+    for owner in (placeholder, other_placeholder):
+        assert owner.support_pin != "000000"
+        assert len(owner.support_pin) == 6
+        assert owner.support_pin.isdigit()
+
+    # Owners with a real PIN are left untouched.
+    assert already_set.support_pin == "123456"
+
+    # Counts aren't pinned because OwnerFactory may create additional owners
+    # (which also default to the "000000" placeholder); assert the progress
+    # output format instead.
+    output = out.getvalue()
+    assert re.search(r"^Backfilling support PINs for \d+ owners\.\.\.$", output, re.M)
+    # Progress line with counter, percentage, and ETA; the final batch hits 100%.
+    assert re.search(r"\d+/\d+ \(100\.0%\) \|.*\| ETA ", output)
+    assert re.search(r"^Backfilled \d+ support PINs\.$", output, re.M)
+
+
+@pytest.mark.django_db
+def test_backfill_support_pins_is_idempotent():
+    owner = OwnerFactory(support_pin="000000")
+
+    call_command("backfill_support_pins", stdout=StringIO(), stderr=StringIO())
+    owner.refresh_from_db()
+    first_pin = owner.support_pin
+    assert first_pin != "000000"
+
+    # A second run finds nothing to do and leaves the assigned PIN untouched.
+    out = StringIO()
+    call_command("backfill_support_pins", stdout=out, stderr=StringIO())
+    owner.refresh_from_db()
+    assert owner.support_pin == first_pin
+    assert "No owners need a support PIN backfill." in out.getvalue()
+
+
+@pytest.mark.django_db
+def test_backfill_support_pins_updates_in_bulk(mocker):
+    bulk_update = mocker.spy(Owner.objects, "bulk_update")
+    OwnerFactory(support_pin="000000")
+    OwnerFactory(support_pin="000000")
+    OwnerFactory(support_pin="000000")
+
+    call_command("backfill_support_pins", stdout=StringIO(), stderr=StringIO())
+
+    # All owners fit in a single 1000-row batch -> one bulk_update call.
+    assert bulk_update.call_count == 1

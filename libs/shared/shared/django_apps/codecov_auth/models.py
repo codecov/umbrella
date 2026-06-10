@@ -394,8 +394,11 @@ class Owner(ExportModelOperationsMixin("codecov_auth.owner"), models.Model):
     upload_token_required_for_public_repos = models.BooleanField(default=False)
 
     # 6-digit PIN a user provides to a support agent to verify their identity.
+    # Defaults to the "000000" placeholder so inserts stay cheap; the
+    # `backfill_support_pins` management command assigns real random PINs in
+    # batches.
     support_pin = models.CharField(
-        max_length=6, null=True, blank=True, default=_generate_support_pin
+        max_length=6, null=True, blank=True, default="000000"
     )
 
     sentry_user_id = models.TextField(null=True, blank=True, unique=True)
