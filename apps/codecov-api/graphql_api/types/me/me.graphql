@@ -34,6 +34,7 @@ type Me {
     before: String
   ): MyOrganizationConnection!
     @cost(complexity: 15, multipliers: ["first", "last"])
+  owners: [Owner!]! @deprecated(reason: "Use myOrganizations instead")
   isSyncingWithGitProvider: Boolean!
   trackingMetadata: trackingMetadata! # temporary solution to expose the user metadata
   privateAccess: Boolean

@@ -68,6 +68,15 @@ def resolve_viewable_repositories(
     )
 
 
+@me_bindable.field("owners")
+def resolve_owners(current_user, _, **kwargs):
+    """
+    Deprecated: Use myOrganizations instead.
+    Returns a flat list of owners associated with the current user.
+    """
+    return search_my_owners(current_user, filters=None)
+
+
 @me_bindable.field("myOrganizations")
 def resolve_my_organizations(current_user, _, filters=None, **kwargs):
     queryset = search_my_owners(current_user, filters)
