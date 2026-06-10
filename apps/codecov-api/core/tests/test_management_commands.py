@@ -8,7 +8,7 @@ import pytest
 from django.core.management import call_command
 
 from shared.config import ConfigHelper
-from shared.django_apps.codecov_auth.models import Plan, Tier
+from shared.django_apps.codecov_auth.models import Owner, Plan, Tier
 from shared.django_apps.core.tests.factories import OwnerFactory, RepositoryFactory
 from shared.helpers.redis import get_redis_connection
 
@@ -168,3 +168,82 @@ def test_insert_data_to_db_from_csv_for_plans_and_tiers():
 
     # Clean up the temporary file
     os.remove(csv_path)
+
+
+@pytest.mark.django_db
+def test_backfill_support_pins_replaces_placeholder_and_null():
+    placeholder = OwnerFactory(support_pin="000000")
+    null_pin = OwnerFactory(support_pin=None)
+    already_set = OwnerFactory(support_pin="123456")
+
+    out = StringIO()
+    call_command("backfill_support_pins", stdout=out, stderr=StringIO())
+
+    placeholder.refresh_from_db()
+    null_pin.refresh_from_db()
+    already_set.refresh_from_db()
+
+    # Owners on the placeholder / NULL get a fresh, valid PIN.
+    for owner in (placeholder, null_pin):
+        assert owner.support_pin is not None
+        assert owner.support_pin != "000000"
+        assert len(owner.support_pin) == 6
+        assert owner.support_pin.isdigit()
+
+    # Owners with a real PIN are left untouched.
+    assert already_set.support_pin == "123456"
+
+    assert "Done. Updated 2 owners." in out.getvalue()
+
+
+@pytest.mark.django_db
+def test_backfill_support_pins_dry_run_writes_nothing():
+    owner = OwnerFactory(support_pin="000000")
+
+    out = StringIO()
+    call_command("backfill_support_pins", "--dry-run", stdout=out, stderr=StringIO())
+
+    owner.refresh_from_db()
+    assert owner.support_pin == "000000"
+    assert "[dry-run]" in out.getvalue()
+    assert "Dry run complete." in out.getvalue()
+
+
+@pytest.mark.django_db
+def test_backfill_support_pins_respects_starting_ownerid():
+    first = OwnerFactory(support_pin="000000")
+    second = OwnerFactory(support_pin="000000")
+
+    out = StringIO()
+    call_command(
+        "backfill_support_pins",
+        stdout=out,
+        stderr=StringIO(),
+        starting_ownerid=first.ownerid,
+    )
+
+    first.refresh_from_db()
+    second.refresh_from_db()
+
+    # `first` is excluded (starting-ownerid is exclusive); `second` is updated.
+    assert first.support_pin == "000000"
+    assert second.support_pin != "000000"
+    assert Owner.objects.filter(ownerid=second.ownerid).exists()
+
+
+@pytest.mark.django_db
+def test_backfill_support_pins_batches(mocker):
+    bulk_update = mocker.spy(Owner.objects, "bulk_update")
+    OwnerFactory(support_pin="000000")
+    OwnerFactory(support_pin="000000")
+    OwnerFactory(support_pin="000000")
+
+    call_command(
+        "backfill_support_pins",
+        stdout=StringIO(),
+        stderr=StringIO(),
+        batch_size=1,
+    )
+
+    # One bulk_update call per owner when batch-size is 1.
+    assert bulk_update.call_count == 3
