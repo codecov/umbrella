@@ -2,24 +2,7 @@
 
 from django.db import migrations, models
 
-from shared.django_apps.codecov_auth.models import _generate_support_pin
-from shared.django_apps.migration_utils import RiskyAddField, RiskyRunPython
-
-
-def backfill_support_pins(apps, schema_editor):
-    """Give every existing owner its own random 6-digit PIN.
-
-    `RiskyAddField` populates pre-existing rows with a single computed default
-    value (the same PIN for everyone), so we re-randomize each row here. New
-    rows created through the ORM get a fresh PIN from `_generate_support_pin`.
-    """
-    schema_editor.execute(
-        "UPDATE owners SET support_pin = lpad((floor(random() * 1000000))::int::text, 6, '0')"
-    )
-
-
-def noop_reverse(apps, schema_editor):
-    pass
+from shared.django_apps.migration_utils import RiskyAddField
 
 
 class Migration(migrations.Migration):
@@ -28,7 +11,7 @@ class Migration(migrations.Migration):
     --
     -- Add field support_pin to owner
     --
-    ALTER TABLE "owners" ADD COLUMN "support_pin" varchar(6) NULL;
+    ALTER TABLE "owners" ADD COLUMN "support_pin" varchar(6) DEFAULT '000000' NULL;
     COMMIT;
     """
 
@@ -37,12 +20,15 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
+        # Add the column with the cheap "000000" placeholder default. A constant
+        # default is a metadata-only change in Postgres, so existing rows are not
+        # rewritten. Real random PINs are assigned out of band by the
+        # `backfill_support_pins` management command.
         RiskyAddField(
             model_name="owner",
             name="support_pin",
             field=models.CharField(
-                blank=True, default=_generate_support_pin, max_length=6, null=True
+                blank=True, default="000000", max_length=6, null=True
             ),
         ),
-        RiskyRunPython(backfill_support_pins, noop_reverse),
     ]
