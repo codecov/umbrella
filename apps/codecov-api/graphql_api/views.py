@@ -226,6 +226,12 @@ class AsyncGraphqlView(GraphQLAsyncView):
         if "query" in request_body and isinstance(request_body["query"], str):
             clean_query = request_body["query"].replace("\n", " ")
             clean_query = clean_query.replace("  ", "").strip()
+            # Coerce string-typed pull IDs to integers so that clients
+            # passing pull(id: "58") instead of pull(id: 58) are handled
+            # gracefully rather than failing GraphQL Int validation.
+            clean_query = regex.sub(
+                r'pull\(id:\s*"(\d+)"\)', r"pull(id: \1)", clean_query
+            )
             return clean_query
 
     async def get(self, *args: Any, **kwargs: Any) -> HttpResponse:
