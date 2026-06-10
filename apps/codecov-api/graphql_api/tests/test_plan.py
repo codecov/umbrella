@@ -76,7 +76,7 @@ class TestPlanType(GraphQLTestHelper, TestCase):
             "trialEndDate": "2023-07-03T00:00:00",
             "trialStartDate": "2023-06-19T00:00:00",
             "trialTotalDays": 14,
-            "marketingName": "Developer",
+            "marketingName": "DEPLOY_TEST_0610_Developer",
             "value": "users-trial",
             "tierName": "trial",
             "billingRate": None,
@@ -127,7 +127,7 @@ class TestPlanType(GraphQLTestHelper, TestCase):
             """
         data = self.gql_request(query, owner=self.current_org)
         assert data["owner"]["plan"] == {
-            "marketingName": "Pro",
+            "marketingName": "DEPLOY_TEST_0610_Pro",
             "value": "users-pr-inappy",
             "tierName": "pro",
             "billingRate": "annually",
