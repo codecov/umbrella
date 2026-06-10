@@ -396,12 +396,14 @@ class BundleAnalysisComparison:
             else:
                 base_bundle_report = base_bundle_reports[bundle_name]
                 del base_bundle_reports[bundle_name]
-                size_delta = (
-                    head_bundle_report.total_size() - base_bundle_report.total_size()
-                )
-                percentage_delta = round(
-                    (size_delta / base_bundle_report.total_size()) * 100, 2
-                )
+                base_total = base_bundle_report.total_size()
+                size_delta = head_bundle_report.total_size() - base_total
+                if size_delta == 0:
+                    percentage_delta = 0
+                elif base_total == 0:
+                    percentage_delta = 100.0
+                else:
+                    percentage_delta = round((size_delta / base_total) * 100, 2)
                 yield BundleChange(
                     bundle_name=bundle_name,
                     change_type=BundleChange.ChangeType.CHANGED,
