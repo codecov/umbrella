@@ -49,6 +49,11 @@ def resolve_patch_coverage(impacted_file: ImpactedFile, info) -> ReportTotals:
     return impacted_file.patch_coverage
 
 
+@impacted_file_bindable.field("patchTotals")
+def resolve_patch_totals(impacted_file: ImpactedFile, info) -> ReportTotals:
+    return impacted_file.patch_coverage
+
+
 @impacted_file_bindable.field("changeCoverage")
 def resolve_change_coverage(impacted_file: ImpactedFile, info) -> float:
     return impacted_file.change_coverage

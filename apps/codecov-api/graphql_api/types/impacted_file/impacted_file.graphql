@@ -8,6 +8,7 @@ type ImpactedFile {
   baseCoverage: CoverageTotals
   headCoverage: CoverageTotals
   patchCoverage: CoverageTotals
+  patchTotals: CoverageTotals
   changeCoverage: Float
   missesCount: Int!
   hashedPath: String!
