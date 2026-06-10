@@ -192,7 +192,12 @@ def test_backfill_support_pins_replaces_placeholder():
     # Owners with a real PIN are left untouched.
     assert already_set.support_pin == "123456"
 
-    assert "Backfilled 2 support PINs." in out.getvalue()
+    output = out.getvalue()
+    assert "Backfilling support PINs for 2 owners..." in output
+    # Progress line with counter, percentage, and ETA.
+    assert "2/2 (100.0%)" in output
+    assert "ETA" in output
+    assert "Backfilled 2 support PINs." in output
 
 
 @pytest.mark.django_db
@@ -209,7 +214,7 @@ def test_backfill_support_pins_is_idempotent():
     call_command("backfill_support_pins", stdout=out, stderr=StringIO())
     owner.refresh_from_db()
     assert owner.support_pin == first_pin
-    assert "Backfilled 0 support PINs." in out.getvalue()
+    assert "No owners need a support PIN backfill." in out.getvalue()
 
 
 @pytest.mark.django_db

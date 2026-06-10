@@ -1,9 +1,22 @@
+import time
+
 from django.core.management.base import BaseCommand
 
 from shared.django_apps.codecov_auth.models import Owner, _generate_support_pin
 
 PLACEHOLDER_PIN = "000000"
 BATCH_SIZE = 1000
+
+
+def _format_duration(seconds: float) -> str:
+    seconds = int(seconds)
+    hours, remainder = divmod(seconds, 3600)
+    minutes, secs = divmod(remainder, 60)
+    if hours:
+        return f"{hours}h{minutes:02d}m{secs:02d}s"
+    if minutes:
+        return f"{minutes}m{secs:02d}s"
+    return f"{secs}s"
 
 
 class Command(BaseCommand):
@@ -14,8 +27,18 @@ class Command(BaseCommand):
     )
 
     def handle(self, *args, **options) -> None:
+        total = Owner.objects.filter(support_pin=PLACEHOLDER_PIN).count()
+        if total == 0:
+            self.stdout.write(
+                self.style.SUCCESS("No owners need a support PIN backfill.")
+            )
+            return
+
+        self.stdout.write(f"Backfilling support PINs for {total} owners...")
+
         last_ownerid = 0
-        total = 0
+        processed = 0
+        start = time.monotonic()
 
         while True:
             # Keyset pagination on the primary key: updated rows drop out of the
@@ -35,6 +58,16 @@ class Command(BaseCommand):
 
             Owner.objects.bulk_update(batch, ["support_pin"])
             last_ownerid = batch[-1].ownerid
-            total += len(batch)
+            processed += len(batch)
 
-        self.stdout.write(self.style.SUCCESS(f"Backfilled {total} support PINs."))
+            elapsed = time.monotonic() - start
+            rate = processed / elapsed if elapsed > 0 else 0
+            eta = (total - processed) / rate if rate > 0 else 0
+            pct = min(processed / total * 100, 100)
+            self.stdout.write(
+                f"  {processed}/{total} ({pct:.1f}%) | "
+                f"{rate:.0f}/s | elapsed {_format_duration(elapsed)} | "
+                f"ETA {_format_duration(eta)}"
+            )
+
+        self.stdout.write(self.style.SUCCESS(f"Backfilled {processed} support PINs."))
