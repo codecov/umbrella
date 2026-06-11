@@ -23,3 +23,8 @@ def resolve_last_four(user_token: UserToken, info):
 @user_token_bindable.field("expiration")
 def resolve_expiration(user_token: UserToken, info):
     return user_token.valid_until
+
+
+@user_token_bindable.field("token")
+def resolve_token(user_token: UserToken, info):
+    return None
