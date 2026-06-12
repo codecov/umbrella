@@ -34,6 +34,7 @@ type Me {
     before: String
   ): MyOrganizationConnection!
     @cost(complexity: 15, multipliers: ["first", "last"])
+  isOnlyUsingSentryApp: Boolean! @deprecated(reason: "Sentry app integration has been removed; always returns false")
   isSyncingWithGitProvider: Boolean!
   trackingMetadata: trackingMetadata! # temporary solution to expose the user metadata
   privateAccess: Boolean
