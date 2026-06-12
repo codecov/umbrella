@@ -100,6 +100,26 @@ def resolve_is_timescale_enabled(_, info):
     return settings.TIMESERIES_ENABLED
 
 
+@config_bindable.field("isSelfHosted")
+def resolve_is_self_hosted(_, info) -> bool:
+    return bool(settings.IS_ENTERPRISE)
+
+
+@config_bindable.field("billingPlan")
+@sync_to_async
+def resolve_billing_plan(_, info) -> str | None:
+    if not settings.IS_ENTERPRISE:
+        return None
+
+    license = self_hosted.get_current_license()
+    if not license.is_valid:
+        return None
+
+    if license.is_pr_billing:
+        return "pr_billing"
+    return "user_billing"
+
+
 @config_bindable.field("selfHostedLicense")
 def resolve_self_hosted_license(_, info):
     if not settings.IS_ENTERPRISE:
