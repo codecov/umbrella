@@ -4,10 +4,12 @@ type Config {
   seatsUsed: Int
   seatsLimit: Int
   isTimescaleEnabled: Boolean!
+  isSelfHosted: Boolean!
   hasAdmins: Boolean
   githubEnterpriseURL: String
   gitlabEnterpriseURL: String
   bitbucketServerURL: String
   selfHostedLicense: SelfHostedLicense
   syncProviders: [SyncProvider!]!
+  billingPlan: String
 }
