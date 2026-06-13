@@ -7,7 +7,9 @@ type Config {
   hasAdmins: Boolean
   githubEnterpriseURL: String
   gitlabEnterpriseURL: String
+  gitlabURL: String @deprecated(reason: "Use gitlabEnterpriseURL")
   bitbucketServerURL: String
+  bitbucketURL: String @deprecated(reason: "Use bitbucketServerURL")
   selfHostedLicense: SelfHostedLicense
   syncProviders: [SyncProvider!]!
 }
