@@ -11,7 +11,9 @@ from codecov_auth.models import Owner
 @dataclass
 class SetUploadTokenRequiredInput:
     upload_token_required: bool
-    org_username: str
+    owner: str
+    repo_name: str | None = None
+    provider: str | None = None
 
 
 class SetUploadTokenRequiredInteractor(BaseInteractor):
@@ -31,11 +33,13 @@ class SetUploadTokenRequiredInteractor(BaseInteractor):
     def execute(self, input: dict[str, bool]):
         typed_input = SetUploadTokenRequiredInput(
             upload_token_required=input.get("upload_token_required"),
-            org_username=input.get("org_username"),
+            owner=input.get("owner"),
+            repo_name=input.get("repo_name"),
+            provider=input.get("provider"),
         )
 
         owner_obj = Owner.objects.filter(
-            username=typed_input.org_username, service=self.service
+            username=typed_input.owner, service=self.service
         ).first()
 
         self.validate(owner_obj, typed_input.upload_token_required)
