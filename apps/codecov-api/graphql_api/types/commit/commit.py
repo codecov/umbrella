@@ -319,7 +319,7 @@ def resolve_deprecated_path_contents(
 
 
 @commit_bindable.field("errors")
-async def resolve_errors(commit, info, error_type):
+async def resolve_errors(commit, info, error_type=None):
     command = info.context["executor"].get_command("commit")
     queryset = await command.get_commit_errors(commit, error_type=error_type)
     return await queryset_to_connection(
