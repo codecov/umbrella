@@ -4,6 +4,7 @@ from asgiref.sync import sync_to_async
 from graphql import GraphQLResolveInfo
 
 from codecov_auth.models import Owner, OwnerProfile
+from services.sentry import is_sentry_user
 from codecov_auth.views.okta_cloud import OKTA_SIGNED_IN_ACCOUNTS_SESSION_KEY
 from graphql_api.actions.owner import (
     get_owner_login_sessions,
@@ -128,6 +129,11 @@ def resolve_business_email(current_owner: Owner, _, **kwargs) -> str | None:
 @me_bindable.field("supportPin")
 def resolve_support_pin(current_owner: Owner, _, **kwargs) -> str | None:
     return current_owner.support_pin
+
+
+@me_bindable.field("hasLinkedSentryLogin")
+def resolve_has_linked_sentry_login(owner: Owner, _, **kwargs) -> bool:
+    return is_sentry_user(owner)
 
 
 @me_bindable.field("privateAccess")

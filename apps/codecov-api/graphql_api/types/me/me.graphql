@@ -39,6 +39,7 @@ type Me {
   privateAccess: Boolean
   termsAgreement: Boolean
   supportPin: String
+  hasLinkedSentryLogin: Boolean!
 }
 
 # Temporary type to gather the different attributes for tracking until we have
