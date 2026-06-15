@@ -1,4 +1,5 @@
 import logging
+import re
 
 import sentry_sdk
 from asgiref.sync import async_to_sync
@@ -17,6 +18,15 @@ from shared.helpers.cache import NO_VALUE, cache, make_hash_sha256
 from shared.torngit.exceptions import TorngitClientError, TorngitError
 
 log = logging.getLogger(__name__)
+
+# Matches GitHub merge queue branch names: gh-readonly-queue/<base-branch>/pr-<number>-<sha>
+_MERGE_QUEUE_RE = re.compile(r"^gh-readonly-queue/(.+)/pr-\d+-[0-9a-f]+$")
+
+
+def _merge_queue_base_branch(branch: str) -> str | None:
+    """Return the target base branch for a GitHub merge queue branch, or None."""
+    m = _MERGE_QUEUE_RE.match(branch)
+    return m.group(1) if m else None
 
 
 class StatusNotifier(AbstractBaseNotifier):
@@ -47,10 +57,15 @@ class StatusNotifier(AbstractBaseNotifier):
     def can_we_set_this_status(self, comparison: ComparisonProxy) -> bool:
         head = comparison.head.commit
         pull = comparison.pull
+        merge_queue_base = _merge_queue_base_branch(head.branch or "")
         if (
-            self.notifier_yaml_settings.get("only_pulls")
-            or self.notifier_yaml_settings.get("base") == "pr"
-        ) and not pull:
+            (
+                self.notifier_yaml_settings.get("only_pulls")
+                or self.notifier_yaml_settings.get("base") == "pr"
+            )
+            and not pull
+            and not merge_queue_base
+        ):
             return False
         if not match(self.notifier_yaml_settings.get("branches"), head.branch):
             return False
