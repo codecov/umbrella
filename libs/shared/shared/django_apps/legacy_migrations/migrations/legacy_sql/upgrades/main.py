@@ -11,6 +11,7 @@ from .v453 import run_sql as v453_run_sql
 from .v454 import run_sql as v454_run_sql
 from .v455 import run_sql as v455_run_sql
 from .v461 import run_sql as v461_run_sql
+from .v462 import run_sql as v462_run_sql
 from .v4410 import run_sql as v4410_run_sql
 from .v4510 import run_sql as v4510_run_sql
 
@@ -30,6 +31,7 @@ UPGRADE_MIGRATIONS_BY_VERSION = (
     ((4, 5, 5), v455_run_sql),
     ((4, 5, 10), v4510_run_sql),
     ((4, 6, 1), v461_run_sql),
+    ((4, 6, 2), v462_run_sql),
 )
 
 
