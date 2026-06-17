@@ -379,6 +379,62 @@ class TestBaseStatusNotifier:
         )
         assert not exclude_branch_notifier.can_we_set_this_status(comparison)
 
+    def test_can_we_set_this_status_merge_queue(self, sample_comparison_without_pull):
+        comparison = sample_comparison_without_pull
+        # Put the head commit on a GitHub merge queue branch targeting "new_branch"
+        comparison.head.commit.branch = "gh-readonly-queue/new_branch/pr-42-abc1234f"
+
+        # only_pulls: true should not block merge queue commits
+        only_pulls_notifier = StatusNotifier(
+            repository=comparison.head.commit.repository,
+            title="title",
+            notifier_yaml_settings={"only_pulls": True},
+            notifier_site_settings=True,
+            current_yaml=UserYaml({}),
+            repository_service={},
+        )
+        assert only_pulls_notifier.can_we_set_this_status(comparison)
+
+        # branches filter is matched against the raw branch name, not the extracted base;
+        # "new_branch" does not match "gh-readonly-queue/new_branch/pr-42-abc1234f"
+        raw_branch_filter_notifier = StatusNotifier(
+            repository=comparison.head.commit.repository,
+            title="title",
+            notifier_yaml_settings={"only_pulls": True, "branches": ["new_branch"]},
+            notifier_site_settings=True,
+            current_yaml=UserYaml({}),
+            repository_service={},
+        )
+        assert not raw_branch_filter_notifier.can_we_set_this_status(comparison)
+
+        # a branches filter that explicitly matches the full merge queue branch name passes
+        mq_branch_filter_notifier = StatusNotifier(
+            repository=comparison.head.commit.repository,
+            title="title",
+            notifier_yaml_settings={
+                "only_pulls": True,
+                "branches": ["gh-readonly-queue/new_branch.*"],
+            },
+            notifier_site_settings=True,
+            current_yaml=UserYaml({}),
+            repository_service={},
+        )
+        assert mq_branch_filter_notifier.can_we_set_this_status(comparison)
+
+        # negative pattern on the raw merge queue branch name is honored
+        exclude_mq_notifier = StatusNotifier(
+            repository=comparison.head.commit.repository,
+            title="title",
+            notifier_yaml_settings={
+                "only_pulls": True,
+                "branches": ["!gh-readonly-queue.*"],
+            },
+            notifier_site_settings=True,
+            current_yaml=UserYaml({}),
+            repository_service={},
+        )
+        assert not exclude_mq_notifier.can_we_set_this_status(comparison)
+
     def test_notify_after_n_builds_flags(self, sample_comparison, mocker):
         comparison = sample_comparison
         no_settings_notifier = StatusNotifier(

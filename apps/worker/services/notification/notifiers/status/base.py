@@ -1,4 +1,5 @@
 import logging
+import re
 
 import sentry_sdk
 from asgiref.sync import async_to_sync
@@ -17,6 +18,9 @@ from shared.helpers.cache import NO_VALUE, cache, make_hash_sha256
 from shared.torngit.exceptions import TorngitClientError, TorngitError
 
 log = logging.getLogger(__name__)
+
+# Matches GitHub merge queue branch names: gh-readonly-queue/<base-branch>/pr-<number>-<sha>
+_MERGE_QUEUE_RE = re.compile(r"^gh-readonly-queue/.+/pr-\d+-[0-9a-f]+$")
 
 
 class StatusNotifier(AbstractBaseNotifier):
@@ -48,9 +52,13 @@ class StatusNotifier(AbstractBaseNotifier):
         head = comparison.head.commit
         pull = comparison.pull
         if (
-            self.notifier_yaml_settings.get("only_pulls")
-            or self.notifier_yaml_settings.get("base") == "pr"
-        ) and not pull:
+            (
+                self.notifier_yaml_settings.get("only_pulls")
+                or self.notifier_yaml_settings.get("base") == "pr"
+            )
+            and not pull
+            and not _MERGE_QUEUE_RE.match(head.branch or "")
+        ):
             return False
         if not match(self.notifier_yaml_settings.get("branches"), head.branch):
             return False
