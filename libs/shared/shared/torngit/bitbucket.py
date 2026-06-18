@@ -10,6 +10,7 @@ from shared.torngit.exceptions import (
     TorngitClientError,
     TorngitClientGeneralError,
     TorngitObjectNotFoundError,
+    TorngitRateLimitError,
     TorngitServer5xxCodeError,
     TorngitServerUnreachableError,
 )
@@ -114,6 +115,13 @@ class Bitbucket(TorngitBaseAdapter):
             )
         elif res.status_code >= 500:
             raise TorngitServer5xxCodeError("Bitbucket is having 5xx issues")
+        elif res.status_code == 429:
+            retry_after = res.headers.get("Retry-After")
+            raise TorngitRateLimitError(
+                response_data={"content": res.content},
+                message="Bitbucket API: Too Many Requests",
+                retry_after=int(retry_after) if retry_after is not None else None,
+            )
         elif res.status_code >= 300:
             message = f"Bitbucket API: {res.reason_phrase}"
             raise TorngitClientGeneralError(
