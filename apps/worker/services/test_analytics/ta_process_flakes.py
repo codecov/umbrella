@@ -81,9 +81,13 @@ def handle_failure(
 
 @sentry_sdk.trace
 def process_single_upload(
-    upload: ReportSession, curr_flakes: dict[bytes, Flake], repo_id: int
+    upload: ReportSession,
+    curr_flakes: dict[bytes, Flake],
+    repo_id: int,
+    testruns: list[Testrun] | None = None,
 ):
-    testruns = get_testruns(upload)
+    if testruns is None:
+        testruns = list(get_testruns(upload))
 
     for testrun in testruns:
         test_id = bytes(testrun.test_id)
@@ -98,7 +102,7 @@ def process_single_upload(
             case _:
                 continue
 
-    Testrun.objects.bulk_update(testruns, ["outcome"])
+    return testruns
 
 
 @sentry_sdk.trace
@@ -120,8 +124,22 @@ def process_flakes_for_commit(repo_id: int, commit_id: str):
         extra={"flakes": [flake.test_id.hex() for flake in curr_flakes.values()]},
     )
 
+    all_upload_ids = [upload.id for upload in uploads]
+    testruns_by_upload: dict[int, list[Testrun]] = {
+        upload_id: [] for upload_id in all_upload_ids
+    }
+    for testrun in Testrun.objects.filter(
+        Q(timestamp__gte=timezone.now() - timedelta(days=1))
+        & Q(upload_id__in=all_upload_ids)
+    ).order_by("timestamp"):
+        testruns_by_upload[testrun.upload_id].append(testrun)
+
+    all_testruns: list[Testrun] = []
     for upload in uploads:
-        process_single_upload(upload, curr_flakes, repo_id)
+        upload_testruns = testruns_by_upload.get(upload.id, [])
+        process_single_upload(upload, curr_flakes, repo_id, testruns=upload_testruns)
+        all_testruns.extend(upload_testruns)
+    Testrun.objects.bulk_update(all_testruns, ["outcome"])
         log.info(
             "process_flakes_for_commit: processed upload",
             extra={"upload": upload.id},
