@@ -15,9 +15,13 @@ class SetUploadTokenRequiredInput:
 
 
 class SetUploadTokenRequiredInteractor(BaseInteractor):
-    def validate(self, owner_obj, upload_token_required):
+    def validate(self, owner_obj, upload_token_required, org_username):
         if not self.current_user.is_authenticated:
             raise Unauthenticated()
+        if not org_username:
+            raise ValidationError(
+                "orgUsername (or owner) must be provided"
+            )
         if not owner_obj:
             raise ValidationError("Owner not found")
         if not current_user_part_of_org(self.current_owner, owner_obj):
@@ -29,16 +33,17 @@ class SetUploadTokenRequiredInteractor(BaseInteractor):
 
     @sync_to_async
     def execute(self, input: dict[str, bool]):
+        org_username = input.get("org_username") or input.get("owner")
         typed_input = SetUploadTokenRequiredInput(
             upload_token_required=input.get("upload_token_required"),
-            org_username=input.get("org_username"),
+            org_username=org_username,
         )
 
         owner_obj = Owner.objects.filter(
             username=typed_input.org_username, service=self.service
         ).first()
 
-        self.validate(owner_obj, typed_input.upload_token_required)
+        self.validate(owner_obj, typed_input.upload_token_required, typed_input.org_username)
 
         owner_obj.upload_token_required_for_public_repos = bool(
             typed_input.upload_token_required
