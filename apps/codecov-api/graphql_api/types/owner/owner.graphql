@@ -39,6 +39,7 @@ type Owner {
     last: Int
     before: String
   ): RepositoryConnection! @cost(complexity: 25, multipliers: ["first", "last"])
+  service: String!
   username: String
   yaml: String
   aiFeaturesEnabled: Boolean!
