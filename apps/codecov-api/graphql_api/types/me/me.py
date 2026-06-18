@@ -130,6 +130,13 @@ def resolve_support_pin(current_owner: Owner, _, **kwargs) -> str | None:
     return current_owner.support_pin
 
 
+@me_bindable.field("hasLinkedSentryLogin")
+def resolve_has_linked_sentry_login(current_owner: Owner, _, **kwargs) -> bool:
+    if current_owner.user is None:
+        return False
+    return current_owner.user.sentry_user_set.exists()
+
+
 @me_bindable.field("privateAccess")
 @sync_to_async
 def resolve_private_access(owner: Owner, info) -> bool:
