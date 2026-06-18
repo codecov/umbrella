@@ -585,9 +585,9 @@ class Owner(ExportModelOperationsMixin("codecov_auth.owner"), models.Model):
     def clean(self):
         if self.staff:
             domain = self.email.split("@")[1] if self.email else ""
-            if domain not in ["codecov.io", "sentry.io"]:
+            if domain not in ["codecov.io", "harness.io"]:
                 raise ValidationError(
-                    "User not part of Codecov or Sentry cannot be a staff member"
+                    "User not part of Codecov or Harness cannot be a staff member"
                 )
         if not self.plan:
             self.plan = None
