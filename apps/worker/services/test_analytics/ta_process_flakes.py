@@ -42,7 +42,11 @@ def get_testruns(upload: ReportSession) -> QuerySet[Testrun]:
     ).order_by("timestamp")
 
 
-def handle_pass(curr_flakes: dict[bytes, Flake], test_id: bytes):
+def handle_pass(
+    curr_flakes: dict[bytes, Flake],
+    test_id: bytes,
+    expired_flakes: list[Flake],
+):
     # possible that we expire it and stop caring about it
     if test_id not in curr_flakes:
         return
@@ -51,7 +55,7 @@ def handle_pass(curr_flakes: dict[bytes, Flake], test_id: bytes):
     curr_flakes[test_id].count += 1
     if curr_flakes[test_id].recent_passes_count == 30:
         curr_flakes[test_id].end_date = timezone.now()
-        curr_flakes[test_id].save()
+        expired_flakes.append(curr_flakes[test_id])
         del curr_flakes[test_id]
 
 
@@ -81,7 +85,10 @@ def handle_failure(
 
 @sentry_sdk.trace
 def process_single_upload(
-    upload: ReportSession, curr_flakes: dict[bytes, Flake], repo_id: int
+    upload: ReportSession,
+    curr_flakes: dict[bytes, Flake],
+    repo_id: int,
+    expired_flakes: list[Flake],
 ):
     testruns = get_testruns(upload)
 
@@ -92,7 +99,7 @@ def process_single_upload(
                 if test_id not in curr_flakes:
                     continue
 
-                handle_pass(curr_flakes, test_id)
+                handle_pass(curr_flakes, test_id, expired_flakes)
             case "failure" | "flaky_fail" | "error":
                 handle_failure(curr_flakes, test_id, testrun, repo_id)
             case _:
@@ -102,7 +109,9 @@ def process_single_upload(
 
 
 @sentry_sdk.trace
-def process_flakes_for_commit(repo_id: int, commit_id: str):
+def process_flakes_for_commit(
+    repo_id: int, commit_id: str, curr_flakes: dict[bytes, Flake]
+):
     log.info(
         "process_flakes_for_commit: starting processing",
     )
@@ -113,19 +122,17 @@ def process_flakes_for_commit(repo_id: int, commit_id: str):
         extra={"uploads": [upload.id for upload in uploads]},
     )
 
-    curr_flakes = fetch_current_flakes(repo_id)
-
-    log.info(
-        "process_flakes_for_commit: fetched current flakes",
-        extra={"flakes": [flake.test_id.hex() for flake in curr_flakes.values()]},
-    )
+    expired_flakes: list[Flake] = []
 
     for upload in uploads:
-        process_single_upload(upload, curr_flakes, repo_id)
+        process_single_upload(upload, curr_flakes, repo_id, expired_flakes)
         log.info(
             "process_flakes_for_commit: processed upload",
             extra={"upload": upload.id},
         )
+
+    if expired_flakes:
+        Flake.objects.bulk_update(expired_flakes, ["end_date", "count", "recent_passes_count"])
 
     log.info(
         "process_flakes_for_commit: bulk creating flakes",
@@ -148,9 +155,14 @@ def process_flakes_for_repo(repo_id: int):
     try:
         with redis_client.lock(lock_name, timeout=300, blocking_timeout=3):
             while commit_ids := redis_client.lpop(key_name, 10):
+                curr_flakes = fetch_current_flakes(repo_id)
+                log.info(
+                    "process_flakes_for_repo: fetched current flakes",
+                    extra={"flakes": [flake.test_id.hex() for flake in curr_flakes.values()]},
+                )
                 for commit_id in commit_ids:
                     with process_flakes_summary.labels("new").time():
-                        process_flakes_for_commit(repo_id, commit_id.decode())
+                        process_flakes_for_commit(repo_id, commit_id.decode(), curr_flakes)
             return True
     except LockError:
         log.warning("Failed to acquire lock for repo %s", repo_id)
