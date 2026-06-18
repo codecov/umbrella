@@ -747,10 +747,12 @@ class MessagesToUserSectionWriter(BaseSectionWriter):
         repo = comparison.head.commit.repository
         owner = repo.author
         is_user_in_github = owner.service == "github"
-        owner_is_using_app = (
-            owner.integration_id is not None or owner.github_app_installations != []
-        )
-        if is_user_in_github and not is_enterprise() and not owner_is_using_app:
+        if (
+            is_user_in_github
+            and not is_enterprise()
+            and owner.integration_id is None
+            and owner.github_app_installations == []
+        ):
             return ":exclamation: Your organization needs to install the [Codecov GitHub app](https://github.com/apps/codecov/installations/select_target) to enable full functionality."
         return ""
 
