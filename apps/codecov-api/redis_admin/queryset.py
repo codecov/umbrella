@@ -27,6 +27,7 @@ from . import settings as redis_admin_settings
 from .families import (
     CeleryEnvelopeMeta,
     Family,
+    _discover_celery_queues_from_broker,  # noqa: PLC2701
     find_family,
     iter_keys,
     parse_celery_envelope,
@@ -1179,6 +1180,61 @@ def _stream_frequency_aggregate(
     return buckets, total
 
 
+# Per-request cache attribute name for the resolved summary queue
+# set. The summary changelist (`CeleryBrokerQueueQuerySet.
+# _materialise_summary`) and the sidebar `CeleryQueueFilter.lookups`
+# render on the same page in the admin and would otherwise each
+# trigger their own `SCAN ... TYPE list` against the broker. Stashing
+# the union on the request lets the second caller reuse the first
+# one's work for the duration of that request. See
+# `_REQUEST_CACHE_ATTR` on `CeleryBrokerQueueQuerySet` for the
+# matching pattern used by the LRANGE materialisation.
+_SUMMARY_QUEUE_NAMES_REQUEST_ATTR: str = "_celery_broker_summary_queue_names"
+
+
+def _resolve_summary_queue_names(
+    redis: Any,
+    *,
+    request: Any = None,
+) -> tuple[str, ...]:
+    """Return the sorted union of statically-known + live-discovered queues.
+
+    Combines `_celery_queue_names()` (the static enumeration from
+    `BaseCeleryConfig.task_routes` + operator config + the
+    `celery` / `healthcheck` defaults) with
+    `_discover_celery_queues_from_broker(redis)` (a live
+    `SCAN ... TYPE list` against the broker). The static side keeps
+    well-known but currently-drained queues visible (so an operator
+    investigating "did `healthcheck` get drained?" still sees the
+    `depth=0` row); the live side picks up every queue actually
+    present on the broker, including the per-tenant `enterprise_*`
+    variants that aren't reachable from the API pod's view of
+    `BaseCeleryConfig` because `setup.tasks.*.queue` env vars only
+    ship to worker pods.
+
+    When `request` is supplied, the resolved tuple is cached on it
+    via `_SUMMARY_QUEUE_NAMES_REQUEST_ATTR` so a second caller in
+    the same request (typically `CeleryQueueFilter.lookups` after
+    `_materialise_summary`) doesn't re-issue the SCAN.
+    """
+
+    if request is not None:
+        cached = getattr(request, _SUMMARY_QUEUE_NAMES_REQUEST_ATTR, None)
+        if cached is not None:
+            return cached
+    names: set[str] = set(_celery_queue_names())
+    names.update(_discover_celery_queues_from_broker(redis))
+    resolved = tuple(sorted(names))
+    if request is not None:
+        try:
+            setattr(request, _SUMMARY_QUEUE_NAMES_REQUEST_ATTR, resolved)
+        except (AttributeError, TypeError):  # pragma: no cover - defensive
+            # Some request stand-ins in tests are immutable; cache
+            # miss is fine, we just pay the SCAN twice.
+            pass
+    return resolved
+
+
 class CeleryBrokerQueueQuerySet:
     """Fake QuerySet over messages inside one celery_broker queue.
 
@@ -1468,24 +1524,45 @@ class CeleryBrokerQueueQuerySet:
 
     @sentry_sdk.trace
     def _materialise_summary(self) -> list:
-        """One row per known celery queue with `depth = LLEN(queue)`.
+        """One row per celery queue with `depth = LLEN(queue)`.
 
         Drives the `/admin/redis_admin/celerybrokerqueue/` landing
         page (no `queue_name` filter): operators see every queue and
         its current depth at a glance, then click through to the
-        per-message drill-down. The set of queues is the same one
-        `CeleryQueueFilter` enumerates, so the picker stays in sync
-        with the admin's other surfaces.
+        per-message drill-down.
 
-        Empty queues are kept in the list so an operator who knows a
-        queue exists but is currently drained doesn't lose the entry
-        point — `LLEN` returns 0 for both empty and missing keys, and
-        we treat them identically here.
+        The queue set is the union of:
+
+        * `_discover_celery_queues_from_broker()` — a live
+          `SCAN ... TYPE list` against the broker Redis. The broker
+          is a dedicated Memorystore in production (see
+          `redis_admin.conn`), so every list-typed key on it is a
+          celery queue (kombu internals + our LSET tombstones are
+          deny-listed). This is what surfaces `uploads`, `notify`,
+          `sync`, the per-tenant `enterprise_*_dropbox` /
+          `_mixpanel` / `_squareup` variants, etc. on a deploy that
+          never set `setup.redis_admin.celery_queues`.
+        * `_celery_queue_names()` — the static enumeration
+          (`BaseCeleryConfig.task_routes` queues + the well-known
+          `celery` / `healthcheck` defaults + operator-configured
+          `setup.redis_admin.celery_queues`). Unioning this with
+          live discovery means a queue that's known to the
+          deployment but currently drained still renders a
+          `depth=0` row instead of vanishing, so the entry point
+          stays visible. `LLEN` returns 0 for both empty and
+          missing keys, so empty/known/missing all render as
+          `depth=0` and we treat them identically.
         """
 
         redis = self._connection()
+        # Per-request cache: `CeleryQueueFilter.lookups` (the sidebar
+        # picker) renders on the same page and would otherwise issue
+        # its own `SCAN ... TYPE list` round-trip; sharing through
+        # the request stash collapses it to one. Standalone callers
+        # without a request just eat the per-call SCAN cost.
+        names = _resolve_summary_queue_names(redis, request=self._request)
         rows: list = []
-        for name in _celery_queue_names():
+        for name in names:
             try:
                 depth = int(redis.llen(name) or 0)
             except Exception:  # pragma: no cover - defensive

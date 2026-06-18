@@ -1699,6 +1699,203 @@ def test_queryset_summary_mode_lists_known_queues_with_depth(patched_broker):
     assert by_name["celery"].pk_token == "celery#summary"
 
 
+def test_queryset_summary_mode_unions_live_broker_scan_with_static_names(
+    patched_broker,
+):
+    """Summary mode must include queues discovered live on the broker
+    even when they aren't in `_celery_queue_names()`. This is the
+    production case the change fixes: on the API pod
+    `_resolve_celery_queue_names` returns only `("celery",
+    "healthcheck")` because `setup.tasks.*.queue` env vars don't
+    ship there, but the broker actually carries `uploads`, `notify`,
+    `sync`, and every per-tenant `enterprise_*` variant.
+
+    Push some of those directly onto the fake broker and confirm they
+    surface as summary rows with the correct `LLEN`-derived depth.
+    """
+
+    patched_broker.rpush("uploads", _build_envelope(kwargs={"repoid": 1}))
+    patched_broker.rpush("uploads", _build_envelope(kwargs={"repoid": 2}))
+    patched_broker.rpush("notify", _build_envelope(kwargs={}))
+    patched_broker.rpush("enterprise_uploads_dropbox", _build_envelope(kwargs={}))
+
+    qs = CeleryBrokerQueueQuerySet(CeleryBrokerQueue)
+    rows = list(qs)
+
+    by_name = {r.queue_name: r for r in rows}
+    # Live-discovered queues land in the summary even though
+    # `_resolve_celery_queue_names()` doesn't know about them.
+    assert by_name["uploads"].depth == 2
+    assert by_name["notify"].depth == 1
+    assert by_name["enterprise_uploads_dropbox"].depth == 1
+    # Static defaults still render at depth=0 so a known-but-drained
+    # queue stays visible — `_celery_queue_names` returns
+    # `("celery", "healthcheck")` in the minimal test env.
+    assert by_name["healthcheck"].depth == 0
+
+
+def test_queryset_summary_mode_skips_kombu_internal_keys(patched_broker):
+    """The unacked HASH (`unacked`) and `unacked_index` ZSET live on
+    the same broker as the celery queues. The SCAN's `TYPE=list`
+    filter handles those today; the prefix deny-list catches future
+    list-typed kombu / redis_admin internals (e.g. `_kombu.binding.*`,
+    LSET tombstones). Confirm neither leaks into the summary.
+    """
+
+    patched_broker.rpush("uploads", _build_envelope(kwargs={}))
+    patched_broker.hset("unacked", "tag-1", "envelope")
+    patched_broker.zadd("unacked_index", {"tag-1": 1.0})
+    patched_broker.rpush("_kombu.binding.celery", "binding")
+    patched_broker.rpush(
+        "__redis_admin_celery_tombstone__:abc",
+        "stray-tombstone-as-key",
+    )
+
+    qs = CeleryBrokerQueueQuerySet(CeleryBrokerQueue)
+    rows = list(qs)
+
+    names = {r.queue_name for r in rows}
+    assert "uploads" in names
+    assert "unacked" not in names
+    assert "unacked_index" not in names
+    assert "_kombu.binding.celery" not in names
+    assert "__redis_admin_celery_tombstone__:abc" not in names
+
+
+def test_queryset_summary_mode_caches_discovery_on_request(patched_broker, monkeypatch):
+    """The summary changelist (`_materialise_summary`) and the
+    sidebar `CeleryQueueFilter.lookups` both render on the same
+    admin response. Without a per-request cache each one would
+    issue its own `SCAN ... TYPE list` against the broker. Confirm
+    a second materialisation against the same `request` reuses the
+    first one's discovery result.
+    """
+
+    from redis_admin import queryset as redis_admin_queryset  # noqa: PLC0415
+
+    patched_broker.rpush("uploads", _build_envelope(kwargs={}))
+
+    call_count = 0
+    real_discover = redis_admin_queryset._discover_celery_queues_from_broker
+
+    def counting_discover(redis):
+        nonlocal call_count
+        call_count += 1
+        return real_discover(redis)
+
+    monkeypatch.setattr(
+        redis_admin_queryset,
+        "_discover_celery_queues_from_broker",
+        counting_discover,
+    )
+
+    request = SimpleNamespace()
+    list(CeleryBrokerQueueQuerySet(CeleryBrokerQueue, request=request))
+    list(CeleryBrokerQueueQuerySet(CeleryBrokerQueue, request=request))
+
+    assert call_count == 1
+
+
+def test_queryset_summary_mode_no_request_skips_cache(patched_broker, monkeypatch):
+    """Standalone callers (no plumbed request) eat the per-call SCAN
+    cost. Confirm the cache short-circuit doesn't accidentally pin
+    state on the queryset object instead.
+    """
+
+    from redis_admin import queryset as redis_admin_queryset  # noqa: PLC0415
+
+    patched_broker.rpush("uploads", _build_envelope(kwargs={}))
+
+    call_count = 0
+    real_discover = redis_admin_queryset._discover_celery_queues_from_broker
+
+    def counting_discover(redis):
+        nonlocal call_count
+        call_count += 1
+        return real_discover(redis)
+
+    monkeypatch.setattr(
+        redis_admin_queryset,
+        "_discover_celery_queues_from_broker",
+        counting_discover,
+    )
+
+    list(CeleryBrokerQueueQuerySet(CeleryBrokerQueue))
+    list(CeleryBrokerQueueQuerySet(CeleryBrokerQueue))
+
+    assert call_count == 2
+
+
+# ---- Sidebar `CeleryQueueFilter` discovery ---------------------------------
+
+
+def test_celery_queue_filter_lookups_includes_live_broker_queues(patched_broker):
+    """The drill-down sidebar `CeleryQueueFilter` must surface the
+    same union the summary changelist materialises, so an operator
+    can pick a per-tenant `enterprise_*_dropbox` queue from the
+    dropdown without first knowing it exists. Pin that the picker
+    sees both static defaults and live-discovered queues.
+    """
+
+    from redis_admin.admin import CeleryQueueFilter  # noqa: PLC0415
+
+    patched_broker.rpush("uploads", _build_envelope(kwargs={}))
+    patched_broker.rpush("enterprise_uploads_dropbox", _build_envelope(kwargs={}))
+
+    # Construct the filter without going through Django's
+    # `SimpleListFilter.__init__` — we only need `lookups` here, and
+    # the base constructor expects a fully-shaped admin request that
+    # would otherwise need a live `RequestFactory` setup.
+    flt = CeleryQueueFilter.__new__(CeleryQueueFilter)
+    request = SimpleNamespace(GET={})
+    options = dict(flt.lookups(request, model_admin=None))
+
+    assert "uploads" in options
+    assert "enterprise_uploads_dropbox" in options
+    # Static defaults remain in the picker so a known-but-drained
+    # queue is still selectable from the sidebar.
+    assert "celery" in options
+    assert "healthcheck" in options
+
+
+def test_celery_queue_filter_lookups_reuses_request_cache(patched_broker, monkeypatch):
+    """Both the changelist (`_materialise_summary`) and the sidebar
+    (`CeleryQueueFilter.lookups`) render on the same admin response.
+    They must share the per-request discovery cache so we don't pay
+    two `SCAN ... TYPE list` round-trips per page render.
+    """
+
+    from redis_admin import queryset as redis_admin_queryset  # noqa: PLC0415
+    from redis_admin.admin import CeleryQueueFilter  # noqa: PLC0415
+
+    patched_broker.rpush("uploads", _build_envelope(kwargs={}))
+
+    call_count = 0
+    real_discover = redis_admin_queryset._discover_celery_queues_from_broker
+
+    def counting_discover(redis):
+        nonlocal call_count
+        call_count += 1
+        return real_discover(redis)
+
+    monkeypatch.setattr(
+        redis_admin_queryset,
+        "_discover_celery_queues_from_broker",
+        counting_discover,
+    )
+
+    request = SimpleNamespace(GET={})
+
+    # Materialise the summary first (queryset path), then ask the
+    # sidebar filter for its lookups (admin path). The sidebar must
+    # hit the cache and not re-SCAN.
+    list(CeleryBrokerQueueQuerySet(CeleryBrokerQueue, request=request))
+    flt = CeleryQueueFilter.__new__(CeleryQueueFilter)
+    flt.lookups(request, model_admin=None)
+
+    assert call_count == 1
+
+
 # ---- Summary-mode default ordering ----------------------------------------
 
 
