@@ -708,7 +708,7 @@ class OwnerAdmin(AdminMixin, admin.ModelAdmin):
         "support_pin",
     )
     readonly_fields = []
-    search_fields = ("name__iregex", "username__iregex", "email__iregex", "ownerid")
+    search_fields = ("name__icontains", "username__icontains", "email__icontains", "ownerid")
     actions = [
         impersonate_owner,
         extend_trial,
