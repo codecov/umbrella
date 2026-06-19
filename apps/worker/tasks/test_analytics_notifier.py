@@ -36,7 +36,7 @@ from services.test_results import (
     should_do_flaky_detection,
 )
 from shared.celery_config import test_analytics_notifier_task_name
-from shared.django_apps.core.models import Repository
+from shared.django_apps.core.models import Commit, Repository
 from shared.helpers.redis import get_redis_connection
 from shared.reports.types import UploadType
 from shared.typings.torngit import AdditionalData
@@ -312,11 +312,21 @@ class TestAnalyticsNotifierTask(
             log.info("Comment is disabled, not posting comment", extra=self.extra_dict)
             return None
 
+        # Fetch the commit's timestamp to use as a lower bound for TimescaleDB
+        # chunk elimination, which dramatically speeds up the query.
+        commit = Commit.objects.filter(
+            repository_id=repo_id,
+            commitid=upload_context["commit_sha"],
+        ).first()
+        commit_timestamp = commit.timestamp if commit else None
+
         # TODO: Add upload errors in a compliant way
 
         # TODO: Remove impl label
         with read_tests_totals_summary.labels(impl="new").time():
-            summary = get_pr_comment_agg(repo_id, upload_context["commit_sha"])
+            summary = get_pr_comment_agg(
+                repo_id, upload_context["commit_sha"], commit_timestamp
+            )
 
         if summary["failed"] == 0:
             log.info(
@@ -361,7 +371,9 @@ class TestAnalyticsNotifierTask(
         # TODO: Seat activation
 
         with read_failures_summary.labels(impl="new").time():
-            failures = get_pr_comment_failures(repo_id, upload_context["commit_sha"])
+            failures = get_pr_comment_failures(
+                repo_id, upload_context["commit_sha"], commit_timestamp
+            )
 
         notif_failures = transform_failures(failures)
 
