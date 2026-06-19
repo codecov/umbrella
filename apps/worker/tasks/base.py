@@ -12,8 +12,10 @@ from sqlalchemy.exc import (
     DataError,
     IntegrityError,
     InvalidRequestError,
+    OperationalError,
     SQLAlchemyError,
 )
+from shared.plan.constants import DEFAULT_FREE_PLAN
 
 from app import celery_app
 from celery_task_router import _get_ownerid_from_task, _get_user_plan_from_task
@@ -227,8 +229,21 @@ class BaseCodecovTask(celery_app.Task):
     @sentry_sdk.trace
     def apply_async(self, args=None, kwargs=None, **options):
         db_session = get_db_session()
-        user_plan = _get_user_plan_from_task(db_session, self.name, kwargs)
-        ownerid = _get_ownerid_from_task(db_session, self.name, kwargs)
+        try:
+            user_plan = _get_user_plan_from_task(db_session, self.name, kwargs)
+            ownerid = _get_ownerid_from_task(db_session, self.name, kwargs)
+        except OperationalError:
+            log.warning(
+                "apply_async: DB connection lost during task routing lookup, falling back to defaults",
+                extra={"task_name": self.name},
+                exc_info=True,
+            )
+            try:
+                db_session.rollback()
+            except Exception:
+                pass
+            user_plan = DEFAULT_FREE_PLAN
+            ownerid = None
         route_with_extra_config = route_tasks_based_on_user_plan(
             self.name, user_plan, ownerid
         )
