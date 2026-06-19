@@ -430,7 +430,8 @@ class BaseCodecovTask(celery_app.Task):
                 )
                 log_context.parent_task_name = headers.get("parent_task_name")
 
-            log_context.populate_from_sqlalchemy(db_session)
+            if getattr(self, "should_populate_log_context", True):
+                log_context.populate_from_sqlalchemy(db_session)
             set_log_context(log_context)
             load_checkpoints_from_kwargs([UploadFlow, TestResultsFlow], kwargs)
 
