@@ -7,4 +7,5 @@ enum TestResultsOrderingParameter {
   COMMITS_WHERE_FAIL
   RUNS_FAILED
   UPDATED_AT
+  TOTAL_FAIL_COUNT
 }
