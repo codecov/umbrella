@@ -24,7 +24,7 @@ def get_relevant_uploads(repo_id: int, commit_id: str) -> QuerySet[ReportSession
         report__commit__repository__repoid=repo_id,
         report__commit__commitid=commit_id,
         state__in=["processed"],
-    )
+    ).select_related("report__commit__repository")
 
 
 def fetch_current_flakes(repo_id: int) -> dict[bytes, Flake]:
@@ -106,7 +106,7 @@ def process_flakes_for_commit(repo_id: int, commit_id: str):
     log.info(
         "process_flakes_for_commit: starting processing",
     )
-    uploads = get_relevant_uploads(repo_id, commit_id)
+    uploads = list(get_relevant_uploads(repo_id, commit_id))
 
     log.info(
         "process_flakes_for_commit: fetched uploads",
