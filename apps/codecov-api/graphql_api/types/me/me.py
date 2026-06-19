@@ -101,6 +101,12 @@ def resolve_tokens(current_user, _, **kwargs):
     )
 
 
+@me_bindable.field("isOnlyUsingSentryApp")
+def resolve_is_only_using_sentry_app(_, info) -> bool:
+    # Sentry app integration has been removed; always return False.
+    return False
+
+
 @me_bindable.field("isSyncingWithGitProvider")
 def resolve_is_syncing_with_git_provider(_, info):
     command = info.context["executor"].get_command("owner")
