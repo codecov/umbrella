@@ -33,12 +33,15 @@ def fetch_current_flakes(repo_id: int) -> dict[bytes, Flake]:
     }
 
 
-def get_testruns(upload: ReportSession) -> QuerySet[Testrun]:
-    upload_filter = Q(upload_id=upload.id)
+def get_testruns_for_uploads(
+    uploads: QuerySet[ReportSession],
+) -> QuerySet[Testrun]:
+    upload_ids = [upload.id for upload in uploads]
 
     # we won't process flakes for testruns older than 1 day
     return Testrun.objects.filter(
-        Q(timestamp__gte=timezone.now() - timedelta(days=1)) & upload_filter
+        Q(timestamp__gte=timezone.now() - timedelta(days=1))
+        & Q(upload_id__in=upload_ids)
     ).order_by("timestamp")
 
 
@@ -80,12 +83,13 @@ def handle_failure(
 
 
 @sentry_sdk.trace
-def process_single_upload(
-    upload: ReportSession, curr_flakes: dict[bytes, Flake], repo_id: int
+def process_all_uploads(
+    testruns: QuerySet[Testrun], curr_flakes: dict[bytes, Flake], repo_id: int
 ):
-    testruns = get_testruns(upload)
+    # Evaluate the queryset once so we can iterate and later bulk_update
+    testruns_list = list(testruns)
 
-    for testrun in testruns:
+    for testrun in testruns_list:
         test_id = bytes(testrun.test_id)
         match testrun.outcome:
             case "pass":
@@ -98,7 +102,7 @@ def process_single_upload(
             case _:
                 continue
 
-    Testrun.objects.bulk_update(testruns, ["outcome"])
+    Testrun.objects.bulk_update(testruns_list, ["outcome"])
 
 
 @sentry_sdk.trace
@@ -120,12 +124,13 @@ def process_flakes_for_commit(repo_id: int, commit_id: str):
         extra={"flakes": [flake.test_id.hex() for flake in curr_flakes.values()]},
     )
 
-    for upload in uploads:
-        process_single_upload(upload, curr_flakes, repo_id)
-        log.info(
-            "process_flakes_for_commit: processed upload",
-            extra={"upload": upload.id},
-        )
+    testruns = get_testruns_for_uploads(uploads)
+    process_all_uploads(testruns, curr_flakes, repo_id)
+
+    log.info(
+        "process_flakes_for_commit: processed all uploads",
+        extra={"uploads": [upload.id for upload in uploads]},
+    )
 
     log.info(
         "process_flakes_for_commit: bulk creating flakes",
