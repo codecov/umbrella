@@ -24,6 +24,11 @@ def get_relevant_uploads(repo_id: int, commit_id: str) -> QuerySet[ReportSession
         report__commit__repository__repoid=repo_id,
         report__commit__commitid=commit_id,
         state__in=["processed"],
+    ).select_related(
+        "report",
+        "report__commit",
+        "report__commit__repository",
+        "report__commit__repository__author",
     )
 
 
