@@ -33,12 +33,11 @@ def fetch_current_flakes(repo_id: int) -> dict[bytes, Flake]:
     }
 
 
-def get_testruns(upload: ReportSession) -> QuerySet[Testrun]:
-    upload_filter = Q(upload_id=upload.id)
-
+def get_testruns(upload_ids: list[int]) -> QuerySet[Testrun]:
     # we won't process flakes for testruns older than 1 day
     return Testrun.objects.filter(
-        Q(timestamp__gte=timezone.now() - timedelta(days=1)) & upload_filter
+        Q(timestamp__gte=timezone.now() - timedelta(days=1))
+        & Q(upload_id__in=upload_ids)
     ).order_by("timestamp")
 
 
@@ -80,10 +79,10 @@ def handle_failure(
 
 
 @sentry_sdk.trace
-def process_single_upload(
-    upload: ReportSession, curr_flakes: dict[bytes, Flake], repo_id: int
+def process_all_uploads(
+    upload_ids: list[int], curr_flakes: dict[bytes, Flake], repo_id: int
 ):
-    testruns = get_testruns(upload)
+    testruns = get_testruns(upload_ids)
 
     for testrun in testruns:
         test_id = bytes(testrun.test_id)
@@ -120,12 +119,12 @@ def process_flakes_for_commit(repo_id: int, commit_id: str):
         extra={"flakes": [flake.test_id.hex() for flake in curr_flakes.values()]},
     )
 
-    for upload in uploads:
-        process_single_upload(upload, curr_flakes, repo_id)
-        log.info(
-            "process_flakes_for_commit: processed upload",
-            extra={"upload": upload.id},
-        )
+    upload_ids = [upload.id for upload in uploads]
+    process_all_uploads(upload_ids, curr_flakes, repo_id)
+    log.info(
+        "process_flakes_for_commit: processed uploads",
+        extra={"uploads": upload_ids},
+    )
 
     log.info(
         "process_flakes_for_commit: bulk creating flakes",
