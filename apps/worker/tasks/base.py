@@ -190,6 +190,11 @@ class BaseCodecovTask(celery_app.Task):
 
     Request = BaseCodecovRequest
 
+    # Subclasses can set this to False to skip the DB query that populates
+    # the log context with owner/repo details. Useful for high-frequency tasks
+    # that don't benefit from this extra context (e.g. ProcessFlakesTask).
+    populate_log_context_from_db = True
+
     def __init_subclass__(cls, name=None):
         cls.name = name
 
@@ -430,7 +435,8 @@ class BaseCodecovTask(celery_app.Task):
                 )
                 log_context.parent_task_name = headers.get("parent_task_name")
 
-            log_context.populate_from_sqlalchemy(db_session)
+            if self.populate_log_context_from_db:
+                log_context.populate_from_sqlalchemy(db_session)
             set_log_context(log_context)
             load_checkpoints_from_kwargs([UploadFlow, TestResultsFlow], kwargs)
 
