@@ -83,9 +83,15 @@ def resolve_indirect_changed_files_count(
 @comparison_bindable.field("impactedFile")
 @sync_to_async
 def resolve_impacted_file(
-    comparison: ComparisonReport, info: GraphQLResolveInfo, path
+    comparison: ComparisonReport,
+    info: GraphQLResolveInfo,
+    path,
+    filters=None,
 ) -> ImpactedFile:
-    return comparison.impacted_file(path)
+    impacted_file = comparison.impacted_file(path)
+    if impacted_file is not None and filters is not None:
+        impacted_file.segment_filters = filters
+    return impacted_file
 
 
 # TODO: rename `changeCoverage`
