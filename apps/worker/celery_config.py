@@ -4,6 +4,7 @@ import logging
 from datetime import timedelta
 
 from celery import signals
+from django.db import close_old_connections
 from celery.beat import BeatLazyFunc
 from celery.schedules import crontab
 
@@ -23,6 +24,18 @@ from shared.helpers.cache import RedisBackend, cache
 from shared.helpers.redis import get_redis_connection
 
 log = logging.getLogger(__name__)
+
+
+@signals.task_prerun.connect
+def close_old_db_connections(**kwargs) -> None:
+    """Close stale DB connections before each task runs.
+
+    Celery workers bypass Django's request/response middleware, so persistent
+    connections can go stale while tasks perform long external I/O (e.g. GitHub
+    API calls). Calling close_old_connections() discards any connection that the
+    DB server has already closed, forcing Django to open a fresh one.
+    """
+    close_old_connections()
 
 
 @signals.worker_before_create_process.connect
