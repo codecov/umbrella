@@ -13,6 +13,7 @@ from .queryset import (
     CeleryBrokerQueueQuerySet,
     RedisItemQuerySet,
     RedisQueueQuerySet,
+    UnackedQueueQuerySet,
 )
 
 
@@ -184,6 +185,102 @@ class CeleryBrokerQueue(models.Model):
         raise NotImplementedError(
             "CeleryBrokerQueue.delete is not supported on individual "
             "instances; use redis_admin.services.celery_broker_clear "
+            "(which the admin's clear flow already invokes)."
+        )
+
+
+class UnackedQueueItemManager(models.Manager):
+    def get_queryset(self) -> UnackedQueueQuerySet:  # type: ignore[override]
+        return UnackedQueueQuerySet(self.model)
+
+
+class UnackedQueueItem(models.Model):
+    """A single Kombu unacked-message envelope.
+
+    Surfaces Kombu's Redis transport unacked bookkeeping as one row
+    per `delivery_tag`. The Grafana panel
+    `redis_key_size{key="unacked"}` corresponds to this admin's
+    `HLEN unacked` snapshot — the same hash whose drill-down this
+    admin renders.
+
+    Storage layout (verified against
+    `kombu.transport.redis.Channel.unacked_key` /
+    `unacked_index_key` in this venv):
+
+    * `unacked` — Redis HASH. Field = `delivery_tag` (UUID-ish
+      string). Value = JSON-serialised
+      `[message_dict, exchange_str, routing_key_str]` triple.
+      `message_dict["body"]` is base64-encoded JSON of the celery
+      envelope, the same shape `parse_celery_envelope` understands.
+    * `unacked_index` — Redis ZSET. Score = visibility-timeout
+      deadline (unix ts). Member = `delivery_tag`. Used by Kombu's
+      restore-loop to re-enqueue messages whose worker died.
+
+    To clear an unacked entry, both `HDEL unacked <delivery_tag>`
+    AND `ZREM unacked_index <delivery_tag>` are required. Skipping
+    the ZREM leaves a phantom in `unacked_index` that points at a
+    non-existent HASH field, which Kombu will then try to restore
+    from the (now missing) hash entry.
+
+    Mirrors `CeleryBrokerQueue`'s "two-mode" pattern: when no
+    `routing_key__exact` filter is set, the queryset returns one
+    summary row carrying `depth = HLEN(unacked)`; with the filter
+    set, it returns per-message rows scoped to that routing_key
+    (the original queue these messages were delivered from).
+
+    `pk_token` shape: `unacked#<delivery_tag>` for a message row and
+    `unacked#summary` for the singleton summary row, mirroring the
+    `CeleryBrokerQueue` convention so admin URL plumbing
+    (`change_view`, `pk__in=[...]` bulk actions) works without
+    customisation. `default_permissions` includes `delete` because
+    superusers can clear individual messages from the changelist.
+    """
+
+    pk_token = models.CharField(primary_key=True, max_length=600)
+    delivery_tag = models.CharField(max_length=128, blank=True)
+    routing_key = models.CharField(max_length=256, blank=True)
+    exchange = models.CharField(max_length=128, blank=True)
+    visibility_deadline = models.DateTimeField(null=True, blank=True)
+    task_name = models.CharField(max_length=256, blank=True)
+    task_id = models.CharField(max_length=128, blank=True)
+    repoid = models.IntegerField(null=True, blank=True)
+    commitid = models.CharField(max_length=64, blank=True)
+    ownerid = models.IntegerField(null=True, blank=True)
+    pullid = models.IntegerField(null=True, blank=True)
+    payload_preview = models.TextField(blank=True)
+    # Set ONLY on the summary row (no `routing_key__exact` filter):
+    # `HLEN unacked` at the time of materialisation. None on
+    # per-message rows.
+    depth = models.IntegerField(null=True, blank=True)
+
+    objects = UnackedQueueItemManager()
+
+    class Meta:
+        managed = False
+        app_label = "redis_admin"
+        verbose_name = "Unacked queue item"
+        verbose_name_plural = "Unacked queue"
+        default_permissions = ("view", "delete")
+
+    def __str__(self) -> str:
+        if self.depth is not None:
+            return f"unacked (depth={self.depth})"
+        if self.task_name:
+            return f"unacked[{self.delivery_tag}] {self.task_name}"
+        return f"unacked[{self.delivery_tag}]"
+
+    def save(self, *args, **kwargs):  # pragma: no cover - safety net
+        raise RuntimeError("UnackedQueueItem is read-only; saves are not supported.")
+
+    def delete(self, *args, **kwargs):  # pragma: no cover - routed via service
+        # Real deletion goes through `services.unacked_clear` so the
+        # paired `HDEL unacked <tag>` + `ZREM unacked_index <tag>`
+        # contract is honoured atomically; a bare HDEL leaves a
+        # phantom in `unacked_index` for Kombu's restore loop to
+        # trip over.
+        raise NotImplementedError(
+            "UnackedQueueItem.delete is not supported on individual "
+            "instances; use redis_admin.services.unacked_clear "
             "(which the admin's clear flow already invokes)."
         )
 
