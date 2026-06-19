@@ -728,11 +728,12 @@ def _determine_responsible_owner(repository: Repository) -> Owner:
     owner = repository.author
 
     if owner.service == "gitlab":
-        # Gitlab authors have a "subgroup" structure, so find the parent group before checking repo credits
-        while owner.parent_service_id is not None:
-            owner = Owner.objects.get(
-                service_id=owner.parent_service_id, service=owner.service
-            )
+        # Gitlab authors have a "subgroup" structure, so find the root parent group before checking repo credits.
+        # root_organization() uses the cached root_parent_service_id field (1 query) when available,
+        # otherwise traverses the hierarchy and caches the result for future calls.
+        root = owner.root_organization()
+        if root is not None:
+            return root
     return owner
 
 
