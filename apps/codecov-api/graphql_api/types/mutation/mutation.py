@@ -1,5 +1,6 @@
 from ariadne import MutationType
 
+from .create_upload import error_create_upload, resolve_create_upload
 from .activate_measurements import (
     error_activate_measurements,
     resolve_activate_measurements,
@@ -76,6 +77,7 @@ from .update_self_hosted_settings import (
 mutation_bindable = MutationType()
 
 # Here, bind the resolvers from each subfolder to the Mutation type
+mutation_bindable.field("createUpload")(resolve_create_upload)
 mutation_bindable.field("createApiToken")(resolve_create_api_token)
 mutation_bindable.field("createStripeSetupIntent")(resolve_create_stripe_setup_intent)
 mutation_bindable.field("createUserToken")(resolve_create_user_token)
@@ -119,6 +121,7 @@ mutation_bindable.field("updateBundleCacheConfig")(resolve_update_bundle_cache_c
 
 mutation_resolvers = [
     mutation_bindable,
+    error_create_upload,
     error_create_api_token,
     error_create_stripe_setup_intent,
     error_create_user_token,
