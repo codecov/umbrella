@@ -791,7 +791,7 @@ class Github(TorngitBaseAdapter):
         kwargs = {
             "json": body if body else None,
             "headers": _headers,
-            "follow_redirects": False,
+            "follow_redirects": True,
         }
         max_number_retries = 3
         tried_refresh = False
