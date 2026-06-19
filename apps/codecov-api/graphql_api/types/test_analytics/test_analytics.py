@@ -210,7 +210,62 @@ async def resolve_test_suites(
 
 @test_analytics_bindable.field("flags")
 async def resolve_flags(
-    repository: Repository, _info: GraphQLResolveInfo, term: str | None = None, **_: Any
-) -> list[str]:
-    result = await sync_to_async(get_flags)(repository.repoid, term)
-    return sorted(result)
+    repository: Repository,
+    _info: GraphQLResolveInfo,
+    term: str | None = None,
+    first: int | None = None,
+    after: str | None = None,
+    last: int | None = None,
+    before: str | None = None,
+    **_: Any,
+) -> dict[str, Any]:
+    import base64
+
+    all_flags = sorted(await sync_to_async(get_flags)(repository.repoid, term))
+    total_count = len(all_flags)
+
+    # Decode cursor helpers
+    def encode_cursor(index: int) -> str:
+        return base64.b64encode(f"flags:{index}".encode()).decode()
+
+    def decode_cursor(cursor: str) -> int:
+        try:
+            decoded = base64.b64decode(cursor.encode()).decode()
+            return int(decoded.split(":", 1)[1])
+        except Exception:
+            return 0
+
+    # Determine slice bounds
+    start = 0
+    end = total_count
+
+    if after is not None:
+        start = decode_cursor(after) + 1
+    if before is not None:
+        end = decode_cursor(before)
+
+    if first is not None:
+        end = min(end, start + first)
+    if last is not None:
+        start = max(start, end - last)
+
+    sliced = all_flags[start:end]
+
+    edges = [
+        {"cursor": encode_cursor(start + i), "node": flag}
+        for i, flag in enumerate(sliced)
+    ]
+
+    has_previous = start > 0
+    has_next = end < total_count
+
+    return {
+        "edges": edges,
+        "total_count": total_count,
+        "page_info": {
+            "has_previous_page": has_previous,
+            "has_next_page": has_next,
+            "start_cursor": edges[0]["cursor"] if edges else None,
+            "end_cursor": edges[-1]["cursor"] if edges else None,
+        },
+    }
