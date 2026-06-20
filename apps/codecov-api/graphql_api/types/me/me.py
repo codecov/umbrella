@@ -26,6 +26,11 @@ me = me + build_connection_graphql("UserTokenConnection", "UserToken")
 me_bindable = ObjectType("Me")
 
 
+@me_bindable.field("login")
+def resolve_login(current_owner: Owner, _) -> str:
+    return current_owner.username
+
+
 @me_bindable.field("user")
 def resolve_user(user, _):
     return user
