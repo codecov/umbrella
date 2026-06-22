@@ -34,11 +34,12 @@ type Me {
     before: String
   ): MyOrganizationConnection!
     @cost(complexity: 15, multipliers: ["first", "last"])
+  hasLinkedSentryLogin: Boolean!
   isSyncingWithGitProvider: Boolean!
-  trackingMetadata: trackingMetadata! # temporary solution to expose the user metadata
   privateAccess: Boolean
-  termsAgreement: Boolean
   supportPin: String
+  termsAgreement: Boolean
+  trackingMetadata: trackingMetadata! # temporary solution to expose the user metadata
 }
 
 # Temporary type to gather the different attributes for tracking until we have
