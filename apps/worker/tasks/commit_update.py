@@ -14,7 +14,11 @@ from shared.django_apps.upload_breadcrumbs.models import (
     Errors,
     Milestones,
 )
-from shared.torngit.exceptions import TorngitClientError, TorngitRepoNotFoundError
+from shared.torngit.exceptions import (
+    TorngitClientError,
+    TorngitRepoNotFoundError,
+    TorngitServerUnreachableError,
+)
 from tasks.base import BaseCodecovTask
 
 log = logging.getLogger(__name__)
@@ -123,6 +127,12 @@ class CommitUpdateTask(BaseCodecovTask, name=commit_update_task_name):
 
                 db_session.flush()
 
+        except TorngitServerUnreachableError:
+            log.warning(
+                "Unable to reach git provider because it was unreachable. Retrying.",
+                extra={"repoid": repoid, "commit": commitid},
+            )
+            self.retry(max_retries=3, countdown=60 * (2**self.request.retries))
         except RepositoryWithoutValidBotError:
             log.warning(
                 "Unable to reach git provider because repo doesn't have a valid bot",
