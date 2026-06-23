@@ -15,6 +15,7 @@ from redis.exceptions import LockError
 from app import celery_app
 from database.models import Commit, Pull, Repository
 from helpers.exceptions import NoConfiguredAppsAvailable, RepositoryWithoutValidBotError
+from shared.github import GitHubTokenRequestTimeoutError
 from helpers.github_installation import get_installation_name_for_owner_for_task
 from helpers.metrics import metrics
 from services.comparison.changes import get_changes
@@ -139,6 +140,19 @@ class PullSyncTask(BaseCodecovTask, name=pulls_task_name):
                 "commit_updates_done": {"merged_count": 0, "soft_deleted_count": 0},
                 "pull_updated": False,
                 "reason": "no_bot",
+            }
+        except GitHubTokenRequestTimeoutError:
+            log.warning(
+                "Could not sync pull because GitHub token request timed out. Retrying in 60s.",
+                extra=extra_info,
+                exc_info=True,
+            )
+            self.retry(max_retries=3, countdown=60)
+            return {
+                "notifier_called": False,
+                "commit_updates_done": {"merged_count": 0, "soft_deleted_count": 0},
+                "pull_updated": False,
+                "reason": "github_token_request_timeout",
             }
         except NoConfiguredAppsAvailable as err:
             log.error(
