@@ -160,7 +160,18 @@ def get_github_integration_token(
         if host_override is not None:
             headers["Host"] = host_override
 
-        res = requests.post(url, headers=headers)
+        try:
+            res = requests.post(url, headers=headers, timeout=30)
+        except requests.exceptions.ConnectTimeout:
+            log.warning(
+                "Connection to GitHub timed out while fetching integration token",
+                extra={
+                    "git_service": service,
+                    "integration_id": integration_id,
+                    "api_endpoint": api_endpoint,
+                },
+            )
+            raise
         if res.status_code in [401, 403, 404, 422]:
             error_cause = decide_installation_error_cause(res)
             log.warning(
