@@ -16,6 +16,12 @@ log = logging.getLogger(__name__)
 loaded_pems = None
 
 
+class GitHubTokenRequestTimeoutError(Exception):
+    """Raised when the request to GitHub for an installation access token times out."""
+
+    pass
+
+
 def get_pem_overrides(app_id: str) -> tuple[str, ...] | None:
     if settings.GITHUB_SENTRY_APP_ID is not None and str(app_id) == str(
         settings.GITHUB_SENTRY_APP_ID
@@ -160,7 +166,20 @@ def get_github_integration_token(
         if host_override is not None:
             headers["Host"] = host_override
 
-        res = requests.post(url, headers=headers)
+        try:
+            res = requests.post(url, headers=headers, timeout=30)
+        except requests.exceptions.Timeout:
+            log.warning(
+                "Timeout when requesting GitHub integration token",
+                extra={
+                    "git_service": service,
+                    "integration_id": integration_id,
+                    "api_endpoint": api_endpoint,
+                },
+            )
+            raise GitHubTokenRequestTimeoutError(
+                f"Timed out requesting access token for installation {integration_id}"
+            )
         if res.status_code in [401, 403, 404, 422]:
             error_cause = decide_installation_error_cause(res)
             log.warning(
