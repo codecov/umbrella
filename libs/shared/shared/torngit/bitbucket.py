@@ -798,9 +798,27 @@ class Bitbucket(TorngitBaseAdapter):
         self, commit=None, branch=None, state="open", token=None
     ):
         state = {"open": "OPEN", "merged": "MERGED", "close": "DECLINED"}.get(state, "")
-        page = 0
         async with self.get_client() as client:
-            if commit or branch:
+            if commit:
+                # Use the commit-specific endpoint to avoid paginating all open PRs.
+                # https://developer.atlassian.com/cloud/bitbucket/rest/api-group-pullrequests/#api-repositories-workspace-repo-slug-commit-commit-pullrequests-get
+                try:
+                    res = await self.api(
+                        client,
+                        "2",
+                        "get",
+                        f"/repositories/{self.slug}/commit/{commit}/pullrequests",
+                        token=token,
+                    )
+                except TorngitClientError as e:
+                    if e.code == 404:
+                        return None
+                    raise
+                for pull in res.get("values", []):
+                    if pull.get("state") == state:
+                        return str(pull["id"])
+            elif branch:
+                page = 0
                 while True:
                     page += 1
                     # https://confluence.atlassian.com/display/BITBUCKET/pullrequests+Resource#pullrequestsResource-GETalistofopenpullrequests
@@ -817,14 +835,9 @@ class Bitbucket(TorngitBaseAdapter):
                     if len(_prs) == 0:
                         break
 
-                    if commit:
-                        for pull in _prs:
-                            if commit.startswith(pull["source"]["commit"]["hash"]):
-                                return str(pull["id"])
-                    else:
-                        for pull in _prs:
-                            if pull["source"]["branch"]["name"] == branch:
-                                return str(pull["id"])
+                    for pull in _prs:
+                        if pull["source"]["branch"]["name"] == branch:
+                            return str(pull["id"])
 
                     if not res.get("next"):
                         break
