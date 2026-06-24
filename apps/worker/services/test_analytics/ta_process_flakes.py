@@ -1,4 +1,5 @@
 import logging
+from collections import defaultdict
 from datetime import timedelta
 
 import sentry_sdk
@@ -42,6 +43,22 @@ def get_testruns(upload: ReportSession) -> QuerySet[Testrun]:
     ).order_by("timestamp")
 
 
+def get_testruns_for_uploads(upload_ids: list[int]) -> dict[int, list[Testrun]]:
+    """Fetch all testruns for a list of upload IDs in a single query.
+
+    Returns a dict mapping upload_id -> list of Testrun objects, ordered by timestamp.
+    """
+    testruns = Testrun.objects.filter(
+        Q(timestamp__gte=timezone.now() - timedelta(days=1))
+        & Q(upload_id__in=upload_ids)
+    ).order_by("timestamp")
+
+    result: dict[int, list[Testrun]] = defaultdict(list)
+    for testrun in testruns:
+        result[testrun.upload_id].append(testrun)
+    return result
+
+
 def handle_pass(curr_flakes: dict[bytes, Flake], test_id: bytes):
     # possible that we expire it and stop caring about it
     if test_id not in curr_flakes:
@@ -81,10 +98,11 @@ def handle_failure(
 
 @sentry_sdk.trace
 def process_single_upload(
-    upload: ReportSession, curr_flakes: dict[bytes, Flake], repo_id: int
+    upload: ReportSession,
+    testruns: list[Testrun],
+    curr_flakes: dict[bytes, Flake],
+    repo_id: int,
 ):
-    testruns = get_testruns(upload)
-
     for testrun in testruns:
         test_id = bytes(testrun.test_id)
         match testrun.outcome:
@@ -98,34 +116,45 @@ def process_single_upload(
             case _:
                 continue
 
-    Testrun.objects.bulk_update(testruns, ["outcome"])
-
 
 @sentry_sdk.trace
-def process_flakes_for_commit(repo_id: int, commit_id: str):
+def process_flakes_for_commit(
+    repo_id: int,
+    commit_id: str,
+    curr_flakes: dict[bytes, Flake] | None = None,
+):
     log.info(
         "process_flakes_for_commit: starting processing",
     )
-    uploads = get_relevant_uploads(repo_id, commit_id)
+    uploads = list(get_relevant_uploads(repo_id, commit_id))
 
     log.info(
         "process_flakes_for_commit: fetched uploads",
         extra={"uploads": [upload.id for upload in uploads]},
     )
 
-    curr_flakes = fetch_current_flakes(repo_id)
+    if curr_flakes is None:
+        curr_flakes = fetch_current_flakes(repo_id)
 
     log.info(
         "process_flakes_for_commit: fetched current flakes",
         extra={"flakes": [flake.test_id.hex() for flake in curr_flakes.values()]},
     )
 
+    upload_ids = [upload.id for upload in uploads]
+    testruns_by_upload = get_testruns_for_uploads(upload_ids)
+
+    all_testruns: list[Testrun] = []
     for upload in uploads:
-        process_single_upload(upload, curr_flakes, repo_id)
+        testruns = testruns_by_upload.get(upload.id, [])
+        all_testruns.extend(testruns)
+        process_single_upload(upload, testruns, curr_flakes, repo_id)
         log.info(
             "process_flakes_for_commit: processed upload",
             extra={"upload": upload.id},
         )
+
+    Testrun.objects.bulk_update(all_testruns, ["outcome"])
 
     log.info(
         "process_flakes_for_commit: bulk creating flakes",
@@ -148,9 +177,12 @@ def process_flakes_for_repo(repo_id: int):
     try:
         with redis_client.lock(lock_name, timeout=300, blocking_timeout=3):
             while commit_ids := redis_client.lpop(key_name, 10):
+                curr_flakes = fetch_current_flakes(repo_id)
                 for commit_id in commit_ids:
                     with process_flakes_summary.labels("new").time():
-                        process_flakes_for_commit(repo_id, commit_id.decode())
+                        process_flakes_for_commit(
+                            repo_id, commit_id.decode(), curr_flakes
+                        )
             return True
     except LockError:
         log.warning("Failed to acquire lock for repo %s", repo_id)
