@@ -8,3 +8,8 @@ coverage_totals_bindable.set_alias("lineCount", "lines")
 coverage_totals_bindable.set_alias("hitsCount", "hits")
 coverage_totals_bindable.set_alias("missesCount", "misses")
 coverage_totals_bindable.set_alias("partialsCount", "partials")
+
+# Deprecated aliases — kept for backward compatibility
+coverage_totals_bindable.set_alias("lines", "lines")
+coverage_totals_bindable.set_alias("hits", "hits")
+coverage_totals_bindable.set_alias("misses", "misses")
