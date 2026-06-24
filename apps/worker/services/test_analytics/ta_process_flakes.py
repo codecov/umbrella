@@ -42,7 +42,27 @@ def get_testruns(upload: ReportSession) -> QuerySet[Testrun]:
     ).order_by("timestamp")
 
 
-def handle_pass(curr_flakes: dict[bytes, Flake], test_id: bytes):
+def get_testruns_for_uploads(
+    upload_ids: list[int],
+) -> dict[int, list[Testrun]]:
+    """Batch-fetch all testruns for the given upload IDs in a single query,
+    grouped by upload_id."""
+    testruns = Testrun.objects.filter(
+        Q(timestamp__gte=timezone.now() - timedelta(days=1))
+        & Q(upload_id__in=upload_ids)
+    ).order_by("timestamp")
+
+    grouped: dict[int, list[Testrun]] = {uid: [] for uid in upload_ids}
+    for testrun in testruns:
+        grouped[testrun.upload_id].append(testrun)
+    return grouped
+
+
+def handle_pass(
+    curr_flakes: dict[bytes, Flake],
+    test_id: bytes,
+    flakes_to_expire: list[Flake],
+):
     # possible that we expire it and stop caring about it
     if test_id not in curr_flakes:
         return
@@ -51,7 +71,7 @@ def handle_pass(curr_flakes: dict[bytes, Flake], test_id: bytes):
     curr_flakes[test_id].count += 1
     if curr_flakes[test_id].recent_passes_count == 30:
         curr_flakes[test_id].end_date = timezone.now()
-        curr_flakes[test_id].save()
+        flakes_to_expire.append(curr_flakes[test_id])
         del curr_flakes[test_id]
 
 
@@ -81,10 +101,13 @@ def handle_failure(
 
 @sentry_sdk.trace
 def process_single_upload(
-    upload: ReportSession, curr_flakes: dict[bytes, Flake], repo_id: int
-):
-    testruns = get_testruns(upload)
-
+    testruns: list[Testrun],
+    curr_flakes: dict[bytes, Flake],
+    repo_id: int,
+    flakes_to_expire: list[Flake],
+) -> list[Testrun]:
+    """Process testruns for a single upload. Returns testruns that were mutated."""
+    mutated: list[Testrun] = []
     for testrun in testruns:
         test_id = bytes(testrun.test_id)
         match testrun.outcome:
@@ -92,13 +115,16 @@ def process_single_upload(
                 if test_id not in curr_flakes:
                     continue
 
-                handle_pass(curr_flakes, test_id)
+                handle_pass(curr_flakes, test_id, flakes_to_expire)
             case "failure" | "flaky_fail" | "error":
+                original_outcome = testrun.outcome
                 handle_failure(curr_flakes, test_id, testrun, repo_id)
+                if testrun.outcome != original_outcome:
+                    mutated.append(testrun)
             case _:
                 continue
 
-    Testrun.objects.bulk_update(testruns, ["outcome"])
+    return mutated
 
 
 @sentry_sdk.trace
@@ -106,11 +132,12 @@ def process_flakes_for_commit(repo_id: int, commit_id: str):
     log.info(
         "process_flakes_for_commit: starting processing",
     )
-    uploads = get_relevant_uploads(repo_id, commit_id)
+    uploads = list(get_relevant_uploads(repo_id, commit_id))
+    upload_ids = [upload.id for upload in uploads]
 
     log.info(
         "process_flakes_for_commit: fetched uploads",
-        extra={"uploads": [upload.id for upload in uploads]},
+        extra={"uploads": upload_ids},
     )
 
     curr_flakes = fetch_current_flakes(repo_id)
@@ -120,12 +147,29 @@ def process_flakes_for_commit(repo_id: int, commit_id: str):
         extra={"flakes": [flake.test_id.hex() for flake in curr_flakes.values()]},
     )
 
+    # Batch-fetch all testruns for all uploads in a single query
+    testruns_by_upload = get_testruns_for_uploads(upload_ids)
+
+    flakes_to_expire: list[Flake] = []
+    all_mutated_testruns: list[Testrun] = []
+
     for upload in uploads:
-        process_single_upload(upload, curr_flakes, repo_id)
+        mutated = process_single_upload(
+            testruns_by_upload[upload.id], curr_flakes, repo_id, flakes_to_expire
+        )
+        all_mutated_testruns.extend(mutated)
         log.info(
             "process_flakes_for_commit: processed upload",
             extra={"upload": upload.id},
         )
+
+    # Bulk-update all mutated testrun outcomes in one query
+    if all_mutated_testruns:
+        Testrun.objects.bulk_update(all_mutated_testruns, ["outcome"])
+
+    # Bulk-update expired flakes in one query instead of individual saves
+    if flakes_to_expire:
+        Flake.objects.bulk_update(flakes_to_expire, ["end_date"])
 
     log.info(
         "process_flakes_for_commit: bulk creating flakes",
