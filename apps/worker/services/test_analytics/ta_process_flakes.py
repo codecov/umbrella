@@ -1,4 +1,5 @@
 import logging
+from collections import defaultdict
 from datetime import timedelta
 
 import sentry_sdk
@@ -33,13 +34,18 @@ def fetch_current_flakes(repo_id: int) -> dict[bytes, Flake]:
     }
 
 
-def get_testruns(upload: ReportSession) -> QuerySet[Testrun]:
-    upload_filter = Q(upload_id=upload.id)
-
+def get_all_testruns(upload_ids: list[int]) -> dict[int, list[Testrun]]:
+    """Fetch all testruns for the given upload IDs in a single query and group by upload_id."""
     # we won't process flakes for testruns older than 1 day
-    return Testrun.objects.filter(
-        Q(timestamp__gte=timezone.now() - timedelta(days=1)) & upload_filter
+    testruns = Testrun.objects.filter(
+        Q(timestamp__gte=timezone.now() - timedelta(days=1))
+        & Q(upload_id__in=upload_ids)
     ).order_by("timestamp")
+
+    grouped: dict[int, list[Testrun]] = defaultdict(list)
+    for testrun in testruns:
+        grouped[testrun.upload_id].append(testrun)
+    return grouped
 
 
 def handle_pass(curr_flakes: dict[bytes, Flake], test_id: bytes):
@@ -81,9 +87,10 @@ def handle_failure(
 
 @sentry_sdk.trace
 def process_single_upload(
-    upload: ReportSession, curr_flakes: dict[bytes, Flake], repo_id: int
-):
-    testruns = get_testruns(upload)
+    testruns: list[Testrun], curr_flakes: dict[bytes, Flake], repo_id: int
+) -> list[Testrun]:
+    """Process testruns for a single upload. Returns testruns that were mutated."""
+    mutated: list[Testrun] = []
 
     for testrun in testruns:
         test_id = bytes(testrun.test_id)
@@ -94,11 +101,14 @@ def process_single_upload(
 
                 handle_pass(curr_flakes, test_id)
             case "failure" | "flaky_fail" | "error":
+                original_outcome = testrun.outcome
                 handle_failure(curr_flakes, test_id, testrun, repo_id)
+                if testrun.outcome != original_outcome:
+                    mutated.append(testrun)
             case _:
                 continue
 
-    Testrun.objects.bulk_update(testruns, ["outcome"])
+    return mutated
 
 
 @sentry_sdk.trace
@@ -106,11 +116,12 @@ def process_flakes_for_commit(repo_id: int, commit_id: str):
     log.info(
         "process_flakes_for_commit: starting processing",
     )
-    uploads = get_relevant_uploads(repo_id, commit_id)
+    uploads = list(get_relevant_uploads(repo_id, commit_id))
+    upload_ids = [upload.id for upload in uploads]
 
     log.info(
         "process_flakes_for_commit: fetched uploads",
-        extra={"uploads": [upload.id for upload in uploads]},
+        extra={"uploads": upload_ids},
     )
 
     curr_flakes = fetch_current_flakes(repo_id)
@@ -120,12 +131,21 @@ def process_flakes_for_commit(repo_id: int, commit_id: str):
         extra={"flakes": [flake.test_id.hex() for flake in curr_flakes.values()]},
     )
 
+    testruns_by_upload = get_all_testruns(upload_ids)
+    all_mutated_testruns: list[Testrun] = []
+
     for upload in uploads:
-        process_single_upload(upload, curr_flakes, repo_id)
+        mutated = process_single_upload(
+            testruns_by_upload[upload.id], curr_flakes, repo_id
+        )
+        all_mutated_testruns.extend(mutated)
         log.info(
             "process_flakes_for_commit: processed upload",
             extra={"upload": upload.id},
         )
+
+    if all_mutated_testruns:
+        Testrun.objects.bulk_update(all_mutated_testruns, ["outcome"])
 
     log.info(
         "process_flakes_for_commit: bulk creating flakes",
