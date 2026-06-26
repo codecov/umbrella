@@ -138,6 +138,15 @@ async def resolve_base_totals(
         return base_commit.commitreport.reportleveltotals
 
 
+@comparison_bindable.field("baseCommit")
+async def resolve_base_commit(
+    comparison: ComparisonReport, info: GraphQLResolveInfo
+):
+    repository_id = comparison.commit_comparison.base_commit.repository_id
+    loader = CommitLoader.loader(info, repository_id)
+    return await loader.load(comparison.commit_comparison.base_commit.commitid)
+
+
 @comparison_bindable.field("headTotals")
 async def resolve_head_totals(
     comparison: ComparisonReport, info: GraphQLResolveInfo
