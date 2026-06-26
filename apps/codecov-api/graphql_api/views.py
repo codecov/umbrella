@@ -345,7 +345,16 @@ class AsyncGraphqlView(GraphQLAsyncView):
         user = self.request.user
         is_anonymous = user.is_anonymous if user else True
         # the only way to check for a malformed query
-        is_bad_query = "Cannot query field" in error.formatted["message"]
+        _bad_query_phrases = (
+            "Cannot query field",
+            "must not have a selection",
+            "Unknown argument",
+            "Unknown field",
+            "Unknown type",
+        )
+        is_bad_query = any(
+            phrase in error.formatted["message"] for phrase in _bad_query_phrases
+        )
         if debug or (not is_anonymous and is_bad_query):
             return format_error(error, debug)
         formatted = error.formatted
