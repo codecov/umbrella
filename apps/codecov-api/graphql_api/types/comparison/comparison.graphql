@@ -1,5 +1,7 @@
 type Comparison {
   state: String!
+  behindBy: Int
+  behindByCommit: String
   impactedFile(path: String!): ImpactedFile
   impactedFiles(filters: ImpactedFilesFilters): ImpactedFilesResult!
   impactedFilesCount: Int!
