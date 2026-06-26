@@ -33,13 +33,22 @@ def fetch_current_flakes(repo_id: int) -> dict[bytes, Flake]:
     }
 
 
-def get_testruns(upload: ReportSession) -> QuerySet[Testrun]:
-    upload_filter = Q(upload_id=upload.id)
+def get_testruns_for_uploads(
+    uploads: QuerySet[ReportSession],
+) -> dict[int, list[Testrun]]:
+    upload_ids = [upload.id for upload in uploads]
 
     # we won't process flakes for testruns older than 1 day
-    return Testrun.objects.filter(
-        Q(timestamp__gte=timezone.now() - timedelta(days=1)) & upload_filter
+    testruns = Testrun.objects.filter(
+        Q(timestamp__gte=timezone.now() - timedelta(days=1))
+        & Q(upload_id__in=upload_ids)
     ).order_by("timestamp")
+
+    testruns_by_upload: dict[int, list[Testrun]] = {uid: [] for uid in upload_ids}
+    for testrun in testruns:
+        testruns_by_upload[testrun.upload_id].append(testrun)
+
+    return testruns_by_upload
 
 
 def handle_pass(curr_flakes: dict[bytes, Flake], test_id: bytes):
@@ -50,9 +59,9 @@ def handle_pass(curr_flakes: dict[bytes, Flake], test_id: bytes):
     curr_flakes[test_id].recent_passes_count += 1
     curr_flakes[test_id].count += 1
     if curr_flakes[test_id].recent_passes_count == 30:
+        # Set end_date; the bulk_create at the end of process_flakes_for_commit
+        # will persist this via update_conflicts=True without a separate save().
         curr_flakes[test_id].end_date = timezone.now()
-        curr_flakes[test_id].save()
-        del curr_flakes[test_id]
 
 
 def handle_failure(
@@ -81,10 +90,8 @@ def handle_failure(
 
 @sentry_sdk.trace
 def process_single_upload(
-    upload: ReportSession, curr_flakes: dict[bytes, Flake], repo_id: int
+    testruns: list[Testrun], curr_flakes: dict[bytes, Flake], repo_id: int
 ):
-    testruns = get_testruns(upload)
-
     for testrun in testruns:
         test_id = bytes(testrun.test_id)
         match testrun.outcome:
@@ -97,8 +104,6 @@ def process_single_upload(
                 handle_failure(curr_flakes, test_id, testrun, repo_id)
             case _:
                 continue
-
-    Testrun.objects.bulk_update(testruns, ["outcome"])
 
 
 @sentry_sdk.trace
@@ -120,12 +125,21 @@ def process_flakes_for_commit(repo_id: int, commit_id: str):
         extra={"flakes": [flake.test_id.hex() for flake in curr_flakes.values()]},
     )
 
+    # Fetch all testruns for every upload in a single query to avoid N+1.
+    testruns_by_upload = get_testruns_for_uploads(uploads)
+
+    all_testruns: list[Testrun] = []
     for upload in uploads:
-        process_single_upload(upload, curr_flakes, repo_id)
+        upload_testruns = testruns_by_upload.get(upload.id, [])
+        process_single_upload(upload_testruns, curr_flakes, repo_id)
+        all_testruns.extend(upload_testruns)
         log.info(
             "process_flakes_for_commit: processed upload",
             extra={"upload": upload.id},
         )
+
+    # Persist outcome changes for all testruns in a single bulk operation.
+    Testrun.objects.bulk_update(all_testruns, ["outcome"])
 
     log.info(
         "process_flakes_for_commit: bulk creating flakes",
