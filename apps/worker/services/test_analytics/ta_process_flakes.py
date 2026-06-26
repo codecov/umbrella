@@ -42,7 +42,9 @@ def get_testruns(upload: ReportSession) -> QuerySet[Testrun]:
     ).order_by("timestamp")
 
 
-def handle_pass(curr_flakes: dict[bytes, Flake], test_id: bytes):
+def handle_pass(
+    curr_flakes: dict[bytes, Flake], test_id: bytes, expiring_flakes: list[Flake]
+):
     # possible that we expire it and stop caring about it
     if test_id not in curr_flakes:
         return
@@ -51,7 +53,7 @@ def handle_pass(curr_flakes: dict[bytes, Flake], test_id: bytes):
     curr_flakes[test_id].count += 1
     if curr_flakes[test_id].recent_passes_count == 30:
         curr_flakes[test_id].end_date = timezone.now()
-        curr_flakes[test_id].save()
+        expiring_flakes.append(curr_flakes[test_id])
         del curr_flakes[test_id]
 
 
@@ -84,6 +86,7 @@ def process_single_upload(
     upload: ReportSession, curr_flakes: dict[bytes, Flake], repo_id: int
 ):
     testruns = get_testruns(upload)
+    expiring_flakes: list[Flake] = []
 
     for testrun in testruns:
         test_id = bytes(testrun.test_id)
@@ -92,12 +95,16 @@ def process_single_upload(
                 if test_id not in curr_flakes:
                     continue
 
-                handle_pass(curr_flakes, test_id)
+                handle_pass(curr_flakes, test_id, expiring_flakes)
             case "failure" | "flaky_fail" | "error":
                 handle_failure(curr_flakes, test_id, testrun, repo_id)
             case _:
                 continue
 
+    if expiring_flakes:
+        Flake.objects.bulk_update(
+            expiring_flakes, ["end_date", "count", "recent_passes_count"]
+        )
     Testrun.objects.bulk_update(testruns, ["outcome"])
 
 
