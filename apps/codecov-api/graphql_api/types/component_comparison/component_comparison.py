@@ -45,3 +45,16 @@ def resolve_patch_totals(
     component_comparison: ComponentComparison, info
 ) -> ReportTotals:
     return component_comparison.patch_totals
+
+
+@component_comparison_bindable.field("changeCoverage")
+def resolve_change_coverage(
+    component_comparison: ComponentComparison, info
+) -> float | None:
+    base_totals = component_comparison.base_totals
+    head_totals = component_comparison.head_totals
+    if base_totals is None or head_totals is None:
+        return None
+    if base_totals.coverage is None or head_totals.coverage is None:
+        return None
+    return float(head_totals.coverage) - float(base_totals.coverage)
