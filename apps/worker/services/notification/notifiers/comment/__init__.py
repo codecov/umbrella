@@ -114,7 +114,7 @@ class CommentNotifier(MessageMixin, AbstractBaseNotifier):
             message = self.build_message(
                 comparison, status_or_checks_helper_text=status_or_checks_helper_text
             )
-        except TorngitClientError:
+        except (TorngitClientError, TorngitServerFailureError):
             log.warning(
                 "Unable to fetch enough information to build message for comment",
                 extra={
