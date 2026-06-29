@@ -8,4 +8,9 @@ type CoverageTotals {
   partialsCount: Int
 
   coverage: Float @deprecated(reason: "Use `percentCovered`")
+  hitCount: Int @deprecated(reason: "Use `hitsCount`")
+  missCount: Int @deprecated(reason: "Use `missesCount`")
+  partialCount: Int @deprecated(reason: "Use `partialsCount`")
+  branchCount: Int @deprecated(reason: "Field not supported")
+  methodCount: Int @deprecated(reason: "Field not supported")
 }
