@@ -6,6 +6,8 @@ type CoverageTotals {
   hitsCount: Int
   missesCount: Int
   partialsCount: Int
+  branches: Int
+  methods: Int
 
   coverage: Float @deprecated(reason: "Use `percentCovered`")
 }
