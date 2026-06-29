@@ -452,7 +452,7 @@ class BundleAnalysisMeasurementsService:
             after=self.after,
             before=self.before,
             branch=self.branch,
-        ) or {measurable_ids[0]: []}
+        ) or ({measurable_ids[0]: []} if measurable_ids else {})
 
         # Carry over previous available value for start date if its value is null
         for measurable_id, measurements in all_measurements.items():
@@ -523,6 +523,9 @@ class BundleAnalysisMeasurementsService:
                     asset_uuid_to_name_mapping[asset.uuid] = asset.name
         else:
             measurable_ids = [bundle_report.name]
+
+        if not measurable_ids:
+            return []
 
         measurements = self._compute_measurements(
             measurable_name=asset_type.value.value,
