@@ -8,4 +8,10 @@ type CoverageTotals {
   partialsCount: Int
 
   coverage: Float @deprecated(reason: "Use `percentCovered`")
+  filesCount: Int @deprecated(reason: "Use `fileCount`")
+  linesCount: Int @deprecated(reason: "Use `lineCount`")
+  sessionsCount: Int @deprecated(reason: "This field is no longer supported")
+  branchesCount: Int @deprecated(reason: "This field is no longer supported")
+  methodsCount: Int @deprecated(reason: "This field is no longer supported")
+  diff: Float @deprecated(reason: "This field is no longer supported")
 }

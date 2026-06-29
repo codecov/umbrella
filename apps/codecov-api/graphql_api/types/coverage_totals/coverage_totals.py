@@ -8,3 +8,15 @@ coverage_totals_bindable.set_alias("lineCount", "lines")
 coverage_totals_bindable.set_alias("hitsCount", "hits")
 coverage_totals_bindable.set_alias("missesCount", "misses")
 coverage_totals_bindable.set_alias("partialsCount", "partials")
+
+# Deprecated aliases for backward compatibility with older clients
+coverage_totals_bindable.set_alias("filesCount", "files")
+coverage_totals_bindable.set_alias("linesCount", "lines")
+coverage_totals_bindable.set_alias("sessionsCount", "sessions")
+coverage_totals_bindable.set_alias("branchesCount", "branches")
+coverage_totals_bindable.set_alias("methodsCount", "methods")
+
+
+@coverage_totals_bindable.field("diff")
+def resolve_diff(totals, _info):
+    return None
