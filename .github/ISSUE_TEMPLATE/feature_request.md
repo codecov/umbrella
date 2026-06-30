@@ -8,7 +8,7 @@ assignees: ''
 ---
 
 <!--
-  Sentry/Codecov employees and contractors can delete or ignore the following.
+  Harness/Codecov employees and contractors can delete or ignore the following.
 -->
 
 # 📣 Feedback / 🐛 Bugs
