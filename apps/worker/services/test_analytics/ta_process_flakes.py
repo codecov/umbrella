@@ -137,6 +137,7 @@ def process_flakes_for_commit(repo_id: int, commit_id: str):
         update_conflicts=True,
         unique_fields=["id"],
         update_fields=["end_date", "count", "recent_passes_count", "fail_count"],
+        batch_size=1000,
     )
 
 
