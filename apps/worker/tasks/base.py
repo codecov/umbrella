@@ -226,6 +226,13 @@ class BaseCodecovTask(celery_app.Task):
 
     @sentry_sdk.trace
     def apply_async(self, args=None, kwargs=None, **options):
+        # Close any stale Django DB connections before routing. Celery workers
+        # can hold connections across task boundaries; if the server (or a
+        # proxy) has closed an idle connection, the subsequent ORM query in
+        # route_tasks_based_on_user_plan will raise OperationalError. Django's
+        # close_old_connections() discards any connection that has exceeded
+        # CONN_MAX_AGE so the next query opens a fresh one automatically.
+        close_old_connections()
         db_session = get_db_session()
         user_plan = _get_user_plan_from_task(db_session, self.name, kwargs)
         ownerid = _get_ownerid_from_task(db_session, self.name, kwargs)
