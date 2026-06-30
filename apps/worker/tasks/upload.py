@@ -44,7 +44,11 @@ from shared.django_apps.user_measurements.models import UserMeasurement
 from shared.helpers.redis import get_redis_connection
 from shared.helpers.sentry import owner_uses_sentry
 from shared.metrics import Counter, Histogram, inc_counter
-from shared.torngit.exceptions import TorngitClientError, TorngitRepoNotFoundError
+from shared.torngit.exceptions import (
+    TorngitClientError,
+    TorngitRepoNotFoundError,
+    TorngitServerFailureError,
+)
 from shared.upload.types import UploaderType
 from shared.upload.utils import bulk_insert_coverage_measurements
 from shared.yaml import UserYaml
@@ -1055,7 +1059,7 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
                         },
                     )
                     return False  # was_setup
-            except TorngitClientError:
+            except (TorngitClientError, TorngitServerFailureError):
                 log.warning(
                     "Failed to create or update project webhook",
                     extra={
