@@ -1,4 +1,4 @@
-Your ${{ amount }} payment to Functional Software, Inc, dba Sentry has been received.
+Your ${{ amount }} payment to Harness, Inc. has been received.
 
 To view your recent payment, click the link below. Thank you for choosing Codecov.
 
