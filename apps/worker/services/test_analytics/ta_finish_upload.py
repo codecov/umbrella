@@ -86,11 +86,12 @@ def get_upload_error(upload_ids: list[int]) -> ErrorPayload | None:
 def transform_failures(
     uploads: dict[int, ReportSession], failures: list[FailedTestInstance]
 ) -> list[TestResultsNotificationFailure[bytes]]:
+    MAX_FAILURE_MESSAGE_BYTES = 16384  # 16 KB cap to prevent timeouts on huge messages
     notif_failures = []
     for failure in failures:
         if failure["failure_message"] is not None:
             failure["failure_message"] = shorten_file_paths(
-                failure["failure_message"]
+                failure["failure_message"][:MAX_FAILURE_MESSAGE_BYTES]
             ).replace("\r", "")
 
         notif_failures.append(
