@@ -26,7 +26,7 @@ These instructions assume you're using macOS (or at least a POSIX-y platform) bu
 
 ## Prereqs
 
-- Docker, either through [Docker Desktop](https://docs.docker.com/desktop/) or [Sentry's development environment](https://develop.sentry.dev/development-infrastructure/environment/).
+- Docker [Docker Desktop](https://docs.docker.com/desktop/)
   - If using Docker Desktop on macOS, enable `General > Use Rosetta for x86/amd64 emulation on Apple Silicon` if containers fail to start
 - `make`
 - (Optional) `codecovcli` (install with `brew install codecov-cli`)
