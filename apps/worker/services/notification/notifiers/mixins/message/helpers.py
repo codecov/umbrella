@@ -389,3 +389,45 @@ def should_message_be_compact(comparison, settings):
     if comparison.repository_service.service not in supported_services:
         return False
     return settings.get("hide_comment_details", False)
+
+
+def get_patch_status_target(
+    yaml: UserYaml, comparison: ComparisonProxy
+) -> tuple[Decimal | None, bool]:
+    """Target coverage for the default patch status, mirroring ``StatusPatchMixin._get_target``.
+
+    Returns ``(target, is_custom_target)``. A custom target is an explicit percentage set in
+    ``coverage.status.patch.default.target``; ``auto``/unset falls back to the base report
+    coverage (``is_custom_target=False``), or ``None`` when there is no base report.
+    """
+    patch_settings = read_yaml_field(
+        yaml, ("coverage", "status", "patch", "default"), {}
+    )
+    if not isinstance(patch_settings, dict):
+        patch_settings = {}
+    configured_target = patch_settings.get("target")
+    if configured_target not in ("auto", None):
+        # strip an erroneous trailing % the same way the status notifier does
+        return Decimal(str(configured_target).replace("%", "")), True
+    base_report = comparison.project_coverage_base.report
+    if (
+        comparison.has_project_coverage_base_report()
+        and base_report is not None
+        and base_report.totals.coverage is not None
+    ):
+        return Decimal(base_report.totals.coverage), False
+    return None, False
+
+
+def get_patch_status_threshold(yaml: UserYaml) -> Decimal:
+    """Threshold for the default patch status (``coverage.status.patch.default.threshold``)."""
+    patch_settings = read_yaml_field(
+        yaml, ("coverage", "status", "patch", "default"), {}
+    )
+    if not isinstance(patch_settings, dict):
+        patch_settings = {}
+    raw_threshold = patch_settings.get("threshold", "0.0")
+    try:
+        return Decimal(str(raw_threshold).replace("%", ""))
+    except (ArithmeticError, ValueError):
+        return Decimal("0.0")
