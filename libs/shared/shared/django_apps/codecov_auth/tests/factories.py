@@ -39,6 +39,9 @@ class UserFactory(DjangoModelFactory):
     terms_agreement = False
     terms_agreement_at = None
     customer_intent = "Business"
+    # Default staff test users to Member so they keep the historical (pre-RBAC)
+    # level of admin access. Viewer-specific tests opt in explicitly.
+    staff_role = User.StaffRole.MEMBER
 
 
 class OwnerFactory(DjangoModelFactory):

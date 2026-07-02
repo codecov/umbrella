@@ -295,6 +295,9 @@ class UserAdmin(AdminMixin, admin.ModelAdmin):
     list_display = (
         "name",
         "email",
+        "is_staff",
+        "is_superuser",
+        "staff_role",
     )
     inlines = [AccountsUsersInline, OwnerUserInline]
     search_fields = (
@@ -311,6 +314,8 @@ class UserAdmin(AdminMixin, admin.ModelAdmin):
         "name",
         "email",
         "is_staff",
+        "is_superuser",
+        "staff_role",
         "terms_agreement",
         "terms_agreement_at",
     )
@@ -318,8 +323,27 @@ class UserAdmin(AdminMixin, admin.ModelAdmin):
     def get_form(self, request, obj=None, change=False, **kwargs):
         form = super().get_form(request, obj, change, **kwargs)
 
+        # Only superusers may change admin access levels.
         if not request.user.is_superuser:
-            form.base_fields["is_staff"].disabled = True
+            for field_name in ("is_staff", "is_superuser", "staff_role"):
+                if field_name in form.base_fields:
+                    form.base_fields[field_name].disabled = True
+
+        # The Admin level is driven by `is_superuser` and set automatically, so
+        # the editable choices are limited to Viewer / Member. When the user is
+        # already a superuser, surface Admin as a read-only, pre-selected value.
+        staff_role_field = form.base_fields.get("staff_role")
+        if staff_role_field is not None:
+            if obj is not None and obj.is_superuser:
+                staff_role_field.choices = [
+                    (User.StaffRole.ADMIN.value, User.StaffRole.ADMIN.label),
+                ]
+                staff_role_field.disabled = True
+            else:
+                staff_role_field.choices = [
+                    (User.StaffRole.VIEWER.value, User.StaffRole.VIEWER.label),
+                    (User.StaffRole.MEMBER.value, User.StaffRole.MEMBER.label),
+                ]
 
         return form
 

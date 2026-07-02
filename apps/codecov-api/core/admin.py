@@ -9,7 +9,7 @@ from django.urls import path, reverse
 from django.utils import timezone
 from django.utils.html import format_html
 
-from codecov.admin import AdminMixin
+from codecov.admin import AdminMixin, deny_viewers, is_viewer
 from codecov_auth.models import Owner, RepositoryToken
 from core.models import Commit, Pull, Repository
 from reports.models import CommitReport, ReportSession
@@ -318,6 +318,11 @@ class CommitAdmin(AdminMixin, admin.ModelAdmin):
     def has_delete_permission(self, request, obj=None):
         return False
 
+    def changeform_view(self, request, *args, **kwargs):
+        # Stash the request so `reprocess_actions` can hide buttons for Viewers.
+        self._reprocess_actions_request = request
+        return super().changeform_view(request, *args, **kwargs)
+
     def get_urls(self):
         urls = super().get_urls()
         custom_urls = [
@@ -348,6 +353,11 @@ class CommitAdmin(AdminMixin, admin.ModelAdmin):
     def reprocess_actions(self, obj):
         if obj.pk is None:
             return ""
+
+        # Viewers are read-only, so don't offer them action buttons.
+        request = getattr(self, "_reprocess_actions_request", None)
+        if request is not None and is_viewer(request):
+            return "No reprocessing actions available"
 
         # Check what actions are available for this commit
         has_coverage = CommitReport.objects.filter(
@@ -518,6 +528,7 @@ class CommitAdmin(AdminMixin, admin.ModelAdmin):
         )
 
     def reprocess_coverage_view(self, request, object_id):
+        deny_viewers(request)
         commit = self.get_object(request, object_id)
         if commit is None:
             self.message_user(request, "Commit not found", level=messages.ERROR)
@@ -525,6 +536,7 @@ class CommitAdmin(AdminMixin, admin.ModelAdmin):
         return self._reprocess_uploads(request, commit, REPROCESS_CONFIGS["coverage"])
 
     def reprocess_test_analytics_view(self, request, object_id):
+        deny_viewers(request)
         commit = self.get_object(request, object_id)
         if commit is None:
             self.message_user(request, "Commit not found", level=messages.ERROR)
@@ -534,6 +546,7 @@ class CommitAdmin(AdminMixin, admin.ModelAdmin):
         )
 
     def reprocess_bundle_analysis_view(self, request, object_id):
+        deny_viewers(request)
         commit = self.get_object(request, object_id)
         if commit is None:
             self.message_user(request, "Commit not found", level=messages.ERROR)
@@ -543,6 +556,7 @@ class CommitAdmin(AdminMixin, admin.ModelAdmin):
         )
 
     def trigger_notifications_view(self, request, object_id):
+        deny_viewers(request)
         commit = self.get_object(request, object_id)
         if commit is None:
             self.message_user(request, "Commit not found", level=messages.ERROR)

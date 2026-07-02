@@ -82,6 +82,16 @@ class User(ExportModelOperationsMixin("codecov_auth.user"), BaseCodecovModel):
         BUSINESS = "BUSINESS"
         PERSONAL = "PERSONAL"
 
+    class StaffRole(models.TextChoices):
+        # Read-only access to the Django admin. May not see some objects (e.g.
+        # Redis/Celery queue models) and cannot run any actions.
+        VIEWER = "viewer"
+        # Matches the historical `is_staff` level of access.
+        MEMBER = "member"
+        # Matches the historical `is_superuser` (a.k.a. `is_admin`) access. This
+        # level is driven entirely by the `is_superuser` flag (see `save`).
+        ADMIN = "admin"
+
     email = CITextField(null=True)
     name = models.TextField(null=True)
     is_staff = models.BooleanField(null=True, default=False)
@@ -91,6 +101,12 @@ class User(ExportModelOperationsMixin("codecov_auth.user"), BaseCodecovModel):
     terms_agreement_at = DateTimeWithoutTZField(null=True, blank=True)
     customer_intent = models.TextField(choices=CustomerIntent.choices, null=True)
     email_opt_in = models.BooleanField(default=False)
+    staff_role = models.TextField(
+        choices=StaffRole.choices,
+        default=StaffRole.VIEWER,
+        null=True,
+        blank=True,
+    )
 
     REQUIRED_FIELDS = []
     USERNAME_FIELD = "external_id"
@@ -100,6 +116,62 @@ class User(ExportModelOperationsMixin("codecov_auth.user"), BaseCodecovModel):
     class Meta:
         db_table = "users"
         app_label = CODECOV_AUTH_APP_LABEL
+
+    def save(self, *args, **kwargs):
+        """Keep `staff_role` in sync with the `is_superuser` (`is_admin`) flag.
+
+        The Admin level is controlled by `is_superuser` only:
+        - while `is_superuser` is True the role is forced to ADMIN,
+        - demoting an admin (`is_superuser` True -> False) drops them to VIEWER.
+        """
+        role_changed = self._sync_staff_role_with_superuser()
+
+        update_fields = kwargs.get("update_fields")
+        if role_changed and update_fields is not None:
+            kwargs["update_fields"] = set(update_fields) | {"staff_role"}
+
+        return super().save(*args, **kwargs)
+
+    def _sync_staff_role_with_superuser(self) -> bool:
+        """Apply the `is_superuser` -> `staff_role` rules. Returns True if changed."""
+        original_role = self.staff_role
+
+        if self.is_superuser:
+            self.staff_role = User.StaffRole.ADMIN
+        elif self.pk is not None:
+            previous_is_superuser = (
+                User.objects.filter(pk=self.pk)
+                .values_list("is_superuser", flat=True)
+                .first()
+            )
+            # A user demoted from admin drops all the way to Viewer.
+            if previous_is_superuser:
+                self.staff_role = User.StaffRole.VIEWER
+
+        return self.staff_role != original_role
+
+    @property
+    def effective_staff_role(self) -> "User.StaffRole":
+        """The role that governs Django admin access for this user.
+
+        Admin is always derived from `is_superuser`; otherwise fall back to the
+        stored `staff_role`, defaulting to the most restrictive (Viewer).
+        """
+        if self.is_superuser:
+            return User.StaffRole.ADMIN
+        return User.StaffRole(self.staff_role or User.StaffRole.VIEWER)
+
+    @property
+    def is_admin_staff(self) -> bool:
+        return self.effective_staff_role == User.StaffRole.ADMIN
+
+    @property
+    def is_member_staff(self) -> bool:
+        return self.effective_staff_role == User.StaffRole.MEMBER
+
+    @property
+    def is_viewer_staff(self) -> bool:
+        return self.effective_staff_role == User.StaffRole.VIEWER
 
     @property
     def is_active(self):
