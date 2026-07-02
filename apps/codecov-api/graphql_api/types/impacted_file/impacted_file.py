@@ -10,6 +10,7 @@ from graphql_api.types.errors.errors import UnknownFlags
 from graphql_api.types.segment_comparison.segment_comparison import SegmentComparisons
 from services.comparison import (
     Comparison,
+    FileComparison,
     ImpactedFile,
     MissingComparisonReport,
 )
@@ -81,6 +82,14 @@ def resolve_segments(
         return SegmentComparisons(results=[])
     path = impacted_file.head_name
 
+    flags = filters.get("flags") or []
+
+    if flags:
+        available_flags = set(comparison.head_report.get_flag_names())
+        unknown_flags = set(flags) - available_flags
+        if unknown_flags:
+            return UnknownFlags(f"No coverage with chosen flags: {unknown_flags}")
+
     try:
         file_comparison = comparison.get_file_comparison(
             path, with_src=True, bypass_max_diff=True
@@ -90,6 +99,30 @@ def resolve_segments(
             return UnknownPath(f"path does not exist: {path}")
         else:
             return ProviderError()
+
+    if flags:
+        # Build a flag-filtered FileComparison by merging flag-specific reports
+        merged_head_file = None
+        merged_base_file = None
+        for flag_name in flags:
+            flag_comp = comparison.flag_comparison(flag_name)
+            if flag_comp.head_report is not None:
+                flag_head_file = flag_comp.head_report.get(path)
+                if flag_head_file is not None:
+                    merged_head_file = flag_head_file if merged_head_file is None else merged_head_file | flag_head_file
+            if flag_comp.base_report is not None:
+                flag_base_file = flag_comp.base_report.get(path)
+                if flag_base_file is not None:
+                    merged_base_file = flag_base_file if merged_base_file is None else merged_base_file | flag_base_file
+
+        diff_data = comparison.git_comparison["diff"]["files"].get(path)
+        file_comparison = FileComparison(
+            base_file=merged_base_file,
+            head_file=merged_head_file,
+            diff_data=diff_data,
+            src=file_comparison.src,
+            bypass_max_diff=True,
+        )
 
     segments = file_comparison.segments or []
 
