@@ -11,7 +11,7 @@ type ImpactedFile {
   changeCoverage: Float
   missesCount: Int!
   hashedPath: String!
-  segments(filters: SegmentsFilters): SegmentsResult!
+  segments(filters: SegmentFilters): SegmentsResult!
 }
 
 type ImpactedFiles {
