@@ -33,12 +33,13 @@ def fetch_current_flakes(repo_id: int) -> dict[bytes, Flake]:
     }
 
 
-def get_testruns(upload: ReportSession) -> QuerySet[Testrun]:
-    upload_filter = Q(upload_id=upload.id)
+def get_testruns(uploads: QuerySet[ReportSession]) -> QuerySet[Testrun]:
+    upload_ids = [upload.id for upload in uploads]
 
     # we won't process flakes for testruns older than 1 day
     return Testrun.objects.filter(
-        Q(timestamp__gte=timezone.now() - timedelta(days=1)) & upload_filter
+        Q(timestamp__gte=timezone.now() - timedelta(days=1))
+        & Q(upload_id__in=upload_ids)
     ).order_by("timestamp")
 
 
@@ -80,28 +81,6 @@ def handle_failure(
 
 
 @sentry_sdk.trace
-def process_single_upload(
-    upload: ReportSession, curr_flakes: dict[bytes, Flake], repo_id: int
-):
-    testruns = get_testruns(upload)
-
-    for testrun in testruns:
-        test_id = bytes(testrun.test_id)
-        match testrun.outcome:
-            case "pass":
-                if test_id not in curr_flakes:
-                    continue
-
-                handle_pass(curr_flakes, test_id)
-            case "failure" | "flaky_fail" | "error":
-                handle_failure(curr_flakes, test_id, testrun, repo_id)
-            case _:
-                continue
-
-    Testrun.objects.bulk_update(testruns, ["outcome"])
-
-
-@sentry_sdk.trace
 def process_flakes_for_commit(repo_id: int, commit_id: str):
     log.info(
         "process_flakes_for_commit: starting processing",
@@ -120,12 +99,22 @@ def process_flakes_for_commit(repo_id: int, commit_id: str):
         extra={"flakes": [flake.test_id.hex() for flake in curr_flakes.values()]},
     )
 
-    for upload in uploads:
-        process_single_upload(upload, curr_flakes, repo_id)
-        log.info(
-            "process_flakes_for_commit: processed upload",
-            extra={"upload": upload.id},
-        )
+    testruns = list(get_testruns(uploads))
+
+    for testrun in testruns:
+        test_id = bytes(testrun.test_id)
+        match testrun.outcome:
+            case "pass":
+                if test_id not in curr_flakes:
+                    continue
+
+                handle_pass(curr_flakes, test_id)
+            case "failure" | "flaky_fail" | "error":
+                handle_failure(curr_flakes, test_id, testrun, repo_id)
+            case _:
+                continue
+
+    Testrun.objects.bulk_update(testruns, ["outcome"])
 
     log.info(
         "process_flakes_for_commit: bulk creating flakes",
