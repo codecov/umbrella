@@ -8,17 +8,20 @@ from django.contrib import admin, messages
 from django.contrib.admin.models import LogEntry
 from django.db.models import Count, OuterRef, Subquery
 from django.db.models.fields import BLANK_CHOICE_DASH
+from django.db.models.functions import Coalesce
 from django.forms import CheckboxInput, Select, Textarea
 from django.http import HttpRequest
 from django.shortcuts import redirect, render
+from django.urls import reverse
 from django.utils import timezone
-from django.utils.html import format_html
+from django.utils.html import format_html, format_html_join
 
 from codecov.admin import AdminMixin
 from codecov.commands.exceptions import ValidationError
 from codecov_auth.helpers import History
 from codecov_auth.models import OrganizationLevelToken, Owner, SentryUser, Session, User
 from codecov_auth.services.org_level_token_service import OrgLevelTokenService
+from core.models import Repository
 from services.task import TaskService
 from shared.django_apps.codecov_auth.models import (
     Account,
@@ -735,6 +738,11 @@ class OwnerAdmin(AdminMixin, admin.ModelAdmin):
         "yaml",
         "updatestamp",
         "permission",
+        "permission_display",
+        "admins",
+        "admins_display",
+        "organizations",
+        "organizations_display",
         "student",
         "student_created_at",
         "student_updated_at",
@@ -800,7 +808,7 @@ class OwnerAdmin(AdminMixin, admin.ModelAdmin):
             "Reference fields",
             {
                 "fields": [
-                    "admins",
+                    "admins_display",
                     "staff",
                     "upload_token_required_for_public_repos",
                     "email",
@@ -811,8 +819,8 @@ class OwnerAdmin(AdminMixin, admin.ModelAdmin):
                     "yaml",
                     "bot",
                     "max_upload_limit",
-                    "organizations",
-                    "permission",
+                    "organizations_display",
+                    "permission_display",
                     "student_created_at",
                     "student_updated_at",
                     "onboarding_completed",
@@ -825,16 +833,115 @@ class OwnerAdmin(AdminMixin, admin.ModelAdmin):
         ),
     ]
 
+    # Avoid Django's expensive "full result count" query on the changelist.
+    # With the repository-count subquery below there is no GROUP BY on the
+    # outer query, so the paginator count collapses to a plain
+    # ``SELECT COUNT(*) FROM owners``; disabling the full count skips even that
+    # unfiltered scan.
+    show_full_count = False
+
     def get_queryset(self, request):
+        # A correlated Subquery keeps the repository count per row WITHOUT adding
+        # a ``LEFT JOIN repos ... GROUP BY ownerid`` to the changelist queryset.
+        # The previous ``Count("repository", distinct=True)`` annotation forced
+        # the admin paginator to wrap the grouped query in
+        # ``SELECT COUNT(*) FROM (... GROUP BY ownerid) subquery``, which scanned
+        # the full owners×repos space (~11s p50 in production).
+        repository_count_subquery = (
+            Repository.objects.filter(author=OuterRef("pk"))
+            .order_by()
+            .values("author")
+            .annotate(count=Count("repoid"))
+            .values("count")
+        )
         return (
             super()
             .get_queryset(request)
-            .annotate(repository_count=Count("repository", distinct=True))
+            .annotate(repository_count=Coalesce(Subquery(repository_count_subquery), 0))
         )
 
     @admin.display(description="repositories", ordering="repository_count")
     def repository_count(self, obj):
         return obj.repository_count
+
+    def _owner_id_list_display(self, ownerids):
+        """Render an owner-id ``ArrayField`` as a read-only list of admin links.
+
+        Each entry links to that ``Owner``'s admin change page and is labelled
+        ``<ownerid> — <username> (<email>)`` so staff can see who the ids refer
+        to and jump straight to them.
+        """
+        ownerids = [ownerid for ownerid in (ownerids or []) if ownerid is not None]
+        if not ownerids:
+            return "—"
+
+        owners = {
+            owner.ownerid: owner for owner in Owner.objects.filter(ownerid__in=ownerids)
+        }
+        rows = []
+        for ownerid in ownerids:
+            owner = owners.get(ownerid)
+            if owner is not None:
+                rows.append(
+                    format_html(
+                        '<div><a href="{}">{}</a> — {} ({})</div>',
+                        reverse("admin:codecov_auth_owner_change", args=[ownerid]),
+                        ownerid,
+                        owner.username or "",
+                        owner.email or "",
+                    )
+                )
+            else:
+                rows.append(format_html("<div>{} — (not found)</div>", ownerid))
+
+        return format_html_join("", "{}", ((row,) for row in rows))
+
+    @admin.display(description="admins (owners with admin rights here)")
+    def admins_display(self, obj):
+        return self._owner_id_list_display(obj.admins)
+
+    @admin.display(description="organizations (owner is a member of)")
+    def organizations_display(self, obj):
+        return self._owner_id_list_display(obj.organizations)
+
+    @admin.display(description="permission (private repos this owner can view)")
+    def permission_display(self, obj):
+        """Read-only, human-readable view of the ``permission`` array.
+
+        ``permission`` stores ``repoid``s (not owner ids) for the private repos
+        this owner is allowed to view. It is maintained by the repo-sync
+        pipeline and webhooks, so it is shown read-only as a list of links to
+        each repo's admin page, labelled ``<repoid> — <owner>/<repo> (private|public)``.
+        """
+        repoids = [repoid for repoid in (obj.permission or []) if repoid is not None]
+        if not repoids:
+            return "—"
+
+        repos = {
+            repo.repoid: repo
+            for repo in Repository.objects.filter(repoid__in=repoids).select_related(
+                "author"
+            )
+        }
+        rows = []
+        for repoid in repoids:
+            repo = repos.get(repoid)
+            if repo is not None:
+                visibility = "private" if repo.private else "public"
+                rows.append(
+                    format_html(
+                        '<div><a href="{}">{}</a> — {}/{} ({})</div>',
+                        reverse("admin:core_repository_change", args=[repoid]),
+                        repoid,
+                        repo.author.username,
+                        repo.name,
+                        visibility,
+                    )
+                )
+            else:
+                rows.append(format_html("<div>{} — (not found)</div>", repoid))
+
+        return format_html_join("", "{}", ((row,) for row in rows))
 
     def get_form(self, request, obj=None, change=False, **kwargs):
         form = super().get_form(request, obj, change, **kwargs)
