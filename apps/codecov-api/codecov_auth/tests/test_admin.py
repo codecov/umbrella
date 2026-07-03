@@ -70,6 +70,69 @@ class OwnerAdminTest(TestCase):
         )
         self.assertEqual(response.status_code, 200)
 
+    def test_admins_display_links_id_username_email(self):
+        admin_owner = OwnerFactory(username="admin-user", email="admin@example.com")
+        owner = OwnerFactory(admins=[admin_owner.ownerid])
+        rendered = self.owner_admin.admins_display(owner)
+        assert (
+            f'href="/admin/codecov_auth/owner/{admin_owner.ownerid}/change/"'
+            in rendered
+        )
+        assert f">{admin_owner.ownerid}</a>" in rendered
+        assert "admin-user (admin@example.com)" in rendered
+
+    def test_admins_display_handles_empty(self):
+        owner = OwnerFactory(admins=[])
+        assert self.owner_admin.admins_display(owner) == "—"
+        owner_none = OwnerFactory(admins=None)
+        assert self.owner_admin.admins_display(owner_none) == "—"
+
+    def test_admins_display_marks_missing_owner(self):
+        owner = OwnerFactory(admins=[9999999])
+        rendered = self.owner_admin.admins_display(owner)
+        assert "9999999 — (not found)" in rendered
+        assert "<a" not in rendered
+
+    def test_organizations_display_links_id_username_email(self):
+        org_owner = OwnerFactory(username="my-org", email="org@example.com")
+        owner = OwnerFactory(organizations=[org_owner.ownerid])
+        rendered = self.owner_admin.organizations_display(owner)
+        assert (
+            f'href="/admin/codecov_auth/owner/{org_owner.ownerid}/change/"' in rendered
+        )
+        assert f">{org_owner.ownerid}</a>" in rendered
+        assert "my-org (org@example.com)" in rendered
+
+    def test_permission_display_links_to_repos(self):
+        repo_owner = OwnerFactory(username="acme")
+        repo = RepositoryFactory(author=repo_owner, name="widgets", private=True)
+        owner = OwnerFactory(permission=[repo.repoid])
+        rendered = self.owner_admin.permission_display(owner)
+        assert f'href="/admin/core/repository/{repo.repoid}/change/"' in rendered
+        assert f">{repo.repoid}</a>" in rendered
+        assert "acme/widgets (private)" in rendered
+
+    def test_permission_display_handles_empty(self):
+        owner = OwnerFactory(permission=[])
+        assert self.owner_admin.permission_display(owner) == "—"
+
+    def test_admins_and_organizations_are_read_only(self):
+        owner = OwnerFactory()
+        request = RequestFactory().get(
+            reverse("admin:codecov_auth_owner_change", args=[owner.pk])
+        )
+        request.user = self.staff_user
+        readonly = self.owner_admin.get_readonly_fields(request, owner)
+        # The raw array fields are excluded from the editable form, and only the
+        # humanized display methods are surfaced.
+        assert "admins" in readonly
+        assert "admins_display" in readonly
+        assert "organizations" in readonly
+        assert "organizations_display" in readonly
+        form = self.owner_admin.get_form(request, owner)
+        assert "admins" not in form.base_fields
+        assert "organizations" not in form.base_fields
+
     def test_owner_admin_impersonate_owner(self):
         owner_to_impersonate = OwnerFactory(
             service="bitbucket",
