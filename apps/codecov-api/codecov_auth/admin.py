@@ -8,6 +8,7 @@ from django.contrib import admin, messages
 from django.contrib.admin.models import LogEntry
 from django.db.models import Count, OuterRef, Subquery
 from django.db.models.fields import BLANK_CHOICE_DASH
+from django.db.models.functions import Coalesce
 from django.forms import CheckboxInput, Select, Textarea
 from django.http import HttpRequest
 from django.shortcuts import redirect, render
@@ -19,6 +20,7 @@ from codecov.commands.exceptions import ValidationError
 from codecov_auth.helpers import History
 from codecov_auth.models import OrganizationLevelToken, Owner, SentryUser, Session, User
 from codecov_auth.services.org_level_token_service import OrgLevelTokenService
+from core.models import Repository
 from services.task import TaskService
 from shared.django_apps.codecov_auth.models import (
     Account,
@@ -825,11 +827,20 @@ class OwnerAdmin(AdminMixin, admin.ModelAdmin):
         ),
     ]
 
+    show_full_result_count = False
+
     def get_queryset(self, request):
+        repository_count_subquery = (
+            Repository.objects.filter(author=OuterRef("pk"))
+            .order_by()
+            .values("author")
+            .annotate(count=Count("repoid"))
+            .values("count")
+        )
         return (
             super()
             .get_queryset(request)
-            .annotate(repository_count=Count("repository", distinct=True))
+            .annotate(repository_count=Coalesce(Subquery(repository_count_subquery), 0))
         )
 
     @admin.display(description="repositories", ordering="repository_count")
