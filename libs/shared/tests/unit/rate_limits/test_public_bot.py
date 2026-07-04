@@ -1,7 +1,6 @@
 from unittest.mock import MagicMock
 
 import pytest
-from redis import RedisError
 
 from shared.rate_limits.public_bot import (
     DEFAULT_BOTS,
@@ -118,18 +117,6 @@ class TestPoolUtilization:
         util_call = set_calls[f"{POOL_UTIL_KEY_PREFIX}:commit"]
         assert util_call.args[1] == pytest.approx(0.2)
 
-    def test_record_pool_utilization_ignores_bad_values(self):
-        redis = MagicMock()
-        record_pool_utilization(redis, "commit", remaining=None, limit=None)
-        record_pool_utilization(redis, "commit", remaining=1, limit=0)
-        redis.set.assert_not_called()
-
-    def test_record_pool_utilization_fails_open(self):
-        redis = MagicMock()
-        redis.set.side_effect = RedisError
-        # Should not raise
-        record_pool_utilization(redis, "commit", remaining=1, limit=100)
-
     def test_get_pool_utilization_from_bytes(self):
         redis = MagicMock()
         redis.get.return_value = b"0.5"
@@ -138,11 +125,6 @@ class TestPoolUtilization:
     def test_get_pool_utilization_missing_is_zero(self):
         redis = MagicMock()
         redis.get.return_value = None
-        assert get_pool_utilization(redis, "commit") == 0.0
-
-    def test_get_pool_utilization_fails_open(self):
-        redis = MagicMock()
-        redis.get.side_effect = RedisError
         assert get_pool_utilization(redis, "commit") == 0.0
 
     def test_get_pool_budget_from_redis(self):
@@ -155,22 +137,12 @@ class TestPoolUtilization:
         redis.get.return_value = None
         assert get_pool_budget(redis, "commit", 15000) == 15000
 
-    def test_get_pool_budget_fallback_on_error(self):
-        redis = MagicMock()
-        redis.get.side_effect = RedisError
-        assert get_pool_budget(redis, "commit", 15000) == 15000
-
 
 class TestRepoUsage:
     def test_get_repo_usage_sums_buckets(self):
         redis = MagicMock()
         redis.mget.return_value = [b"3", None, b"2", b"5"]
         assert get_repo_usage(redis, "commit", "org/repo", 3600) == 10
-
-    def test_get_repo_usage_fails_open(self):
-        redis = MagicMock()
-        redis.mget.side_effect = RedisError
-        assert get_repo_usage(redis, "commit", "org/repo", 3600) == 0
 
     def test_record_repo_request_increments_current_bucket(self):
         redis = MagicMock()
@@ -180,12 +152,6 @@ class TestRepoUsage:
         pipeline.incr.assert_called_once()
         pipeline.expire.assert_called_once()
         pipeline.execute.assert_called_once()
-
-    def test_record_repo_request_fails_open(self):
-        redis = MagicMock()
-        redis.pipeline.side_effect = RedisError
-        # Should not raise
-        record_repo_request(redis, "commit", "org/repo", 3600)
 
 
 class TestEvaluatePublicBotRequest:

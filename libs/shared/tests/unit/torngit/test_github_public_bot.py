@@ -2,6 +2,7 @@ from unittest.mock import MagicMock
 
 import httpx
 import pytest
+from redis import RedisError
 
 from shared.rate_limits.public_bot import (
     POOL_BUDGET_KEY_PREFIX,
@@ -203,6 +204,28 @@ class TestMakeHttpCallPublicBot:
         assert result is res
         client.request.assert_awaited_once()
         record.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_redis_error_fails_open(
+        self, public_bot_handler, mock_configuration, mocker
+    ):
+        _enable_config(mock_configuration, enforce=True)
+        redis = MagicMock()
+        redis.get.side_effect = RedisError
+        public_bot_handler._redis_connection = redis
+
+        res = _ok_response()
+        client = mocker.MagicMock(request=mocker.AsyncMock(return_value=res))
+
+        # A Redis failure must not block the provider request
+        result = await public_bot_handler.make_http_call(
+            client,
+            "GET",
+            "/repos/mongodb/mongo-python-driver/commits",
+            token_to_use=COMMIT_TOKEN,
+        )
+        assert result is res
+        client.request.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_disabled_config_no_enforcement(
