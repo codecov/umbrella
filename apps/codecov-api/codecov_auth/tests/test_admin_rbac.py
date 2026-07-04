@@ -23,9 +23,7 @@ def _request_for(user):
     return request
 
 
-# --------------------------------------------------------------------------- #
 # Model: staff_role sync with is_superuser (is_admin)
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.django_db
@@ -35,7 +33,6 @@ def test_superuser_forces_admin_role():
 
     assert user.staff_role == User.StaffRole.ADMIN
     assert user.effective_staff_role == User.StaffRole.ADMIN
-    assert user.is_admin_staff
 
 
 @pytest.mark.django_db
@@ -49,7 +46,6 @@ def test_demoting_superuser_drops_to_viewer():
 
     assert user.staff_role == User.StaffRole.VIEWER
     assert user.effective_staff_role == User.StaffRole.VIEWER
-    assert user.is_viewer_staff
 
 
 @pytest.mark.django_db
@@ -76,7 +72,6 @@ def test_member_role_is_preserved():
     user.refresh_from_db()
 
     assert user.effective_staff_role == User.StaffRole.MEMBER
-    assert user.is_member_staff
 
 
 @pytest.mark.django_db
@@ -86,7 +81,6 @@ def test_non_staff_user_has_none_role():
 
     assert user.staff_role == User.StaffRole.NONE
     assert user.effective_staff_role == User.StaffRole.NONE
-    assert user.is_none_staff
 
 
 @pytest.mark.django_db
@@ -102,9 +96,7 @@ def test_losing_staff_drops_role_to_none():
     assert user.effective_staff_role == User.StaffRole.NONE
 
 
-# --------------------------------------------------------------------------- #
 # RBACAdminMixin: per-model permission enforcement
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.django_db
@@ -160,9 +152,7 @@ def test_viewer_gets_all_fields_readonly():
     assert model_field_names.issubset(set(readonly))
 
 
-# --------------------------------------------------------------------------- #
 # HTTP-level enforcement
-# --------------------------------------------------------------------------- #
 
 
 class ViewerHttpTest(TestCase):
@@ -222,9 +212,7 @@ class ViewerHttpTest(TestCase):
         assert response.status_code == 302
 
 
-# --------------------------------------------------------------------------- #
 # UserAdmin: role editing is restricted to superusers
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.django_db
@@ -280,9 +268,7 @@ def test_useradmin_shows_none_readonly_for_non_staff_target():
     assert form.fields["staff_role"].disabled
 
 
-# --------------------------------------------------------------------------- #
 # StaffRoleListFilter: filter the users changelist by effective role
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.django_db

@@ -291,12 +291,7 @@ class OwnerUserInline(admin.TabularInline):
 
 
 class StaffRoleListFilter(admin.SimpleListFilter):
-    """Filter users by their effective admin role.
-
-    Mirrors `User.effective_staff_role`: any superuser is Admin, a non-staff
-    user has no role (None), and remaining staff fall back to their stored
-    `staff_role` (defaulting to the most restrictive Viewer).
-    """
+    """Filter users by their effective admin role (see `User.effective_staff_role`)."""
 
     title = "role"
     parameter_name = "role"
@@ -367,9 +362,7 @@ class UserAdmin(AdminMixin, admin.ModelAdmin):
                 if field_name in form.base_fields:
                     form.base_fields[field_name].disabled = True
 
-        # The role is derived from the flags: Admin follows `is_superuser` and
-        # None follows `is_staff` (both set automatically), so those are shown
-        # read-only. Only genuine staff can be toggled between Viewer / Member.
+        # Admin/None are flag-derived and read-only; only staff toggle Viewer/Member.
         staff_role_field = form.base_fields.get("staff_role")
         if staff_role_field is not None:
             if obj is not None and obj.is_superuser:

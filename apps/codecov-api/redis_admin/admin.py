@@ -1814,7 +1814,6 @@ class CeleryBrokerQueueAdmin(admin.ModelAdmin):
             raise PermissionDenied(
                 "redis_admin chart-fragment is restricted to staff users"
             )
-        # Viewers are read-only and must not see Redis/Celery queue internals.
         deny_viewers(request)
 
         chart_ctx = self._build_frequency_chart_context(request, queue_name)

@@ -9,15 +9,16 @@ from codecov.forms import AutocompleteSearchForm
 from codecov_auth.models import User
 from shared.django_apps.rollouts.models import FeatureFlag, FeatureFlagVariant
 
-# App labels whose models are hidden entirely from Viewer-level staff. These are
-# the Redis/Celery queue admin surfaces, which Viewers must not be able to read.
+# App labels whose models are hidden entirely from Viewer-level staff.
 VIEWER_RESTRICTED_APP_LABELS = {"redis_admin"}
 
 
-def get_staff_role(request: HttpRequest) -> "User.StaffRole | None":
-    """Resolve the RBAC role for the request's user (``None`` if not staff)."""
-    user = getattr(request, "user", None)
-    return getattr(user, "effective_staff_role", None)
+def get_staff_role(request: HttpRequest) -> "User.StaffRole":
+    """Resolve the RBAC role for the request's user (``StaffRole.NONE`` if not staff)."""
+    return (
+        getattr(getattr(request, "user", None), "effective_staff_role", None)
+        or User.StaffRole.NONE
+    )
 
 
 def is_viewer(request: HttpRequest) -> bool:
@@ -25,12 +26,10 @@ def is_viewer(request: HttpRequest) -> bool:
 
 
 def deny_viewers(request: HttpRequest) -> None:
-    """Raise ``PermissionDenied`` for Viewer-level staff.
+    """Block Viewers from custom admin views.
 
-    Custom admin views registered via ``get_urls`` are wrapped in
-    ``admin_site.admin_view`` which only checks ``is_staff``. Call this at the
-    top of any such view that performs (or triggers) a write so Viewers, who are
-    read-only, cannot invoke it via a GET link.
+    ``admin_site.admin_view`` only checks ``is_staff``, so call this at the top
+    of any custom (``get_urls``) view that triggers a write.
     """
     if is_viewer(request):
         raise PermissionDenied
@@ -39,9 +38,8 @@ def deny_viewers(request: HttpRequest) -> None:
 class RBACAdminMixin:
     """Enforces the Viewer RBAC level on every registered ``ModelAdmin``.
 
-    Members and Admins fall through to the wrapped admin's own logic (which
-    still gates superuser-only fields), preserving today's behaviour. Viewers
-    get read-only access, no actions, and no visibility into Redis queue models.
+    Viewers get read-only access, no actions, and no visibility into Redis queue
+    models. Members and Admins fall through to the wrapped admin's own logic.
     """
 
     def _viewer_restricted_model(self) -> bool:
@@ -81,8 +79,6 @@ class RBACAdminMixin:
         readonly = super().get_readonly_fields(request, obj)
         if not is_viewer(request):
             return readonly
-        # Belt-and-suspenders: Django already renders a view-only change form,
-        # but we also force every concrete field read-only.
         field_names = {field.name for field in self.model._meta.fields}
         field_names.update(readonly)
         return tuple(field_names)
@@ -91,7 +87,6 @@ class RBACAdminMixin:
         inline_instances = super().get_inline_instances(request, obj)
         if not is_viewer(request):
             return inline_instances
-        # Render inlines read-only so Viewers cannot add/edit/delete related rows.
         for inline in inline_instances:
             inline.can_delete = False
             inline.max_num = 0
@@ -103,11 +98,7 @@ class RBACAdminMixin:
 
 
 class CodecovAdminSite(admin.AdminSite):
-    """Default admin site that transparently applies :class:`RBACAdminMixin`.
-
-    Every model registered via ``@admin.register`` / ``admin.site.register`` is
-    wrapped so RBAC is enforced centrally without editing each app's admin.
-    """
+    """Admin site that wraps every registered ``ModelAdmin`` with RBAC."""
 
     def register(self, model_or_iterable, admin_class=None, **options) -> None:
         base = admin_class or admin.ModelAdmin

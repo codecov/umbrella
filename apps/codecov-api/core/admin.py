@@ -354,7 +354,6 @@ class CommitAdmin(AdminMixin, admin.ModelAdmin):
         if obj.pk is None:
             return ""
 
-        # Viewers are read-only, so don't offer them action buttons.
         request = getattr(self, "_reprocess_actions_request", None)
         if request is not None and is_viewer(request):
             return "No reprocessing actions available"
