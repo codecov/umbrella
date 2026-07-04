@@ -15,8 +15,14 @@ from shared.config import get_config
 from shared.github import get_github_integration_token, get_github_jwt_token
 from shared.helpers.cache import cache
 from shared.helpers.redis import get_redis_connection
-from shared.metrics import Counter
+from shared.metrics import Counter, Gauge, inc_counter, set_gauge
 from shared.rate_limits import set_entity_to_rate_limited
+from shared.rate_limits.public_bot import (
+    evaluate_public_bot_request,
+    get_public_bot_rate_limit_config,
+    record_pool_utilization,
+    record_repo_request,
+)
 from shared.torngit.base import TokenType, TorngitBaseAdapter
 from shared.torngit.enums import Endpoints
 from shared.torngit.exceptions import (
@@ -53,6 +59,27 @@ GITHUB_E_API_CALL_COUNTER = Counter(
     "git_provider_api_calls_github_enterprise",
     "Number of times github enterprise called this endpoint",
     ["endpoint"],
+)
+
+# Per-repo rate limiting for shared "public bot" tokens (e.g. commit/pull dedicated apps).
+# Only incremented when a repo exceeds its sliding per-repo cap, so the repo_slug label
+# stays low cardinality (only heavy repos ever trip it).
+PUBLIC_BOT_OVER_CAP_COUNTER = Counter(
+    "git_provider_public_bot_over_cap",
+    "Number of requests where a repo exceeded its per-repo cap on a shared public bot",
+    ["bot", "repo_slug", "mode"],
+)
+# Number of requests actually sent via a shared public bot subject to per-repo limiting.
+PUBLIC_BOT_REQUESTS_COUNTER = Counter(
+    "git_provider_public_bot_requests",
+    "Number of requests sent via a shared public bot subject to per-repo rate limiting",
+    ["bot"],
+)
+# Live GitHub rate-limit utilization (0-1) for a shared public bot.
+PUBLIC_BOT_UTILIZATION_GAUGE = Gauge(
+    "git_provider_public_bot_utilization",
+    "Live GitHub rate-limit utilization (0-1) for a shared public bot",
+    ["bot"],
 )
 
 
@@ -749,6 +776,17 @@ class Github(TorngitBaseAdapter):
         }
         return token_to_use
 
+    def _public_bot_dropped_response(self) -> Response:
+        """Synthetic response used to silently drop an over-cap public-bot request.
+
+        Returns a 204 so ``_parse_response`` yields ``None`` and pagination stops,
+        without raising a client or rate-limit error. The request is never sent.
+        """
+        return Response(
+            status_code=204,
+            headers={"X-Codecov-Public-Bot-Dropped": "true"},
+        )
+
     async def make_http_call(
         self,
         client,
@@ -770,6 +808,9 @@ class Github(TorngitBaseAdapter):
         log_dict = {}
 
         method = (method or "GET").upper()
+        # Set when this request uses a shared "public bot" token that is subject to
+        # per-repo rate limiting (used later to record pool utilization).
+        public_bot_entity: str | None = None
         if url[0] == "/":
             log_dict = {
                 "event": "api",
@@ -780,6 +821,50 @@ class Github(TorngitBaseAdapter):
                 "loggable_token": self.loggable_token(token_to_use),
             }
             url = self.api_url + url
+
+            # Per-repo rate limiting for shared public bot tokens (commit/pull etc.).
+            entity_name = token_to_use.get("entity_name") if token_to_use else None
+            if entity_name and self.slug:
+                public_bot_cfg = get_public_bot_rate_limit_config(self.service)
+                decision = evaluate_public_bot_request(
+                    self._redis_connection, entity_name, self.slug, public_bot_cfg
+                )
+                if decision.is_limited_bot:
+                    public_bot_entity = entity_name
+                    if decision.over_cap:
+                        mode = "enforce" if public_bot_cfg.enforce else "observe"
+                        inc_counter(
+                            PUBLIC_BOT_OVER_CAP_COUNTER,
+                            {
+                                "bot": entity_name,
+                                "repo_slug": self.slug,
+                                "mode": mode,
+                            },
+                        )
+                        log.warning(
+                            "Repo exceeded per-repo cap on shared public bot",
+                            extra=dict(
+                                public_bot=entity_name,
+                                repo_usage=decision.usage,
+                                repo_cap=decision.cap,
+                                pool_utilization=decision.utilization,
+                                enforce=public_bot_cfg.enforce,
+                                **log_dict,
+                            ),
+                        )
+                        if public_bot_cfg.enforce:
+                            # Silent hard-drop: no request is sent and no error is
+                            # raised. Callers receive an empty (204 -> None) response.
+                            return self._public_bot_dropped_response()
+                    # The request will be sent: count it against the repo's rolling
+                    # usage (only sent requests are counted).
+                    record_repo_request(
+                        self._redis_connection,
+                        entity_name,
+                        self.slug,
+                        public_bot_cfg.window_seconds,
+                    )
+                    inc_counter(PUBLIC_BOT_REQUESTS_COUNTER, {"bot": entity_name})
 
         url = url_concat(url, args).replace(" ", "%20")
 
@@ -820,6 +905,27 @@ class Github(TorngitBaseAdapter):
                         **log_dict,
                     ),
                 )
+                # Record the shared public bot's live GitHub utilization so the
+                # per-repo sliding cap can react to real pool pressure.
+                if public_bot_entity is not None:
+                    rl_remaining = res.headers.get("X-RateLimit-Remaining")
+                    rl_limit = res.headers.get("X-RateLimit-Limit")
+                    record_pool_utilization(
+                        self._redis_connection,
+                        public_bot_entity,
+                        rl_remaining,
+                        rl_limit,
+                    )
+                    try:
+                        limit_val = int(rl_limit)
+                        if limit_val > 0:
+                            set_gauge(
+                                PUBLIC_BOT_UTILIZATION_GAUGE,
+                                1 - (int(rl_remaining) / limit_val),
+                                {"bot": public_bot_entity},
+                            )
+                    except (TypeError, ValueError):
+                        pass
             except (httpx.TimeoutException, httpx.NetworkError):
                 if current_retry < max_number_retries:
                     log.warning(
