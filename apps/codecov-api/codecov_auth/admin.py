@@ -6,7 +6,7 @@ import django.forms as forms
 from django.conf import settings
 from django.contrib import admin, messages
 from django.contrib.admin.models import LogEntry
-from django.db.models import Count, OuterRef, Subquery
+from django.db.models import Count, OuterRef, Q, Subquery
 from django.db.models.fields import BLANK_CHOICE_DASH
 from django.db.models.functions import Coalesce
 from django.forms import CheckboxInput, Select, Textarea
@@ -290,6 +290,43 @@ class OwnerUserInline(admin.TabularInline):
     fields = [] + readonly_fields
 
 
+class StaffRoleListFilter(admin.SimpleListFilter):
+    """Filter users by their effective admin role.
+
+    Mirrors `User.effective_staff_role`: any superuser is Admin, a non-staff
+    user has no role (None), and remaining staff fall back to their stored
+    `staff_role` (defaulting to the most restrictive Viewer).
+    """
+
+    title = "role"
+    parameter_name = "role"
+
+    def lookups(self, request, model_admin):
+        return User.StaffRole.choices
+
+    def queryset(self, request, queryset):
+        value = self.value()
+        if value == User.StaffRole.ADMIN:
+            return queryset.filter(is_superuser=True)
+        if value == User.StaffRole.NONE:
+            return queryset.filter(Q(is_superuser=False) & ~Q(is_staff=True))
+        if value == User.StaffRole.MEMBER:
+            return queryset.filter(
+                is_superuser=False, is_staff=True, staff_role=User.StaffRole.MEMBER
+            )
+        if value == User.StaffRole.VIEWER:
+            return queryset.filter(
+                Q(is_superuser=False)
+                & Q(is_staff=True)
+                & (
+                    Q(staff_role=User.StaffRole.VIEWER)
+                    | Q(staff_role=User.StaffRole.NONE)
+                    | Q(staff_role__isnull=True)
+                )
+            )
+        return queryset
+
+
 @admin.register(User)
 class UserAdmin(AdminMixin, admin.ModelAdmin):
     list_display = (
@@ -299,6 +336,7 @@ class UserAdmin(AdminMixin, admin.ModelAdmin):
         "is_superuser",
         "staff_role",
     )
+    list_filter = (StaffRoleListFilter,)
     inlines = [AccountsUsersInline, OwnerUserInline]
     search_fields = (
         "name__iregex",
@@ -329,14 +367,19 @@ class UserAdmin(AdminMixin, admin.ModelAdmin):
                 if field_name in form.base_fields:
                     form.base_fields[field_name].disabled = True
 
-        # The Admin level is driven by `is_superuser` and set automatically, so
-        # the editable choices are limited to Viewer / Member. When the user is
-        # already a superuser, surface Admin as a read-only, pre-selected value.
+        # The role is derived from the flags: Admin follows `is_superuser` and
+        # None follows `is_staff` (both set automatically), so those are shown
+        # read-only. Only genuine staff can be toggled between Viewer / Member.
         staff_role_field = form.base_fields.get("staff_role")
         if staff_role_field is not None:
             if obj is not None and obj.is_superuser:
                 staff_role_field.choices = [
                     (User.StaffRole.ADMIN.value, User.StaffRole.ADMIN.label),
+                ]
+                staff_role_field.disabled = True
+            elif obj is not None and not obj.is_staff:
+                staff_role_field.choices = [
+                    (User.StaffRole.NONE.value, User.StaffRole.NONE.label),
                 ]
                 staff_role_field.disabled = True
             else:

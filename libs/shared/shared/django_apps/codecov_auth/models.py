@@ -83,6 +83,9 @@ class User(ExportModelOperationsMixin("codecov_auth.user"), BaseCodecovModel):
         PERSONAL = "PERSONAL"
 
     class StaffRole(models.TextChoices):
+        # No admin/RBAC access at all. Applied automatically to users who are
+        # not staff, since RBAC only governs `is_staff` users (see `save`).
+        NONE = "none", "None"
         # Read-only access to the Django admin. May not see some objects (e.g.
         # Redis/Celery queue models) and cannot run any actions.
         VIEWER = "viewer"
@@ -103,7 +106,7 @@ class User(ExportModelOperationsMixin("codecov_auth.user"), BaseCodecovModel):
     email_opt_in = models.BooleanField(default=False)
     staff_role = models.TextField(
         choices=StaffRole.choices,
-        default=StaffRole.VIEWER,
+        default=StaffRole.NONE,
         null=True,
         blank=True,
     )
@@ -118,13 +121,15 @@ class User(ExportModelOperationsMixin("codecov_auth.user"), BaseCodecovModel):
         app_label = CODECOV_AUTH_APP_LABEL
 
     def save(self, *args, **kwargs):
-        """Keep `staff_role` in sync with the `is_superuser` (`is_admin`) flag.
+        """Keep `staff_role` in sync with the `is_superuser`/`is_staff` flags.
 
-        The Admin level is controlled by `is_superuser` only:
-        - while `is_superuser` is True the role is forced to ADMIN,
-        - demoting an admin (`is_superuser` True -> False) drops them to VIEWER.
+        RBAC only governs staff users, and the levels are flag-driven:
+        - `is_superuser` forces ADMIN,
+        - a non-staff user (`is_staff` False) has no role (NONE),
+        - demoting an admin (`is_superuser` True -> False) drops them to VIEWER,
+        - any other staff user is at least a VIEWER.
         """
-        role_changed = self._sync_staff_role_with_superuser()
+        role_changed = self._sync_staff_role_with_flags()
 
         update_fields = kwargs.get("update_fields")
         if role_changed and update_fields is not None:
@@ -132,20 +137,29 @@ class User(ExportModelOperationsMixin("codecov_auth.user"), BaseCodecovModel):
 
         return super().save(*args, **kwargs)
 
-    def _sync_staff_role_with_superuser(self) -> bool:
-        """Apply the `is_superuser` -> `staff_role` rules. Returns True if changed."""
+    def _sync_staff_role_with_flags(self) -> bool:
+        """Apply the flag -> `staff_role` rules. Returns True if the role changed."""
         original_role = self.staff_role
 
         if self.is_superuser:
+            # Admin is controlled entirely by `is_superuser`.
             self.staff_role = User.StaffRole.ADMIN
-        elif self.pk is not None:
-            previous_is_superuser = (
-                User.objects.filter(pk=self.pk)
-                .values_list("is_superuser", flat=True)
-                .first()
-            )
-            # A user demoted from admin drops all the way to Viewer.
+        elif not self.is_staff:
+            # RBAC only applies to staff; everyone else has no role.
+            self.staff_role = User.StaffRole.NONE
+        else:
+            previous_is_superuser = None
+            if self.pk is not None:
+                previous_is_superuser = (
+                    User.objects.filter(pk=self.pk)
+                    .values_list("is_superuser", flat=True)
+                    .first()
+                )
             if previous_is_superuser:
+                # A user demoted from admin drops all the way to Viewer.
+                self.staff_role = User.StaffRole.VIEWER
+            elif self.staff_role in (None, "", User.StaffRole.NONE):
+                # A staff user is at least a Viewer.
                 self.staff_role = User.StaffRole.VIEWER
 
         return self.staff_role != original_role
@@ -154,12 +168,18 @@ class User(ExportModelOperationsMixin("codecov_auth.user"), BaseCodecovModel):
     def effective_staff_role(self) -> "User.StaffRole":
         """The role that governs Django admin access for this user.
 
-        Admin is always derived from `is_superuser`; otherwise fall back to the
-        stored `staff_role`, defaulting to the most restrictive (Viewer).
+        Admin is always derived from `is_superuser`, non-staff users have no
+        role (NONE), and any other staff user falls back to the stored
+        `staff_role`, defaulting to the most restrictive (Viewer).
         """
         if self.is_superuser:
             return User.StaffRole.ADMIN
-        return User.StaffRole(self.staff_role or User.StaffRole.VIEWER)
+        if not self.is_staff:
+            return User.StaffRole.NONE
+        role = self.staff_role
+        if not role or role == User.StaffRole.NONE:
+            return User.StaffRole.VIEWER
+        return User.StaffRole(role)
 
     @property
     def is_admin_staff(self) -> bool:
@@ -172,6 +192,10 @@ class User(ExportModelOperationsMixin("codecov_auth.user"), BaseCodecovModel):
     @property
     def is_viewer_staff(self) -> bool:
         return self.effective_staff_role == User.StaffRole.VIEWER
+
+    @property
+    def is_none_staff(self) -> bool:
+        return self.effective_staff_role == User.StaffRole.NONE
 
     @property
     def is_active(self):
