@@ -6,7 +6,7 @@ import django.forms as forms
 from django.conf import settings
 from django.contrib import admin, messages
 from django.contrib.admin.models import LogEntry
-from django.db.models import Count, OuterRef, Q, Subquery
+from django.db.models import Count, OuterRef, Subquery
 from django.db.models.fields import BLANK_CHOICE_DASH
 from django.db.models.functions import Coalesce
 from django.forms import CheckboxInput, Select, Textarea
@@ -291,7 +291,7 @@ class OwnerUserInline(admin.TabularInline):
 
 
 class StaffRoleListFilter(admin.SimpleListFilter):
-    """Filter users by their effective admin role (see `User.effective_staff_role`)."""
+    """Filter users by `staff_role` (kept in sync with the flags by `User.save`)."""
 
     title = "role"
     parameter_name = "role"
@@ -301,24 +301,8 @@ class StaffRoleListFilter(admin.SimpleListFilter):
 
     def queryset(self, request, queryset):
         value = self.value()
-        if value == User.StaffRole.ADMIN:
-            return queryset.filter(is_superuser=True)
-        if value == User.StaffRole.NONE:
-            return queryset.filter(Q(is_superuser=False) & ~Q(is_staff=True))
-        if value == User.StaffRole.MEMBER:
-            return queryset.filter(
-                is_superuser=False, is_staff=True, staff_role=User.StaffRole.MEMBER
-            )
-        if value == User.StaffRole.VIEWER:
-            return queryset.filter(
-                Q(is_superuser=False)
-                & Q(is_staff=True)
-                & (
-                    Q(staff_role=User.StaffRole.VIEWER)
-                    | Q(staff_role=User.StaffRole.NONE)
-                    | Q(staff_role__isnull=True)
-                )
-            )
+        if value:
+            return queryset.filter(staff_role=value)
         return queryset
 
 

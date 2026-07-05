@@ -1,14 +1,13 @@
-# Generated for Django admin RBAC (Viewer / Member / Admin)
+# Generated for Django admin RBAC (None / Viewer / Member / Admin)
 
 from django.db import migrations, models
 
 
 def set_initial_staff_roles(apps, schema_editor):
-    """Map existing admin users onto the new RBAC levels.
+    """Map existing users onto the RBAC levels.
 
-    Existing staff (``is_staff=True``) keep today's access as ``member`` while
-    superusers become ``admin``. Everyone else keeps the ``viewer`` default,
-    which only matters once they are granted ``is_staff``.
+    Superusers become ``admin`` and other staff become ``member`` (their
+    pre-RBAC access); everyone else has no role (``none``).
     """
     User = apps.get_model("codecov_auth", "User")
     User.objects.filter(is_staff=True, is_superuser=False).update(staff_role="member")
@@ -26,7 +25,7 @@ class Migration(migrations.Migration):
     --
     -- Add field staff_role to user
     --
-    ALTER TABLE "users" ADD COLUMN "staff_role" text DEFAULT 'viewer' NULL;
+    ALTER TABLE "users" ADD COLUMN "staff_role" text DEFAULT 'none' NULL;
     ALTER TABLE "users" ALTER COLUMN "staff_role" DROP DEFAULT;
     COMMIT;
     """
@@ -42,11 +41,12 @@ class Migration(migrations.Migration):
             field=models.TextField(
                 blank=True,
                 choices=[
+                    ("none", "None"),
                     ("viewer", "Viewer"),
                     ("member", "Member"),
                     ("admin", "Admin"),
                 ],
-                default="viewer",
+                default="none",
                 null=True,
             ),
         ),
