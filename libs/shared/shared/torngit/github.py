@@ -749,6 +749,150 @@ class Github(TorngitBaseAdapter):
         }
         return token_to_use
 
+    def _build_request_headers(
+        self, token_to_use: dict | None, extra_headers: dict | None
+    ) -> dict:
+        headers = {
+            "Accept": "application/json",
+            "User-Agent": os.getenv("USER_AGENT", "Default"),
+        }
+        if token_to_use:
+            headers["Authorization"] = "token {}".format(token_to_use["key"])
+        headers.update(extra_headers or {})
+        return headers
+
+    def _set_host_header(self, headers: dict, url: str) -> None:
+        if url.startswith(self.api_url) and self.api_host_header is not None:
+            headers["Host"] = self.api_host_header
+        elif url.startswith(self.service_url) and self.host_header is not None:
+            headers["Host"] = self.host_header
+
+    def _log_github_response(
+        self, res: Response, current_retry: int, log_dict: dict
+    ) -> None:
+        logged_body = (
+            res.text if (res.status_code >= 300 and res.text is not None) else None
+        )
+        log.log(
+            logging.WARNING if res.status_code >= 300 else logging.INFO,
+            "Github HTTP %s",
+            res.status_code,
+            extra=dict(
+                current_retry=current_retry,
+                body=logged_body,
+                rl_remaining=res.headers.get("X-RateLimit-Remaining"),
+                rl_limit=res.headers.get("X-RateLimit-Limit"),
+                rl_reset_time=res.headers.get("X-RateLimit-Reset"),
+                retry_after=res.headers.get("Retry-After"),
+                gh_request_id=res.headers.get("x-github-request-id"),
+                **log_dict,
+            ),
+        )
+
+    def _should_attempt_token_refresh(
+        self, res: Response, url: str, tried_refresh: bool
+    ) -> bool:
+        """Heuristic for deciding whether an expired token should be refreshed.
+
+        GitHub has no specific message for using an expired token, and returns 404
+        (not 401) for certain endpoints, so we refresh at most once when the token
+        is user-to-server (has a refresh callback) and the response looks like an
+        auth failure.
+        """
+        return (
+            # Only try to refresh once
+            not tried_refresh
+            # No callback => token is likely an integration token that can't be
+            # refreshed (i.e. not a user-to-server request).
+            and callable(self._on_token_refresh)
+            # Exclude the check to see if is_student from refreshes
+            and url.startswith(self.api_url)
+            # Responses that could be caused by an expired token
+            and (
+                (res.status_code == 401)
+                or (res.status_code == 404 and f"/repos/{self.slug}/" in url)
+            )
+        )
+
+    async def _refresh_token_and_update_headers(
+        self, client, url: str, headers: dict
+    ) -> bool:
+        """Refresh the token and swap it into ``headers``. Returns True on success."""
+        log.debug("Token is invalid. Refreshing")
+        token = await self.refresh_token(client, url)
+        if token is None:
+            return False
+        prefix, _ = headers["Authorization"].split(" ")
+        headers["Authorization"] = f"{prefix} {token['key']}"
+        if not self._on_token_refresh:
+            sentry_sdk.capture_message(
+                "Refreshed github token but no on_token_refresh callback defined"
+            )
+        await self._on_token_refresh(token)
+        return True
+
+    def _is_rate_limited_response(self, res: Response) -> bool:
+        return (res.status_code == 403 or res.status_code == 429) and (
+            # Primary rate limit
+            int(res.headers.get("X-RateLimit-Remaining", -1)) == 0
+            # Secondary rate limit
+            or res.headers.get("Retry-After") is not None
+        )
+
+    def _handle_rate_limited_response(
+        self, res: Response, token_to_use: dict | None, headers: dict
+    ) -> bool:
+        """Mark the current token rate-limited and try to swap in a fallback token.
+
+        Returns True if a fallback token is available (caller should retry).
+        Raises ``TorngitRateLimitError`` when no fallback remains.
+
+        ! side effect: marks current token as rate limited in Redis
+        """
+        is_primary_rate_limit = int(res.headers.get("X-RateLimit-Remaining", -1)) == 0
+        retry_after = res.headers.get("Retry-After")
+        retry_in_seconds = int(retry_after) if retry_after is not None else None
+        self._possibly_mark_current_entity_as_rate_limited(
+            reset_timestamp=res.headers.get("X-RateLimit-Reset"),
+            retry_in_seconds=retry_in_seconds,
+            token=token_to_use,
+        )
+
+        fallback_token_key = self._get_next_fallback_token()
+        if fallback_token_key:
+            # Consumes one of the retries
+            prefix, _ = headers["Authorization"].split(" ")
+            headers["Authorization"] = f"{prefix} {fallback_token_key}"
+            return True
+
+        message = f"Github API rate limit error: {res.reason_phrase if is_primary_rate_limit else 'secondary rate limit'}"
+        raise TorngitRateLimitError(
+            response_data=res.text,
+            message=message,
+            reset=res.headers.get("X-RateLimit-Reset"),
+            retry_after=retry_in_seconds,
+        )
+
+    def _raise_for_terminal_status(self, res: Response) -> None:
+        """Raise the appropriate Torngit error for a non-success terminal status."""
+        if res.status_code == 599:
+            raise TorngitServerUnreachableError(
+                "Github was not able to be reached, server timed out."
+            )
+        elif res.status_code >= 500:
+            raise TorngitServer5xxCodeError("Github is having 5xx issues")
+        elif res.status_code == 401:
+            raise TorngitUnauthorizedError(
+                response_data=res.text,
+                message=f"Github API unauthorized error: {res.reason_phrase}",
+            )
+        elif res.status_code >= 300:
+            raise TorngitClientGeneralError(
+                res.status_code,
+                response_data=res.text,
+                message=f"Github API: {res.reason_phrase}",
+            )
+
     async def make_http_call(
         self,
         client,
@@ -760,16 +904,10 @@ class Github(TorngitBaseAdapter):
         statuses_to_retry=[502, 503, 504],
         **args,
     ) -> Response:
-        _headers = {
-            "Accept": "application/json",
-            "User-Agent": os.getenv("USER_AGENT", "Default"),
-        }
-        if token_to_use:
-            _headers["Authorization"] = "token {}".format(token_to_use["key"])
-        _headers.update(headers or {})
-        log_dict = {}
-
+        _headers = self._build_request_headers(token_to_use, headers)
         method = (method or "GET").upper()
+
+        log_dict = {}
         if url[0] == "/":
             log_dict = {
                 "event": "api",
@@ -782,11 +920,7 @@ class Github(TorngitBaseAdapter):
             url = self.api_url + url
 
         url = url_concat(url, args).replace(" ", "%20")
-
-        if url.startswith(self.api_url) and self.api_host_header is not None:
-            _headers["Host"] = self.api_host_header
-        elif url.startswith(self.service_url) and self.host_header is not None:
-            _headers["Host"] = self.host_header
+        self._set_host_header(_headers, url)
 
         kwargs = {
             "json": body if body else None,
@@ -802,143 +936,47 @@ class Github(TorngitBaseAdapter):
                 if current_retry > 1:
                     # count retries without getting a url
                     self.count_and_get_url_template(url_name="make_http_call_retry")
-                logged_body = None
-                if res.status_code >= 300 and res.text is not None:
-                    logged_body = res.text
-                log.log(
-                    logging.WARNING if res.status_code >= 300 else logging.INFO,
-                    "Github HTTP %s",
-                    res.status_code,
-                    extra=dict(
-                        current_retry=current_retry,
-                        body=logged_body,
-                        rl_remaining=res.headers.get("X-RateLimit-Remaining"),
-                        rl_limit=res.headers.get("X-RateLimit-Limit"),
-                        rl_reset_time=res.headers.get("X-RateLimit-Reset"),
-                        retry_after=res.headers.get("Retry-After"),
-                        gh_request_id=res.headers.get("x-github-request-id"),
-                        **log_dict,
-                    ),
-                )
+                self._log_github_response(res, current_retry, log_dict)
             except (httpx.TimeoutException, httpx.NetworkError):
                 if current_retry < max_number_retries:
                     log.warning(
                         "GitHub was not able to be reached, retrying",
-                        extra=dict(
-                            current_retry=current_retry,
-                            **log_dict,
-                        ),
+                        extra=dict(current_retry=current_retry, **log_dict),
                     )
                     continue
-                else:
-                    raise TorngitServerUnreachableError(
-                        "GitHub was not able to be reached."
-                    )
-            # Github doesn't have any specific message for trying to use an expired token
-            # on top of that they return 404 for certain endpoints (not 401).
-            # So this is the little heuristics that we follow to decide on refreshing a token
-            if (
-                # Only try to refresh once
-                not tried_refresh
-                # If there's no self._on_token_refresh then the token being used is probably from integration
-                # and therefore can't be refreshed (i.e. it's not a user-to-server request)
-                and callable(self._on_token_refresh)
-                # Exclude the check to see if is_student from refreshes
-                and url.startswith(self.api_url)
-                # Requests that can potentially have failed due to token expired
-                and (
-                    (res.status_code == 401)
-                    or (res.status_code == 404 and f"/repos/{self.slug}/" in url)
+                raise TorngitServerUnreachableError(
+                    "GitHub was not able to be reached."
                 )
-            ):
+
+            # An expired user-to-server token can be refreshed and retried once.
+            if self._should_attempt_token_refresh(res, url, tried_refresh):
                 tried_refresh = True
-                # Refresh token and retry
-                log.debug("Token is invalid. Refreshing")
-                token = await self.refresh_token(client, url)
-                if token is not None:
-                    # Assuming we could retry and the retry was successful
-                    # Update headers and retry
-                    prefix, _ = _headers["Authorization"].split(" ")
-                    _headers["Authorization"] = f"{prefix} {token['key']}"
-                    if not self._on_token_refresh:
-                        sentry_sdk.capture_message(
-                            "Refreshed github token but no on_token_refresh callback defined"
-                        )
-                    await self._on_token_refresh(token)
+                if await self._refresh_token_and_update_headers(client, url, _headers):
                     # Skip the rest of the validations and try again.
-                    # It does consume one of the retries
+                    # It does consume one of the retries.
                     retry_reason = "token_was_refreshed"
                     continue
-            # Rate limit errors - we might fallback on other available tokens and retry
-            # If we do fallback the token with rate limit is marked as 'rate limited' in Redis
-            elif (res.status_code == 403 or res.status_code == 429) and (
-                # Primary rate limit
-                int(res.headers.get("X-RateLimit-Remaining", -1)) == 0
-                or
-                # Secondary rate limit
-                res.headers.get("Retry-After") is not None
-            ):
-                is_primary_rate_limit = (
-                    int(res.headers.get("X-RateLimit-Remaining", -1)) == 0
-                )
-
-                # ! side effect: mark current token as rate limited
-                retry_after = res.headers.get("Retry-After")
-                retry_in_seconds = int(retry_after) if retry_after is not None else None
-                reset_timestamp = res.headers.get("X-RateLimit-Reset")
-                self._possibly_mark_current_entity_as_rate_limited(
-                    reset_timestamp=reset_timestamp,
-                    retry_in_seconds=retry_in_seconds,
-                    token=token_to_use,
-                )
-
-                fallback_token_key = self._get_next_fallback_token()
-                if fallback_token_key:
-                    # Update header and try again
-                    # Consumes one of the retries
-                    prefix, _ = _headers["Authorization"].split(" ")
-                    _headers["Authorization"] = f"{prefix} {fallback_token_key}"
+            # Rate limit errors may fall back to another available token and retry.
+            elif self._is_rate_limited_response(res):
+                if self._handle_rate_limited_response(res, token_to_use, _headers):
                     retry_reason = "fallback_token_attempt"
                     continue
-                else:
-                    message = f"Github API rate limit error: {res.reason_phrase if is_primary_rate_limit else 'secondary rate limit'}"
-                    raise TorngitRateLimitError(
-                        response_data=res.text,
-                        message=message,
-                        reset=res.headers.get("X-RateLimit-Reset"),
-                        retry_after=(
-                            int(retry_after) if retry_after is not None else None
-                        ),
-                    )
+
+            is_last_retry = current_retry >= max_number_retries
             if (
                 not statuses_to_retry
                 or res.status_code not in statuses_to_retry
-                or current_retry >= max_number_retries  # Last retry
+                or is_last_retry
             ):
-                if res.status_code == 599:
-                    raise TorngitServerUnreachableError(
-                        "Github was not able to be reached, server timed out."
-                    )
-                elif res.status_code >= 500:
-                    raise TorngitServer5xxCodeError("Github is having 5xx issues")
-                elif res.status_code == 401:
-                    message = f"Github API unauthorized error: {res.reason_phrase}"
-                    raise TorngitUnauthorizedError(
-                        response_data=res.text, message=message
-                    )
-                elif res.status_code >= 300:
-                    message = f"Github API: {res.reason_phrase}"
-                    raise TorngitClientGeneralError(
-                        res.status_code, response_data=res.text, message=message
-                    )
+                self._raise_for_terminal_status(res)
                 return res
-            else:
-                log.info(
-                    "Retrying request to GitHub",
-                    extra=dict(
-                        status=res.status_code, retry_reason=retry_reason, **log_dict
-                    ),
-                )
+
+            log.info(
+                "Retrying request to GitHub",
+                extra=dict(
+                    status=res.status_code, retry_reason=retry_reason, **log_dict
+                ),
+            )
 
     async def refresh_token(
         self, client: httpx.AsyncClient, original_url: str
