@@ -132,6 +132,7 @@ dmypy.json
 junit.xml
 
 .DS_Store
+docker/zscaler-ca.crt
 
 # Local Cursor rules (personal/machine-specific)
 .cursor/rules/local/
