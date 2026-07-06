@@ -316,21 +316,11 @@ class ComputeComparisonTask(BaseCodecovTask, name=compute_comparison_task_name):
         comparison: CompareCommit,
         comparison_proxy: ComparisonProxy,
         component: Component,
-        existing_component_comparisons: dict[str, CompareComponent] | None = None,
+        existing_component_comparisons: dict[str, CompareComponent],
     ):
-        if existing_component_comparisons is not None:
-            component_comparison = existing_component_comparisons.get(
-                component.component_id
-            )
-        else:
-            component_comparison = (
-                db_session.query(CompareComponent)
-                .filter_by(
-                    commit_comparison_id=comparison.id,
-                    component_id=component.component_id,
-                )
-                .first()
-            )
+        component_comparison = existing_component_comparisons.get(
+            component.component_id
+        )
         if not component_comparison:
             component_comparison = CompareComponent(
                 commit_comparison=comparison,
