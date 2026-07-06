@@ -12,11 +12,6 @@ RUN apt-get update
 RUN apt-get install -y git build-essential netcat-traditional
 RUN git config --global --add safe.directory /app || true
 
-# `uv pip install --group` has no --frozen equivalent and silently re-resolves
-# dev-only deps against live PyPI on every rebuild, ignoring uv.lock. That let
-# vcrpy drift past a cassette-matching regression (>=8.2.0) and break Worker
-# CI: https://github.com/kevin1024/vcrpy/issues/1013 (COV-45). Export the dev
-# group through --frozen instead, so it's pinned exactly like the main deps.
 RUN --mount=type=cache,target=/root/.cache/uv \
     --mount=type=bind,source=./pyproject.toml,target=./pyproject.toml \
     --mount=type=bind,source=./uv.lock,target=./uv.lock \
