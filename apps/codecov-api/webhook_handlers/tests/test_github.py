@@ -1607,7 +1607,7 @@ class GithubWebhookHandlerTests(APITestCase):
         )
         assert response.data == {"auto_review_enabled": False}
 
-    def test_non_installation_event_routed_to_github_when_no_sentry_account(self):
+    def test_non_installation_event_processed_by_github(self):
         self.repo.private = True
         self.repo.activated = True
         self.repo.save()

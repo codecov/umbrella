@@ -7,7 +7,6 @@ from .views.bitbucket import BitbucketWebhookHandler
 from .views.bitbucket_server import BitbucketServerWebhookHandler
 from .views.github import GithubEnterpriseWebhookHandler, GithubWebhookHandler
 from .views.gitlab import GitLabEnterpriseWebhookHandler, GitLabWebhookHandler
-from .views.sentry import SentryWebhookHandler
 
 urlpatterns = [
     path("github", GithubWebhookHandler.as_view(), name="github-webhook"),
@@ -29,5 +28,4 @@ urlpatterns = [
         name="bitbucket-server-webhook",
     ),
     path("stripe", StripeWebhookHandler.as_view(), name="old-stripe-webhook"),
-    path("sentry", SentryWebhookHandler.as_view(), name="sentry-webhook"),
 ]
