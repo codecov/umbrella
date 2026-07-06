@@ -5,7 +5,6 @@ from urllib.parse import urlparse
 
 import jwt
 import requests
-from django.conf import settings
 
 import shared.torngit as torngit
 from shared.config import get_config, load_file_from_path_at_config
@@ -14,15 +13,6 @@ from shared.helpers.cache import cache
 log = logging.getLogger(__name__)
 
 loaded_pems = None
-
-
-def get_pem_overrides(app_id: str) -> tuple[str, ...] | None:
-    if settings.GITHUB_SENTRY_APP_ID is not None and str(app_id) == str(
-        settings.GITHUB_SENTRY_APP_ID
-    ):
-        return ("github", "sentry_merge_app_pem")
-
-    return None
 
 
 pem_paths = {
@@ -43,14 +33,10 @@ def load_pem_from_path(pem_path: str) -> str:
 
 def get_pem(app_id: str, service: str, pem_path: str | None = None) -> str:
     # load from pem path if provided
-    # otherwise check if the app id is in overrides
     # otherwise use the default pem name from the service
     # if none of the above, raise an error
     if pem_path:
         return load_pem_from_path(pem_path)
-
-    if override_pem_path := get_pem_overrides(app_id):
-        return load_file_from_path_at_config(*override_pem_path)
 
     if service:
         return load_file_from_path_at_config(*pem_paths[service])
@@ -116,11 +102,9 @@ def get_github_jwt_token(
         "iat": now,
         # JWT expiration time (max 10 minutes)
         "exp": now + int(get_config(service, "integration", "expires", default=500)),
-        # NOTE: the Sentry app github app installations explicitly defines the app_id
-        # and pem_path so those will get passed down no matter what and we won't fall back
-        # to the default config value. We're essentially treating Sentry apps like the custom
-        # ones that are defined through the database, by including the app id and pem path when
-        # creating the DB object in the webhook handler.
+        # NOTE: custom GitHub apps defined through the database explicitly set
+        # app_id and pem_path so those get passed down no matter what, rather
+        # than falling back to the default config value.
         "iss": app_id,  # github app ID
     }
 

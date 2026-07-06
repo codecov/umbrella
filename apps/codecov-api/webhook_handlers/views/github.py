@@ -5,7 +5,6 @@ from hashlib import sha1, sha256
 from typing import Literal
 
 import sentry_sdk
-from django.conf import settings
 from django.db.models import Q
 from django.utils import timezone
 from django.utils.crypto import constant_time_compare
@@ -498,12 +497,6 @@ class GithubWebhookHandler(APIView):
                     return self._invalid_owner_on_existing_app_install(
                         ghapp_installation, owner, request, app_id, installation_id
                     )
-
-            # handle sentry app specifically
-            sentry_app_id = settings.GITHUB_SENTRY_APP_ID
-            if sentry_app_id is not None and ghapp_installation.app_id == sentry_app_id:
-                ghapp_installation.app_id = app_id
-                ghapp_installation.name = settings.GITHUB_SENTRY_APP_NAME
 
             ghapp_installation.name = self._decide_app_name(ghapp_installation)
 
