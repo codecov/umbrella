@@ -257,11 +257,15 @@ regenerate_support_pin.short_description = "Regenerate support PIN"
 class AccountsUsersInline(admin.TabularInline):
     model = AccountsUsers
     max_num = 10
-    extra = 1
+    extra = 0
     verbose_name_plural = "Accounts Users (click save to commit changes)"
     verbose_name = "Account User"
     can_delete = False
     can_edit = False
+    autocomplete_fields = ("account",)
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related("account", "user")
 
 
 class OwnerUserInline(admin.TabularInline):
