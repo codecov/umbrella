@@ -10,7 +10,7 @@ from django.utils import timezone
 from django.utils.html import format_html
 
 from codecov.admin import AdminMixin
-from codecov_auth.models import RepositoryToken
+from codecov_auth.models import Owner, RepositoryToken
 from core.models import Commit, Pull, Repository
 from reports.models import CommitReport, ReportSession
 from services.task.task import TaskService
@@ -135,11 +135,15 @@ class RepositoryAdminForm(forms.ModelForm):
 class RepositoryAdmin(AdminMixin, admin.ModelAdmin):
     inlines = [RepositoryTokenInline]
     list_display = ("name", "service_id", "author_link")
+    list_select_related = ("author",)
     search_fields = (
         "name",
         "author__username__exact",
         "service_id__exact",
     )
+    # pg_trgm builds 3-char trigrams, so substring name search can only use the
+    # repos_name_trgm_idx GIN index for terms of at least this length.
+    name_search_min_length = 3
     show_full_result_count = False
     autocomplete_fields = ("bot",)
     form = RepositoryAdminForm
@@ -188,23 +192,41 @@ class RepositoryAdmin(AdminMixin, admin.ModelAdmin):
         """
         Search for repositories by name, service_id, author username, or repoid.
         https://docs.djangoproject.com/en/5.2/ref/contrib/admin/#django.contrib.admin.ModelAdmin.get_search_results
+
+        Django's default search ORs `search_fields` across the repos<->owners
+        join. Because `author__username` lives on a different table, Postgres
+        cannot use per-table indexes for that OR and falls back to a full join
+        scan (~4.4s over 24.6M repos). Instead we resolve usernames to ownerids
+        first and build a single-table OR on repos, so every branch uses its own
+        index (name trigram, service_id, ownerid, pk) via a BitmapOr.
         """
-        # Default search is by name, author username, and service_id (defined in `search_fields`)
-        queryset, may_have_duplicates = super().get_search_results(
-            request,
-            queryset,
-            search_term,
+        term = search_term.strip()
+        if not term:
+            return queryset, False
+
+        filters = Q()
+
+        # Substring name match -> repos_name_trgm_idx (GIN trigram). Only usable
+        # for terms >= name_search_min_length; shorter terms skip name search.
+        if len(term) >= self.name_search_min_length:
+            filters |= Q(name__icontains=term)
+
+        # Exact service_id -> repos_service_id_author / repos_service_ids.
+        filters |= Q(service_id=term)
+
+        # Resolve author username to ownerids with one indexed query on owners so
+        # the repos filter stays single-table (no cross-table OR).
+        owner_ids = list(
+            Owner.objects.filter(username=term).values_list("ownerid", flat=True)
         )
-        # Also search by repoid if the search term is numeric
-        try:
-            search_term_as_int = int(search_term)
-        except ValueError:
-            pass
-        else:
-            queryset |= self.model.objects.filter(repoid=search_term_as_int)
-        # avoid N+1 queries for with union
-        queryset = queryset.select_related("author")
-        return queryset, may_have_duplicates
+        if owner_ids:
+            filters |= Q(author_id__in=owner_ids)
+
+        # Exact repoid when the term is numeric.
+        if term.isdigit():
+            filters |= Q(repoid=int(term))
+
+        return queryset.filter(filters), False
 
     def has_add_permission(self, _, obj=None):
         return False
