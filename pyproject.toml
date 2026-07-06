@@ -120,7 +120,7 @@ dev = [
     "sqlalchemy-utils>=0.41.2",
     "types-mock>=5.2.0.20250516",
     "types-requests<2.31.0.7", # this is pinned to an older version because of `urllib3` dependency
-    "vcrpy>=7.0.0",
+    "vcrpy==8.1.1", # pinned — vcrpy>=8.2.0 broke cassette matching on bare-host URLs, see https://github.com/kevin1024/vcrpy/issues/1013 (COV-45)
     "django-stubs[compatible-mypy]>=5.2.1",
     "djangorestframework-stubs[compatible-mypy]>=3.16.0",
     "pytest-freezer>=0.4.9",
