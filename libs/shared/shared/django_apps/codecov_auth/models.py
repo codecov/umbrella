@@ -386,6 +386,12 @@ class Owner(ExportModelOperationsMixin("codecov_auth.owner"), models.Model):
             models.UniqueConstraint(
                 fields=["service", "service_id"], name="owner_service_ids"
             ),
+            # Postgres treats NULLs as distinct, so this stays satisfiable while
+            # rows are still being backfilled; the backing index is created
+            # CONCURRENTLY in migration 0078 to avoid locking the owners table.
+            models.UniqueConstraint(
+                fields=["external_id"], name="owner_external_id_uniq"
+            ),
         ]
 
     REQUIRED_FIELDS = []
