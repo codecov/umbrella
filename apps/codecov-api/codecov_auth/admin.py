@@ -12,8 +12,9 @@ from django.db.models.functions import Coalesce
 from django.forms import CheckboxInput, Select, Textarea
 from django.http import HttpRequest
 from django.shortcuts import redirect, render
+from django.urls import reverse
 from django.utils import timezone
-from django.utils.html import format_html
+from django.utils.html import format_html, format_html_join
 
 from codecov.admin import AdminMixin
 from codecov.commands.exceptions import ValidationError
@@ -755,8 +756,11 @@ class OwnerAdmin(AdminMixin, admin.ModelAdmin):
         "repository_count",
         "email",
         "service",
+        "plan_display",
+        "seats_display",
         "support_pin",
     )
+    list_select_related = ("account",)
     readonly_fields = []
     search_fields = ("name__iregex", "username__iregex", "email__iregex", "ownerid")
     actions = [
@@ -784,14 +788,16 @@ class OwnerAdmin(AdminMixin, admin.ModelAdmin):
         "invoice_details",
         "yaml",
         "updatestamp",
-        "permission",
+        "permission_list",
         "student",
         "student_created_at",
         "student_updated_at",
-        "user",
-        "trial_fired_by",
+        "user_link",
+        "trial_fired_by_link",
         "sentry_user_id",
         "support_pin",
+        "plan_activated_users_list",
+        "admins_list",
     )
 
     fieldsets = [
@@ -805,7 +811,7 @@ class OwnerAdmin(AdminMixin, admin.ModelAdmin):
                     "name",
                     "service_id",
                     "student",
-                    "user",
+                    "user_link",
                     "sentry_user_id",
                 ]
             },
@@ -815,7 +821,7 @@ class OwnerAdmin(AdminMixin, admin.ModelAdmin):
             {
                 "fields": [
                     "trial_status",
-                    "trial_fired_by",
+                    "trial_fired_by_link",
                     "trial_start_date",
                     "trial_end_date",
                 ]
@@ -831,6 +837,7 @@ class OwnerAdmin(AdminMixin, admin.ModelAdmin):
                     "plan_user_count",
                     "free",
                     "plan_activated_users",
+                    "plan_activated_users_list",
                 ]
             },
         ),
@@ -850,7 +857,7 @@ class OwnerAdmin(AdminMixin, admin.ModelAdmin):
             "Reference fields",
             {
                 "fields": [
-                    "admins",
+                    "admins_list",
                     "staff",
                     "upload_token_required_for_public_repos",
                     "email",
@@ -862,7 +869,7 @@ class OwnerAdmin(AdminMixin, admin.ModelAdmin):
                     "bot",
                     "max_upload_limit",
                     "organizations",
-                    "permission",
+                    "permission_list",
                     "student_created_at",
                     "student_updated_at",
                     "onboarding_completed",
@@ -894,6 +901,138 @@ class OwnerAdmin(AdminMixin, admin.ModelAdmin):
     @admin.display(description="repositories", ordering="repository_count")
     def repository_count(self, obj):
         return obj.repository_count
+
+    @admin.display(description="Plan")
+    def plan_display(self, obj):
+        # An owner's plan lives on its Account when one is attached.
+        if obj.account_id:
+            return obj.account.plan
+        return obj.plan
+
+    @admin.display(description="Seats (taken / total)")
+    def seats_display(self, obj):
+        if obj.account_id:
+            taken = obj.account.activated_user_count
+            total = obj.account.total_seat_count
+        else:
+            taken = len(obj.plan_activated_users or [])
+            total = (obj.plan_user_count or 0) + (obj.free or 0)
+        return f"{taken} / {total}"
+
+    @admin.display(description="User")
+    def user_link(self, obj):
+        user = obj.user
+        if user is None:
+            return "-"
+        if user.name and user.email:
+            label = f"{user.name} ({user.email})"
+        else:
+            label = user.name or user.email or user.pk
+        url = reverse("admin:codecov_auth_user_change", args=[user.pk])
+        return format_html('<a href="{}">{}</a>', url, label)
+
+    @admin.display(description="Trial fired by")
+    def trial_fired_by_link(self, obj):
+        if not obj.trial_fired_by:
+            return "-"
+        owner = Owner.objects.filter(ownerid=obj.trial_fired_by).first()
+        if owner is None:
+            return obj.trial_fired_by
+        url = reverse("admin:codecov_auth_owner_change", args=[owner.ownerid])
+        return format_html('<a href="{}">{}</a>', url, owner.username or owner.ownerid)
+
+    def _links_table(self, ids, objects, url_name, label_fn, headers):
+        """Render `ids` as a two-column table linking each to its admin page.
+
+        `objects` maps id -> instance for the ids that still resolve; unresolved
+        ids are shown inline as missing.
+        """
+        if not ids:
+            return "-"
+        rows = format_html_join(
+            "",
+            "<tr><td style='padding:2px 16px 2px 0'>{}</td><td>{}</td></tr>",
+            (
+                (
+                    obj_id,
+                    (
+                        format_html(
+                            '<a href="{}">{}</a>',
+                            reverse(url_name, args=[obj_id]),
+                            label_fn(objects[obj_id]),
+                        )
+                        if obj_id in objects
+                        else format_html("<em>missing ({})</em>", obj_id)
+                    ),
+                )
+                for obj_id in ids
+            ),
+        )
+        return format_html(
+            "<table><thead><tr>"
+            "<th style='text-align:left;padding-right:16px'>{}</th>"
+            "<th style='text-align:left'>{}</th>"
+            "</tr></thead><tbody>{}</tbody></table>",
+            headers[0],
+            headers[1],
+            rows,
+        )
+
+    def _owners_table(self, ownerids):
+        owners = {
+            owner.ownerid: owner
+            for owner in Owner.objects.filter(ownerid__in=ownerids or [])
+        }
+        return self._links_table(
+            ownerids,
+            owners,
+            "admin:codecov_auth_owner_change",
+            lambda owner: owner.username or owner.ownerid,
+            ("Owner ID", "Username"),
+        )
+
+    def _repo_slug(self, repo):
+        author = repo.author
+        if author is not None:
+            return f"{author.service}:{author.username}/{repo.name}"
+        return repo.name or repo.repoid
+
+    def _repos_table(self, repoids):
+        repos = {
+            repo.repoid: repo
+            for repo in Repository.objects.filter(
+                repoid__in=repoids or []
+            ).select_related("author")
+        }
+        return self._links_table(
+            repoids,
+            repos,
+            "admin:core_repository_change",
+            self._repo_slug,
+            ("Repo ID", "Repository"),
+        )
+
+    @admin.display(description="Plan activated users (linked)")
+    def plan_activated_users_list(self, obj):
+        return self._owners_table(obj.plan_activated_users)
+
+    @admin.display(description="Admins")
+    def admins_list(self, obj):
+        ownerids = obj.admins or []
+        return format_html(
+            "<div style='margin-bottom:6px'>Total: {}</div>{}",
+            len(ownerids),
+            self._owners_table(ownerids),
+        )
+
+    @admin.display(description="Permission")
+    def permission_list(self, obj):
+        repoids = obj.permission or []
+        return format_html(
+            "<div style='margin-bottom:6px'>Total: {}</div>{}",
+            len(repoids),
+            self._repos_table(repoids),
+        )
 
     def get_form(self, request, obj=None, change=False, **kwargs):
         form = super().get_form(request, obj, change, **kwargs)
