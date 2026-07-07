@@ -402,10 +402,20 @@ class GithubWebhookHandler(APIView):
         ],
         **kwargs,
     ):
-        service_id = request.data["installation"]["account"]["id"]
-        username = request.data["installation"]["account"]["login"]
-        app_id = request.data["installation"]["app_id"]
-        installation_id = request.data["installation"]["id"]
+        if "installation" not in request.data:
+            log.warning(
+                "Received installation event without 'installation' key, ignoring",
+                extra={"github_webhook_event": self.event},
+            )
+            return Response(
+                {"detail": "missing installation key, event ignored"},
+                status=status.HTTP_200_OK,
+            )
+        installation_data = request.data["installation"]
+        service_id = installation_data.get("account", {}).get("id")
+        username = installation_data.get("account", {}).get("login")
+        app_id = installation_data.get("app_id")
+        installation_id = installation_data.get("id")
         action = request.data.get("action")
 
         log.info(
