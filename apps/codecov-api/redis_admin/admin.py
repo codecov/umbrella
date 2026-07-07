@@ -36,6 +36,7 @@ from django.shortcuts import render
 from django.urls import NoReverseMatch, path, reverse
 from django.utils.html import format_html, format_html_join
 
+from codecov.admin import deny_viewers
 from core.models import Repository
 
 from . import conn as _conn
@@ -1813,6 +1814,7 @@ class CeleryBrokerQueueAdmin(admin.ModelAdmin):
             raise PermissionDenied(
                 "redis_admin chart-fragment is restricted to staff users"
             )
+        deny_viewers(request)
 
         chart_ctx = self._build_frequency_chart_context(request, queue_name)
         if chart_ctx is None:

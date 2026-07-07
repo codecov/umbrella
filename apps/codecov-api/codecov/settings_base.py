@@ -22,7 +22,7 @@ INSTALLED_APPS = [
     "legacy_migrations",
     "dal",
     "dal_select2",  # needs to be ahead of django.contrib.admin
-    "django.contrib.admin",
+    "codecov.apps.CodecovAdminConfig",  # RBAC-aware replacement for django.contrib.admin
     "django.contrib.auth",
     "django.contrib.contenttypes",
     "django.contrib.sessions",

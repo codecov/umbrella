@@ -1,10 +1,110 @@
 from django.contrib import admin
+from django.core.exceptions import PermissionDenied
+from django.http import HttpRequest
 from django.urls import reverse
 from django.utils.html import format_html
 from django_better_admin_arrayfield.admin.mixins import DynamicArrayMixin
 
 from codecov.forms import AutocompleteSearchForm
+from codecov_auth.models import User
 from shared.django_apps.rollouts.models import FeatureFlag, FeatureFlagVariant
+
+# App labels whose models are hidden entirely from Viewer-level staff.
+VIEWER_RESTRICTED_APP_LABELS = {"redis_admin"}
+
+
+def get_staff_role(request: HttpRequest) -> "User.StaffRole":
+    """Resolve the RBAC role for the request's user (``StaffRole.NONE`` if not staff)."""
+    return (
+        getattr(getattr(request, "user", None), "effective_staff_role", None)
+        or User.StaffRole.NONE
+    )
+
+
+def is_viewer(request: HttpRequest) -> bool:
+    return get_staff_role(request) == User.StaffRole.VIEWER
+
+
+def deny_viewers(request: HttpRequest) -> None:
+    """Block Viewers from custom admin views.
+
+    ``admin_site.admin_view`` only checks ``is_staff``, so call this at the top
+    of any custom (``get_urls``) view that triggers a write.
+    """
+    if is_viewer(request):
+        raise PermissionDenied
+
+
+class RBACAdminMixin:
+    """Enforces the Viewer RBAC level on every registered ``ModelAdmin``.
+
+    Viewers get read-only access, no actions, and no visibility into Redis queue
+    models. Members and Admins fall through to the wrapped admin's own logic.
+    """
+
+    def _viewer_restricted_model(self) -> bool:
+        return self.model._meta.app_label in VIEWER_RESTRICTED_APP_LABELS
+
+    def has_view_permission(self, request: HttpRequest, obj=None) -> bool:
+        if is_viewer(request) and self._viewer_restricted_model():
+            return False
+        return super().has_view_permission(request, obj)
+
+    def has_module_permission(self, request: HttpRequest) -> bool:
+        if is_viewer(request) and self._viewer_restricted_model():
+            return False
+        return super().has_module_permission(request)
+
+    def has_add_permission(self, request: HttpRequest, *args, **kwargs) -> bool:
+        if is_viewer(request):
+            return False
+        return super().has_add_permission(request, *args, **kwargs)
+
+    def has_change_permission(self, request: HttpRequest, obj=None) -> bool:
+        if is_viewer(request):
+            return False
+        return super().has_change_permission(request, obj)
+
+    def has_delete_permission(self, request: HttpRequest, obj=None) -> bool:
+        if is_viewer(request):
+            return False
+        return super().has_delete_permission(request, obj)
+
+    def get_actions(self, request: HttpRequest):
+        if is_viewer(request):
+            return {}
+        return super().get_actions(request)
+
+    def get_readonly_fields(self, request: HttpRequest, obj=None):
+        readonly = super().get_readonly_fields(request, obj)
+        if not is_viewer(request):
+            return readonly
+        field_names = {field.name for field in self.model._meta.fields}
+        field_names.update(readonly)
+        return tuple(field_names)
+
+    def get_inline_instances(self, request: HttpRequest, obj=None):
+        inline_instances = super().get_inline_instances(request, obj)
+        if not is_viewer(request):
+            return inline_instances
+        for inline in inline_instances:
+            inline.can_delete = False
+            inline.max_num = 0
+            inline.extra = 0
+            inline.has_add_permission = lambda request, obj=None: False
+            inline.has_change_permission = lambda request, obj=None: False
+            inline.has_delete_permission = lambda request, obj=None: False
+        return inline_instances
+
+
+class CodecovAdminSite(admin.AdminSite):
+    """Admin site that wraps every registered ``ModelAdmin`` with RBAC."""
+
+    def register(self, model_or_iterable, admin_class=None, **options) -> None:
+        base = admin_class or admin.ModelAdmin
+        if not issubclass(base, RBACAdminMixin):
+            base = type(base.__name__, (RBACAdminMixin, base), {})
+        super().register(model_or_iterable, base, **options)
 
 
 class AdminMixin:

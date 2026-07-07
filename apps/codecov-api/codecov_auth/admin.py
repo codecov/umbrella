@@ -290,12 +290,32 @@ class OwnerUserInline(admin.TabularInline):
     fields = [] + readonly_fields
 
 
+class StaffRoleListFilter(admin.SimpleListFilter):
+    """Filter users by `staff_role` (kept in sync with the flags by `User.save`)."""
+
+    title = "role"
+    parameter_name = "role"
+
+    def lookups(self, request, model_admin):
+        return User.StaffRole.choices
+
+    def queryset(self, request, queryset):
+        value = self.value()
+        if value:
+            return queryset.filter(staff_role=value)
+        return queryset
+
+
 @admin.register(User)
 class UserAdmin(AdminMixin, admin.ModelAdmin):
     list_display = (
         "name",
         "email",
+        "is_staff",
+        "is_superuser",
+        "staff_role",
     )
+    list_filter = (StaffRoleListFilter,)
     inlines = [AccountsUsersInline, OwnerUserInline]
     search_fields = (
         "name__iregex",
@@ -311,6 +331,8 @@ class UserAdmin(AdminMixin, admin.ModelAdmin):
         "name",
         "email",
         "is_staff",
+        "is_superuser",
+        "staff_role",
         "terms_agreement",
         "terms_agreement_at",
     )
@@ -318,8 +340,30 @@ class UserAdmin(AdminMixin, admin.ModelAdmin):
     def get_form(self, request, obj=None, change=False, **kwargs):
         form = super().get_form(request, obj, change, **kwargs)
 
+        # Only superusers may change admin access levels.
         if not request.user.is_superuser:
-            form.base_fields["is_staff"].disabled = True
+            for field_name in ("is_staff", "is_superuser", "staff_role"):
+                if field_name in form.base_fields:
+                    form.base_fields[field_name].disabled = True
+
+        # Admin/None are flag-derived and read-only; only staff toggle Viewer/Member.
+        staff_role_field = form.base_fields.get("staff_role")
+        if staff_role_field is not None:
+            if obj is not None and obj.is_superuser:
+                staff_role_field.choices = [
+                    (User.StaffRole.ADMIN.value, User.StaffRole.ADMIN.label),
+                ]
+                staff_role_field.disabled = True
+            elif obj is not None and not obj.is_staff:
+                staff_role_field.choices = [
+                    (User.StaffRole.NONE.value, User.StaffRole.NONE.label),
+                ]
+                staff_role_field.disabled = True
+            else:
+                staff_role_field.choices = [
+                    (User.StaffRole.VIEWER.value, User.StaffRole.VIEWER.label),
+                    (User.StaffRole.MEMBER.value, User.StaffRole.MEMBER.label),
+                ]
 
         return form
 
