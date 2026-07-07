@@ -134,7 +134,17 @@ class RepositoryAdminForm(forms.ModelForm):
 @admin.register(Repository)
 class RepositoryAdmin(AdminMixin, admin.ModelAdmin):
     inlines = [RepositoryTokenInline]
-    list_display = ("name", "service_id", "author_link")
+    list_display = (
+        "repo_slug",
+        "service_id",
+        "author_link",
+        "active",
+        "private",
+        "activated",
+        "deleted",
+        "using_integration",
+    )
+    list_filter = ("active", "private", "activated", "deleted", "using_integration")
     list_select_related = ("author",)
     search_fields = (
         "name",
@@ -172,6 +182,13 @@ class RepositoryAdmin(AdminMixin, admin.ModelAdmin):
         "private",
         "webhook_secret",
     )
+
+    @admin.display(description="name", ordering="name")
+    def repo_slug(self, obj):
+        author = obj.author
+        if author is None:
+            return obj.name
+        return f"{author.service}:{author.username}/{obj.name}"
 
     @admin.display(description="author", ordering="author")
     def author_link(self, obj):
