@@ -6,7 +6,10 @@ from django.test import TestCase
 
 from core.admin import CommitAdmin, RepositoryAdmin, RepositoryAdminForm, get_repo_yaml
 from core.models import Commit, Repository
-from shared.django_apps.codecov_auth.tests.factories import UserFactory
+from shared.django_apps.codecov_auth.tests.factories import (
+    GithubAppInstallationFactory,
+    UserFactory,
+)
 from shared.django_apps.core.tests.factories import CommitFactory, RepositoryFactory
 from shared.django_apps.reports.models import ReportType
 from shared.django_apps.reports.tests.factories import (
@@ -122,6 +125,55 @@ class RepositoryAdminTests(AdminTest):
         # Should not find any repositories by repoid since search term is not an integer
         # The result should only include what the parent search returns (by author username)
         self.assertEqual(len(result_queryset), 0)
+
+    def test_integrations_display_no_installations(self):
+        repo = RepositoryFactory()
+        self.assertEqual(self.repo_admin.integrations(repo), "-")
+
+    def test_integrations_display_all_repos_installation(self):
+        repo = RepositoryFactory()
+        GithubAppInstallationFactory(
+            owner=repo.author,
+            name="my-app",
+            app_id=42,
+            installation_id=99,
+            repository_service_ids=None,
+        )
+
+        # List column: compact comma-separated summary.
+        summary = self.repo_admin.integrations(repo)
+        self.assertIn("my-app (installation 99)", summary)
+
+        # Detail view: full table with app id and coverage scope.
+        table = self.repo_admin.integrations_table(repo)
+        self.assertIn("<table>", table)
+        self.assertIn("my-app", table)
+        self.assertIn("42", table)
+        self.assertIn("all repos", table)
+
+    def test_integrations_display_scoped_installation(self):
+        repo = RepositoryFactory()
+        # Covers this repo (by service_id).
+        GithubAppInstallationFactory(
+            owner=repo.author,
+            name="scoped-app",
+            repository_service_ids=[repo.service_id],
+        )
+        # Same owner, but scoped to a different repo -> excluded.
+        GithubAppInstallationFactory(
+            owner=repo.author,
+            name="other-app",
+            repository_service_ids=["some-other-service-id"],
+        )
+
+        summary = self.repo_admin.integrations(repo)
+        self.assertIn("scoped-app", summary)
+        self.assertNotIn("other-app", summary)
+
+        table = self.repo_admin.integrations_table(repo)
+        self.assertIn("scoped-app", table)
+        self.assertIn("scoped repos", table)
+        self.assertNotIn("other-app", table)
 
 
 class CommitAdminTests(TestCase):

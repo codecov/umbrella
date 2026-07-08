@@ -7,7 +7,7 @@ from django.db.models import Q, QuerySet
 from django.http import HttpRequest, HttpResponseRedirect
 from django.urls import path, reverse
 from django.utils import timezone
-from django.utils.html import format_html
+from django.utils.html import format_html, format_html_join
 
 from codecov.admin import AdminMixin, deny_viewers, is_viewer
 from codecov_auth.models import Owner, RepositoryToken
@@ -24,6 +24,75 @@ from shared.reports.enums import UploadState
 from shared.yaml import UserYaml
 from shared.yaml.user_yaml import OwnerContext
 from upload.helpers import dispatch_upload_task
+
+
+def _installation_change_url(installation):
+    return reverse(
+        "admin:codecov_auth_githubappinstallation_change", args=[installation.pk]
+    )
+
+
+def installation_summary(installations):
+    """Comma-separated, one-line summary of GitHub App installations for lists.
+
+    Each entry links to the GithubAppInstallation admin change page.
+    """
+    installations = list(installations)
+    if not installations:
+        return "-"
+    return format_html_join(
+        ", ",
+        '<a href="{}">{} (installation {})</a>',
+        (
+            (
+                _installation_change_url(installation),
+                installation.name,
+                installation.installation_id,
+            )
+            for installation in installations
+        ),
+    )
+
+
+def installation_table(installations):
+    """Read-only HTML table of GitHub App installations for detail views.
+
+    The name in each row links to the GithubAppInstallation admin change page.
+    """
+    installations = list(installations)
+    if not installations:
+        return "-"
+    rows = format_html_join(
+        "",
+        "<tr>"
+        "<td style='padding:2px 16px 2px 0'><a href='{}'>{}</a></td>"
+        "<td style='padding:2px 16px 2px 0'>{}</td>"
+        "<td style='padding:2px 16px 2px 0'>{}</td>"
+        "<td style='padding:2px 16px 2px 0'>{}</td>"
+        "<td>{}</td>"
+        "</tr>",
+        (
+            (
+                _installation_change_url(installation),
+                installation.name,
+                installation.app_id,
+                installation.installation_id,
+                "all repos" if installation.covers_all_repos() else "scoped repos",
+                "yes" if installation.is_suspended else "no",
+            )
+            for installation in installations
+        ),
+    )
+    return format_html(
+        "<table><thead><tr>"
+        "<th style='text-align:left;padding-right:16px'>Name</th>"
+        "<th style='text-align:left;padding-right:16px'>App ID</th>"
+        "<th style='text-align:left;padding-right:16px'>Installation ID</th>"
+        "<th style='text-align:left;padding-right:16px'>Scope</th>"
+        "<th style='text-align:left'>Suspended</th>"
+        "</tr></thead><tbody>{}</tbody></table>",
+        rows,
+    )
 
 
 @dataclass
@@ -134,7 +203,17 @@ class RepositoryAdminForm(forms.ModelForm):
 @admin.register(Repository)
 class RepositoryAdmin(AdminMixin, admin.ModelAdmin):
     inlines = [RepositoryTokenInline]
-    list_display = ("name", "service_id", "author_link")
+    list_display = (
+        "repo_slug",
+        "service_id",
+        "author_link",
+        "active",
+        "private",
+        "activated",
+        "deleted",
+        "integrations",
+    )
+    list_filter = ("active", "private", "activated", "deleted", "using_integration")
     list_select_related = ("author",)
     search_fields = (
         "name",
@@ -164,6 +243,7 @@ class RepositoryAdmin(AdminMixin, admin.ModelAdmin):
         "hookid",
         "activated",
         "deleted",
+        "integrations_table",
     )
     fields = readonly_fields + (
         "bot",
@@ -172,6 +252,22 @@ class RepositoryAdmin(AdminMixin, admin.ModelAdmin):
         "private",
         "webhook_secret",
     )
+
+    @admin.display(description="name", ordering="name")
+    def repo_slug(self, obj):
+        author = obj.author
+        if author is None:
+            return obj.name
+        return f"{author.service}:{author.username}/{obj.name}"
+
+    def get_queryset(self, request):
+        # Prefetch the owner's GitHub App installations so the `integrations`
+        # column resolves in one extra query per page instead of N+1 per row.
+        return (
+            super()
+            .get_queryset(request)
+            .prefetch_related("author__github_app_installations")
+        )
 
     @admin.display(description="author", ordering="author")
     def author_link(self, obj):
@@ -182,6 +278,28 @@ class RepositoryAdmin(AdminMixin, admin.ModelAdmin):
         return format_html(
             '<a href="{}">{}/{}</a>', url, author.service, author.username
         )
+
+    def _covering_installations(self, obj):
+        # GitHub App installations covering this repo. Relies on the
+        # `author__github_app_installations` prefetch in `get_queryset`.
+        author = obj.author
+        if author is None:
+            return []
+        return [
+            installation
+            for installation in author.github_app_installations.all()
+            if installation.is_repo_covered_by_integration(obj)
+        ]
+
+    @admin.display(description="integrations")
+    def integrations(self, obj):
+        # Comma-separated list of the GitHub App installations covering this
+        # repo, replacing the legacy `using_integration` boolean column.
+        return installation_summary(self._covering_installations(obj))
+
+    @admin.display(description="GitHub App installations")
+    def integrations_table(self, obj):
+        return installation_table(self._covering_installations(obj))
 
     def get_search_results(
         self,
