@@ -755,6 +755,7 @@ class OwnerAdmin(AdminMixin, admin.ModelAdmin):
     list_display = (
         "username",
         "name",
+        "external_id",
         "repository_count",
         "github_app_installations_summary",
         "email",
@@ -778,6 +779,7 @@ class OwnerAdmin(AdminMixin, admin.ModelAdmin):
 
     readonly_fields = (
         "ownerid",
+        "external_id",
         "username",
         "service",
         "email",
@@ -810,6 +812,7 @@ class OwnerAdmin(AdminMixin, admin.ModelAdmin):
             {
                 "fields": [
                     "ownerid",
+                    "external_id",
                     "username",
                     "service",
                     "name",
