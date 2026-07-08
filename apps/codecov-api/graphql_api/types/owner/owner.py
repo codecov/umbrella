@@ -242,6 +242,7 @@ def resolve_is_current_user_an_admin(owner: Owner, info: GraphQLResolveInfo) -> 
 
 
 @owner_bindable.field("isOnlyUsingSentryApp")
+@require_part_of_org
 async def resolve_is_only_using_sentry_app(
     owner: Owner, info: GraphQLResolveInfo
 ) -> bool:
