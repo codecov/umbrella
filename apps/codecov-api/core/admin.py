@@ -7,7 +7,7 @@ from django.db.models import Q, QuerySet
 from django.http import HttpRequest, HttpResponseRedirect
 from django.urls import path, reverse
 from django.utils import timezone
-from django.utils.html import format_html
+from django.utils.html import format_html, format_html_join
 
 from codecov.admin import AdminMixin, deny_viewers, is_viewer
 from codecov_auth.models import Owner, RepositoryToken
@@ -142,7 +142,7 @@ class RepositoryAdmin(AdminMixin, admin.ModelAdmin):
         "private",
         "activated",
         "deleted",
-        "using_integration",
+        "integrations",
     )
     list_filter = ("active", "private", "activated", "deleted", "using_integration")
     list_select_related = ("author",)
@@ -190,6 +190,15 @@ class RepositoryAdmin(AdminMixin, admin.ModelAdmin):
             return obj.name
         return f"{author.service}:{author.username}/{obj.name}"
 
+    def get_queryset(self, request):
+        # Prefetch the owner's GitHub App installations so the `integrations`
+        # column resolves in one extra query per page instead of N+1 per row.
+        return (
+            super()
+            .get_queryset(request)
+            .prefetch_related("author__github_app_installations")
+        )
+
     @admin.display(description="author", ordering="author")
     def author_link(self, obj):
         author = obj.author
@@ -198,6 +207,35 @@ class RepositoryAdmin(AdminMixin, admin.ModelAdmin):
         url = reverse("admin:codecov_auth_owner_change", args=[author.ownerid])
         return format_html(
             '<a href="{}">{}/{}</a>', url, author.service, author.username
+        )
+
+    @admin.display(description="integrations")
+    def integrations(self, obj):
+        # Show the actual GitHub App installations covering this repo (name +
+        # app/installation id + coverage scope), rather than the legacy
+        # `using_integration` boolean.
+        author = obj.author
+        if author is None:
+            return "-"
+        covering = [
+            installation
+            for installation in author.github_app_installations.all()
+            if installation.is_repo_covered_by_integration(obj)
+        ]
+        if not covering:
+            return "-"
+        return format_html_join(
+            format_html("<br>"),
+            "{} (app {}, installation {}, {})",
+            (
+                (
+                    installation.name,
+                    installation.app_id,
+                    installation.installation_id,
+                    "all repos" if installation.covers_all_repos() else "scoped repos",
+                )
+                for installation in covering
+            ),
         )
 
     def get_search_results(
