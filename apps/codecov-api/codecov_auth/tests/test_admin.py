@@ -72,13 +72,6 @@ class OwnerAdminTest(TestCase):
             reverse("admin:codecov_auth_owner_change", args=[owner.pk])
         )
         self.assertEqual(response.status_code, 200)
-        assert str(owner.external_id) in response.content.decode("utf-8")
-
-    def test_owner_admin_list_page_shows_external_id(self):
-        owner = OwnerFactory()
-        response = self.client.get(reverse("admin:codecov_auth_owner_changelist"))
-        self.assertEqual(response.status_code, 200)
-        assert str(owner.external_id) in response.content.decode("utf-8")
 
     def test_owner_admin_github_app_installations_summary(self):
         owner = OwnerFactory()

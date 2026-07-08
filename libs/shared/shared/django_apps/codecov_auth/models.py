@@ -463,10 +463,6 @@ class Owner(ExportModelOperationsMixin("codecov_auth.owner"), models.Model):
         max_length=6, null=True, blank=True, default="000000"
     )
 
-    # Opaque, stable identifier support teams share with an owner to confirm
-    # which organization/user is being worked on. New owners get one
-    # automatically via the `uuid.uuid4` default; pre-existing rows are NULL
-    # until backfilled by the `backfill_owner_external_ids.py` script.
     external_id = models.UUIDField(
         null=True, blank=True, default=uuid.uuid4, editable=False
     )

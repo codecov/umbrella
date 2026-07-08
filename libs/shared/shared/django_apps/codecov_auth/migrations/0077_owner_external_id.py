@@ -20,17 +20,6 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        # Adding a nullable column with no database default is a metadata-only
-        # change in Postgres, so existing rows are NOT rewritten and simply
-        # default to NULL. Real UUIDs are assigned out of band by the
-        # `backfill_owner_external_ids.py` script.
-        #
-        # The database side deliberately omits the `uuid.uuid4` default: a
-        # callable default would be evaluated once at migration time and
-        # stamped onto every existing row, giving them all the *same* UUID.
-        # Instead we keep the column NULL in the DB while recording the real
-        # `default=uuid.uuid4` in Django's state so that *new* owners created
-        # through the ORM get a fresh UUID automatically.
         migrations.SeparateDatabaseAndState(
             database_operations=[
                 RiskyAddField(
