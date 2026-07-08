@@ -1,1 +1,17 @@
-:white_check_mark: All tests passed.
+### :x: 1 Tests Failed:
+| Tests completed | Failed | Passed | Skipped |
+|---|---|---|---|
+| 1 | 1 | 0 | 0 |
+<details><summary>View the top 1 failed test(s) by shortest run time</summary>
+
+> <pre><code class="language-python">class_0::test_0</code></pre>
+> <details><summary>Stack Traces | 100s run time</summary>
+> 
+> > <pre><code class="language-python">No failure message available</code></pre>
+> 
+> </details>
+
+</details>
+
+To view more test analytics, go to the [Test Analytics Dashboard](https://app.codecov.io/gh/test-user/test-repo/tests/main)
+<sub>📋 Got 3 mins? [Take this short survey](https://forms.gle/22i53Qa1CySZjA6c7) to help us improve Test Analytics.</sub>

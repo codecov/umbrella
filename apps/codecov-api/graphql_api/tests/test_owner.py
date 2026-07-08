@@ -305,51 +305,6 @@ class TestOwnerType(GraphQLTestHelper, TestCase):
         data = self.gql_request(query, owner=user)
         assert data["owner"]["isCurrentUserPartOfOrg"] is True
 
-    def test_is_only_using_sentry_app_true(self):
-        owner = OwnerFactory(username="sentry-only-user", service="github")
-        GithubAppInstallationFactory(owner=owner, app_id=12637)
-        query = """
-            query ($username: String!) {
-                owner(username: $username) {
-                    isOnlyUsingSentryApp
-                }
-            }
-        """
-        data = self.gql_request(
-            query, owner=owner, variables={"username": owner.username}
-        )
-        assert data["owner"]["isOnlyUsingSentryApp"] is True
-
-    def test_is_only_using_sentry_app_false_when_has_other_app(self):
-        owner = OwnerFactory(username="multi-app-user", service="github")
-        GithubAppInstallationFactory(owner=owner, app_id=12637)
-        GithubAppInstallationFactory(owner=owner, app_id=9999)
-        query = """
-            query ($username: String!) {
-                owner(username: $username) {
-                    isOnlyUsingSentryApp
-                }
-            }
-        """
-        data = self.gql_request(
-            query, owner=owner, variables={"username": owner.username}
-        )
-        assert data["owner"]["isOnlyUsingSentryApp"] is False
-
-    def test_is_only_using_sentry_app_false_when_no_installations(self):
-        owner = OwnerFactory(username="no-app-user", service="github")
-        query = """
-            query ($username: String!) {
-                owner(username: $username) {
-                    isOnlyUsingSentryApp
-                }
-            }
-        """
-        data = self.gql_request(
-            query, owner=owner, variables={"username": owner.username}
-        )
-        assert data["owner"]["isOnlyUsingSentryApp"] is False
-
     def test_yaml_when_owner_not_have_yaml(self):
         org = OwnerFactory(username="no_yaml", yaml=None, service="github")
         self.owner.organizations = [org.ownerid]
