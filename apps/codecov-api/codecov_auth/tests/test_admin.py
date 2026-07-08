@@ -12,6 +12,7 @@ from billing.tests.mocks import mock_all_plans_and_tiers
 from codecov.commands.exceptions import ValidationError
 from codecov_auth.admin import (
     AccountAdmin,
+    GithubAppInstallationAdmin,
     InvoiceBillingAdmin,
     OrgUploadTokenInline,
     OwnerAdmin,
@@ -31,11 +32,13 @@ from core.models import Pull
 from shared.django_apps.codecov_auth.models import (
     Account,
     AccountsUsers,
+    GithubAppInstallation,
     InvoiceBilling,
     StripeBilling,
 )
 from shared.django_apps.codecov_auth.tests.factories import (
     AccountFactory,
+    GithubAppInstallationFactory,
     InvoiceBillingFactory,
     OrganizationLevelTokenFactory,
     OwnerFactory,
@@ -69,6 +72,43 @@ class OwnerAdminTest(TestCase):
             reverse("admin:codecov_auth_owner_change", args=[owner.pk])
         )
         self.assertEqual(response.status_code, 200)
+
+    def test_owner_admin_github_app_installations_summary(self):
+        owner = OwnerFactory()
+        GithubAppInstallationFactory(owner=owner, name="app-a", installation_id=11)
+        GithubAppInstallationFactory(owner=owner, name="app-b", installation_id=22)
+
+        result = self.owner_admin.github_app_installations_summary(owner)
+        assert "app-a (installation 11)" in result
+        assert "app-b (installation 22)" in result
+
+    def test_owner_admin_github_app_installations_summary_empty(self):
+        owner = OwnerFactory()
+        assert self.owner_admin.github_app_installations_summary(owner) == "-"
+
+    def test_owner_admin_github_app_installations_table(self):
+        owner = OwnerFactory()
+        GithubAppInstallationFactory(
+            owner=owner,
+            name="my-app",
+            app_id=42,
+            installation_id=99,
+            repository_service_ids=None,
+        )
+
+        result = self.owner_admin.github_app_installations_table(owner)
+        assert "<table>" in result
+        assert "my-app" in result
+        assert "all repos" in result
+
+    def test_owner_admin_detail_page_shows_installations(self):
+        owner = OwnerFactory()
+        GithubAppInstallationFactory(owner=owner, name="detail-app")
+        response = self.client.get(
+            reverse("admin:codecov_auth_owner_change", args=[owner.pk])
+        )
+        self.assertEqual(response.status_code, 200)
+        assert "detail-app" in response.content.decode("utf-8")
 
     def test_owner_admin_impersonate_owner(self):
         owner_to_impersonate = OwnerFactory(
@@ -444,6 +484,131 @@ class OwnerAdminTest(TestCase):
         self.assertFalse(form.base_fields["account"].widget.can_add_related)
         self.assertFalse(form.base_fields["account"].widget.can_change_related)
         self.assertFalse(form.base_fields["account"].widget.can_delete_related)
+
+
+class GithubAppInstallationAdminTest(TestCase):
+    def setUp(self):
+        self.staff_user = UserFactory(is_staff=True)
+        self.client.force_login(user=self.staff_user)
+        self.installation_admin = GithubAppInstallationAdmin(
+            GithubAppInstallation, AdminSite()
+        )
+
+    def test_changelist_page(self):
+        owner = OwnerFactory(service="github", username="acme")
+        GithubAppInstallationFactory(owner=owner, name="list-app")
+        response = self.client.get(
+            reverse("admin:codecov_auth_githubappinstallation_changelist")
+        )
+        self.assertEqual(response.status_code, 200)
+        content = response.content.decode("utf-8")
+        assert "list-app" in content
+        assert "github/acme" in content
+
+    def test_detail_page(self):
+        installation = GithubAppInstallationFactory(name="detail-app")
+        response = self.client.get(
+            reverse(
+                "admin:codecov_auth_githubappinstallation_change",
+                args=[installation.pk],
+            )
+        )
+        self.assertEqual(response.status_code, 200)
+
+    def test_coverage_all_repos(self):
+        installation = GithubAppInstallationFactory(repository_service_ids=None)
+        assert self.installation_admin.coverage(installation) == "all repos"
+
+    def test_coverage_scoped_repos(self):
+        installation = GithubAppInstallationFactory(
+            repository_service_ids=["1", "2", "3"]
+        )
+        assert self.installation_admin.coverage(installation) == "3 repo(s)"
+
+    def test_owner_link(self):
+        owner = OwnerFactory(service="github", username="acme")
+        installation = GithubAppInstallationFactory(owner=owner)
+        result = self.installation_admin.owner_link(installation)
+        assert "github/acme" in result
+        assert reverse("admin:codecov_auth_owner_change", args=[owner.pk]) in result
+
+    def test_no_add_or_delete_permission(self):
+        request = RequestFactory().get("/")
+        request.user = self.staff_user
+        assert self.installation_admin.has_add_permission(request) is False
+        assert self.installation_admin.has_delete_permission(request) is False
+
+    def test_covered_repositories_scoped(self):
+        owner = OwnerFactory(service="github")
+        covered = RepositoryFactory(author=owner, name="covered-repo", service_id="111")
+        RepositoryFactory(author=owner, name="other-repo", service_id="222")
+        installation = GithubAppInstallationFactory(
+            owner=owner, repository_service_ids=["111"]
+        )
+
+        result = self.installation_admin.covered_repositories(installation)
+        assert "covered-repo" in result
+        assert "other-repo" not in result
+        assert reverse("admin:core_repository_change", args=[covered.repoid]) in result
+
+    def test_covered_repositories_all_repos_links_to_changelist(self):
+        owner = OwnerFactory(service="github")
+        RepositoryFactory(author=owner, name="repo-a", service_id="1")
+        RepositoryFactory(author=owner, name="repo-b", service_id="2")
+        installation = GithubAppInstallationFactory(
+            owner=owner, repository_service_ids=None
+        )
+
+        result = self.installation_admin.covered_repositories(installation)
+        expected_url = (
+            reverse("admin:core_repository_changelist")
+            + f"?author__ownerid__exact={owner.ownerid}"
+        )
+        assert expected_url in result
+        assert "View all 2 repositories for this owner" in result
+        # Individual repos are not listed for the "all repos" case.
+        assert "repo-a" not in result
+
+    def test_covered_repositories_all_repos_changelist_link_is_allowed(self):
+        owner = OwnerFactory(service="github")
+        RepositoryFactory(author=owner, name="repo-a", service_id="1")
+        response = self.client.get(
+            reverse("admin:core_repository_changelist"),
+            {"author__ownerid__exact": owner.ownerid},
+        )
+        self.assertEqual(response.status_code, 200)
+        assert "repo-a" in response.content.decode("utf-8")
+
+    def test_covered_repositories_empty(self):
+        installation = GithubAppInstallationFactory(repository_service_ids=[])
+        assert self.installation_admin.covered_repositories(installation) == "-"
+
+    def test_covered_repositories_truncates(self):
+        owner = OwnerFactory(service="github")
+        for i in range(3):
+            RepositoryFactory(author=owner, name=f"repo-{i}", service_id=str(i))
+        installation = GithubAppInstallationFactory(
+            owner=owner, repository_service_ids=["0", "1", "2"]
+        )
+        self.installation_admin.COVERED_REPOS_DISPLAY_LIMIT = 2
+
+        result = self.installation_admin.covered_repositories(installation)
+        assert "Showing 2 of 3 covered repositories." in result
+
+    def test_detail_page_shows_covered_repositories(self):
+        owner = OwnerFactory(service="github")
+        RepositoryFactory(author=owner, name="detail-repo", service_id="900")
+        installation = GithubAppInstallationFactory(
+            owner=owner, repository_service_ids=["900"]
+        )
+        response = self.client.get(
+            reverse(
+                "admin:codecov_auth_githubappinstallation_change",
+                args=[installation.pk],
+            )
+        )
+        self.assertEqual(response.status_code, 200)
+        assert "detail-repo" in response.content.decode("utf-8")
 
 
 class UserAdminTest(TestCase):

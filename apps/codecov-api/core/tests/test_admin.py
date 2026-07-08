@@ -140,11 +140,16 @@ class RepositoryAdminTests(AdminTest):
             repository_service_ids=None,
         )
 
-        result = self.repo_admin.integrations(repo)
-        self.assertIn("my-app", result)
-        self.assertIn("app 42", result)
-        self.assertIn("installation 99", result)
-        self.assertIn("all repos", result)
+        # List column: compact comma-separated summary.
+        summary = self.repo_admin.integrations(repo)
+        self.assertIn("my-app (installation 99)", summary)
+
+        # Detail view: full table with app id and coverage scope.
+        table = self.repo_admin.integrations_table(repo)
+        self.assertIn("<table>", table)
+        self.assertIn("my-app", table)
+        self.assertIn("42", table)
+        self.assertIn("all repos", table)
 
     def test_integrations_display_scoped_installation(self):
         repo = RepositoryFactory()
@@ -161,10 +166,14 @@ class RepositoryAdminTests(AdminTest):
             repository_service_ids=["some-other-service-id"],
         )
 
-        result = self.repo_admin.integrations(repo)
-        self.assertIn("scoped-app", result)
-        self.assertIn("scoped repos", result)
-        self.assertNotIn("other-app", result)
+        summary = self.repo_admin.integrations(repo)
+        self.assertIn("scoped-app", summary)
+        self.assertNotIn("other-app", summary)
+
+        table = self.repo_admin.integrations_table(repo)
+        self.assertIn("scoped-app", table)
+        self.assertIn("scoped repos", table)
+        self.assertNotIn("other-app", table)
 
 
 class CommitAdminTests(TestCase):

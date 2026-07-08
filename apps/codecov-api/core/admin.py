@@ -26,6 +26,75 @@ from shared.yaml.user_yaml import OwnerContext
 from upload.helpers import dispatch_upload_task
 
 
+def _installation_change_url(installation):
+    return reverse(
+        "admin:codecov_auth_githubappinstallation_change", args=[installation.pk]
+    )
+
+
+def installation_summary(installations):
+    """Comma-separated, one-line summary of GitHub App installations for lists.
+
+    Each entry links to the GithubAppInstallation admin change page.
+    """
+    installations = list(installations)
+    if not installations:
+        return "-"
+    return format_html_join(
+        ", ",
+        '<a href="{}">{} (installation {})</a>',
+        (
+            (
+                _installation_change_url(installation),
+                installation.name,
+                installation.installation_id,
+            )
+            for installation in installations
+        ),
+    )
+
+
+def installation_table(installations):
+    """Read-only HTML table of GitHub App installations for detail views.
+
+    The name in each row links to the GithubAppInstallation admin change page.
+    """
+    installations = list(installations)
+    if not installations:
+        return "-"
+    rows = format_html_join(
+        "",
+        "<tr>"
+        "<td style='padding:2px 16px 2px 0'><a href='{}'>{}</a></td>"
+        "<td style='padding:2px 16px 2px 0'>{}</td>"
+        "<td style='padding:2px 16px 2px 0'>{}</td>"
+        "<td style='padding:2px 16px 2px 0'>{}</td>"
+        "<td>{}</td>"
+        "</tr>",
+        (
+            (
+                _installation_change_url(installation),
+                installation.name,
+                installation.app_id,
+                installation.installation_id,
+                "all repos" if installation.covers_all_repos() else "scoped repos",
+                "yes" if installation.is_suspended else "no",
+            )
+            for installation in installations
+        ),
+    )
+    return format_html(
+        "<table><thead><tr>"
+        "<th style='text-align:left;padding-right:16px'>Name</th>"
+        "<th style='text-align:left;padding-right:16px'>App ID</th>"
+        "<th style='text-align:left;padding-right:16px'>Installation ID</th>"
+        "<th style='text-align:left;padding-right:16px'>Scope</th>"
+        "<th style='text-align:left'>Suspended</th>"
+        "</tr></thead><tbody>{}</tbody></table>",
+        rows,
+    )
+
+
 @dataclass
 class ReprocessConfig:
     """Configuration for reprocessing a specific report type."""
@@ -174,6 +243,7 @@ class RepositoryAdmin(AdminMixin, admin.ModelAdmin):
         "hookid",
         "activated",
         "deleted",
+        "integrations_table",
     )
     fields = readonly_fields + (
         "bot",
@@ -209,34 +279,27 @@ class RepositoryAdmin(AdminMixin, admin.ModelAdmin):
             '<a href="{}">{}/{}</a>', url, author.service, author.username
         )
 
-    @admin.display(description="integrations")
-    def integrations(self, obj):
-        # Show the actual GitHub App installations covering this repo (name +
-        # app/installation id + coverage scope), rather than the legacy
-        # `using_integration` boolean.
+    def _covering_installations(self, obj):
+        # GitHub App installations covering this repo. Relies on the
+        # `author__github_app_installations` prefetch in `get_queryset`.
         author = obj.author
         if author is None:
-            return "-"
-        covering = [
+            return []
+        return [
             installation
             for installation in author.github_app_installations.all()
             if installation.is_repo_covered_by_integration(obj)
         ]
-        if not covering:
-            return "-"
-        return format_html_join(
-            format_html("<br>"),
-            "{} (app {}, installation {}, {})",
-            (
-                (
-                    installation.name,
-                    installation.app_id,
-                    installation.installation_id,
-                    "all repos" if installation.covers_all_repos() else "scoped repos",
-                )
-                for installation in covering
-            ),
-        )
+
+    @admin.display(description="integrations")
+    def integrations(self, obj):
+        # Comma-separated list of the GitHub App installations covering this
+        # repo, replacing the legacy `using_integration` boolean column.
+        return installation_summary(self._covering_installations(obj))
+
+    @admin.display(description="GitHub App installations")
+    def integrations_table(self, obj):
+        return installation_table(self._covering_installations(obj))
 
     def get_search_results(
         self,

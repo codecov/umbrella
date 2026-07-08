@@ -21,11 +21,13 @@ from codecov.commands.exceptions import ValidationError
 from codecov_auth.helpers import History
 from codecov_auth.models import OrganizationLevelToken, Owner, SentryUser, Session, User
 from codecov_auth.services.org_level_token_service import OrgLevelTokenService
+from core.admin import installation_summary, installation_table
 from core.models import Repository
 from services.task import TaskService
 from shared.django_apps.codecov_auth.models import (
     Account,
     AccountsUsers,
+    GithubAppInstallation,
     InvoiceBilling,
     OwnerExport,
     Plan,
@@ -754,6 +756,7 @@ class OwnerAdmin(AdminMixin, admin.ModelAdmin):
         "username",
         "name",
         "repository_count",
+        "github_app_installations_summary",
         "email",
         "service",
         "plan_display",
@@ -798,6 +801,7 @@ class OwnerAdmin(AdminMixin, admin.ModelAdmin):
         "support_pin",
         "plan_activated_users_list",
         "admins_list",
+        "github_app_installations_table",
     )
 
     fieldsets = [
@@ -854,6 +858,14 @@ class OwnerAdmin(AdminMixin, admin.ModelAdmin):
             },
         ),
         (
+            "GitHub App installations",
+            {
+                "fields": [
+                    "github_app_installations_table",
+                ]
+            },
+        ),
+        (
             "Reference fields",
             {
                 "fields": [
@@ -896,11 +908,22 @@ class OwnerAdmin(AdminMixin, admin.ModelAdmin):
             super()
             .get_queryset(request)
             .annotate(repository_count=Coalesce(Subquery(repository_count_subquery), 0))
+            .prefetch_related("github_app_installations")
         )
 
     @admin.display(description="repositories", ordering="repository_count")
     def repository_count(self, obj):
         return obj.repository_count
+
+    @admin.display(description="GitHub App installations")
+    def github_app_installations_summary(self, obj):
+        # Comma-separated summary for the changelist. Relies on the
+        # `github_app_installations` prefetch in `get_queryset`.
+        return installation_summary(obj.github_app_installations.all())
+
+    @admin.display(description="GitHub App installations")
+    def github_app_installations_table(self, obj):
+        return installation_table(obj.github_app_installations.all())
 
     @admin.display(description="Plan")
     def plan_display(self, obj):
@@ -1098,6 +1121,143 @@ class OwnerAdmin(AdminMixin, admin.ModelAdmin):
             if formset.is_valid() and token_id and token_refresh:
                 OrgLevelTokenService.refresh_token(token_id)
         return super().save_related(request, form, formsets, change)
+
+
+@admin.register(GithubAppInstallation)
+class GithubAppInstallationAdmin(AdminMixin, admin.ModelAdmin):
+    list_display = (
+        "id",
+        "name",
+        "owner_link",
+        "app_id",
+        "installation_id",
+        "coverage",
+        "is_suspended",
+    )
+    list_filter = ("is_suspended", "name")
+    list_select_related = ("owner",)
+    search_fields = (
+        "owner__username",
+        "name",
+        "=installation_id",
+        "=app_id",
+    )
+    search_help_text = (
+        "Search by owner username, name, installation_id (exact), or app_id (exact)"
+    )
+    autocomplete_fields = ("owner",)
+
+    # Cap the covered-repositories table so an "all repos" installation for a
+    # large owner doesn't try to render thousands of rows.
+    COVERED_REPOS_DISPLAY_LIMIT = 200
+
+    readonly_fields = (
+        "id",
+        "external_id",
+        "created_at",
+        "updated_at",
+        "coverage",
+        "covered_repositories",
+    )
+    fields = (
+        "id",
+        "external_id",
+        "created_at",
+        "updated_at",
+        "owner",
+        "name",
+        "app_id",
+        "installation_id",
+        "coverage",
+        "repository_service_ids",
+        "covered_repositories",
+        "pem_path",
+        "is_suspended",
+    )
+
+    @admin.display(description="Owner")
+    def owner_link(self, obj):
+        owner = obj.owner
+        if owner is None:
+            return "-"
+        url = reverse("admin:codecov_auth_owner_change", args=[owner.ownerid])
+        return format_html('<a href="{}">{}/{}</a>', url, owner.service, owner.username)
+
+    @admin.display(description="Coverage")
+    def coverage(self, obj):
+        if obj.covers_all_repos():
+            return "all repos"
+        return f"{len(obj.repository_service_ids or [])} repo(s)"
+
+    @admin.display(description="Covered repositories")
+    def covered_repositories(self, obj):
+        """Read-only tabular list of the repos this installation covers.
+
+        A true Django ``TabularInline`` isn't possible here: coverage is
+        derived from the ``repository_service_ids`` array rather than a
+        ForeignKey back to the installation. This renders the same
+        information and links each row to the Repository admin page.
+        """
+        if obj.pk is None:
+            return "-"
+        if obj.covers_all_repos():
+            # Every repo for the owner is covered; linking to the filtered
+            # Repository changelist is friendlier than rendering thousands of rows.
+            url = reverse("admin:core_repository_changelist")
+            url += f"?author__ownerid__exact={obj.owner.ownerid}"
+            count = obj.repository_queryset().count()
+            return format_html(
+                '<a href="{}">View all {} repositories for this owner</a>',
+                url,
+                count,
+            )
+        queryset = obj.repository_queryset().order_by("name")
+        total = queryset.count()
+        if total == 0:
+            return "-"
+        repos = list(queryset[: self.COVERED_REPOS_DISPLAY_LIMIT])
+        rows = format_html_join(
+            "",
+            "<tr>"
+            "<td style='padding:2px 16px 2px 0'><a href='{}'>{}</a></td>"
+            "<td style='padding:2px 16px 2px 0'>{}</td>"
+            "<td style='padding:2px 16px 2px 0'>{}</td>"
+            "<td>{}</td>"
+            "</tr>",
+            (
+                (
+                    reverse("admin:core_repository_change", args=[repo.repoid]),
+                    repo.name,
+                    repo.service_id,
+                    "yes" if repo.private else "no",
+                    "yes" if repo.active else "no",
+                )
+                for repo in repos
+            ),
+        )
+        table = format_html(
+            "<table><thead><tr>"
+            "<th style='text-align:left;padding-right:16px'>Name</th>"
+            "<th style='text-align:left;padding-right:16px'>Service ID</th>"
+            "<th style='text-align:left;padding-right:16px'>Private</th>"
+            "<th style='text-align:left'>Active</th>"
+            "</tr></thead><tbody>{}</tbody></table>",
+            rows,
+        )
+        if total > len(repos):
+            return format_html(
+                "{}<p>Showing {} of {} covered repositories.</p>",
+                table,
+                len(repos),
+                total,
+            )
+        return table
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
 
 
 @admin.register(LogEntry)
