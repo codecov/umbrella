@@ -10,7 +10,6 @@ from .views.gitlab_enterprise import GitlabEnterpriseLoginView
 from .views.logout import logout_view
 from .views.okta import OktaLoginView
 from .views.okta_cloud import OktaCloudCallbackView, OktaCloudLoginView
-from .views.sentry import SentryLoginView
 
 urlpatterns = [
     path("logout", logout_view, name="logout"),
@@ -40,7 +39,6 @@ urlpatterns = [
     ),
     path("login/bbs", BitbucketServerLoginView.as_view(), name="bbs-login"),
     path("login/stash", BitbucketServerLoginView.as_view(), name="stash-login"),
-    path("login/sentry", SentryLoginView.as_view(), name="sentry-login"),
     path(
         "login/okta/<str:service>/<str:org_username>",
         OktaCloudLoginView.as_view(),
