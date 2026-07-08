@@ -83,7 +83,8 @@ def handle_failure(
 def process_single_upload(
     upload: ReportSession, curr_flakes: dict[bytes, Flake], repo_id: int
 ):
-    testruns = get_testruns(upload)
+    testruns = list(get_testruns(upload).iterator())
+    mutated_testruns = []
 
     for testrun in testruns:
         test_id = bytes(testrun.test_id)
@@ -94,11 +95,15 @@ def process_single_upload(
 
                 handle_pass(curr_flakes, test_id)
             case "failure" | "flaky_fail" | "error":
+                original_outcome = testrun.outcome
                 handle_failure(curr_flakes, test_id, testrun, repo_id)
+                if testrun.outcome != original_outcome:
+                    mutated_testruns.append(testrun)
             case _:
                 continue
 
-    Testrun.objects.bulk_update(testruns, ["outcome"])
+    if mutated_testruns:
+        Testrun.objects.bulk_update(mutated_testruns, ["outcome"], batch_size=500)
 
 
 @sentry_sdk.trace
