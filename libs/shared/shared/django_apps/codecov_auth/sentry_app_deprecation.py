@@ -6,17 +6,23 @@ Sentry app, so we can show them a one-time migration notice. Once the deprecatio
 window closes and the messaging is removed, nothing should import from here.
 """
 
-from shared.django_apps.codecov_auth.models import GithubAppInstallation
+from django.conf import settings
 
-# Sentry's GitHub app, which Codecov historically used for PR notifications
-SENTRY_APP_ID = 12637
+from shared.django_apps.codecov_auth.models import GithubAppInstallation
 
 SENTRY_APP_DEPRECATION_DATE = "July 8, 2026"
 
 
 def is_owner_only_using_sentry_app(owner_id: int) -> bool:
+    # The Sentry GitHub app installation is recorded with app_id equal to the
+    # configured GITHUB_SENTRY_APP_ID (github.sentry_merge_app_id), the same value
+    # the webhook uses when it creates/updates the installation. Identifying it by
+    # any other value silently fails to match real installations.
+    sentry_app_id = getattr(settings, "GITHUB_SENTRY_APP_ID", None)
+    if sentry_app_id is None:
+        return False
     installations = GithubAppInstallation.objects.filter(owner_id=owner_id)
     count = installations.count()
     if count != 1:
         return False
-    return installations.filter(app_id=SENTRY_APP_ID).exists()
+    return installations.filter(app_id=sentry_app_id).exists()

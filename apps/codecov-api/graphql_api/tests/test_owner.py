@@ -305,6 +305,7 @@ class TestOwnerType(GraphQLTestHelper, TestCase):
         data = self.gql_request(query, owner=user)
         assert data["owner"]["isCurrentUserPartOfOrg"] is True
 
+    @override_settings(GITHUB_SENTRY_APP_ID=12637)
     def test_is_only_using_sentry_app_true(self):
         owner = OwnerFactory(username="sentry-only-user", service="github")
         GithubAppInstallationFactory(owner=owner, app_id=12637)
@@ -320,6 +321,7 @@ class TestOwnerType(GraphQLTestHelper, TestCase):
         )
         assert data["owner"]["isOnlyUsingSentryApp"] is True
 
+    @override_settings(GITHUB_SENTRY_APP_ID=12637)
     def test_is_only_using_sentry_app_false_when_has_other_app(self):
         owner = OwnerFactory(username="multi-app-user", service="github")
         GithubAppInstallationFactory(owner=owner, app_id=12637)
@@ -336,6 +338,7 @@ class TestOwnerType(GraphQLTestHelper, TestCase):
         )
         assert data["owner"]["isOnlyUsingSentryApp"] is False
 
+    @override_settings(GITHUB_SENTRY_APP_ID=12637)
     def test_is_only_using_sentry_app_false_when_no_installations(self):
         owner = OwnerFactory(username="no-app-user", service="github")
         query = """
