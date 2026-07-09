@@ -23,6 +23,10 @@ class MissingBaseReport:
     message = "Missing base report"
 
 
+class MissingReports:
+    message = "Missing reports"
+
+
 class MissingCoverage:
     def __init__(self, message="Missing coverage"):
         self.message = message
