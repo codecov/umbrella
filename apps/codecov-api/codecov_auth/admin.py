@@ -799,6 +799,8 @@ class OwnerAdmin(AdminMixin, admin.ModelAdmin):
         "student_updated_at",
         "user_link",
         "trial_fired_by_link",
+        "stripe_customer_link",
+        "stripe_subscription_link",
         "sentry_user_id",
         "support_pin",
         "plan_activated_users_list",
@@ -855,7 +857,9 @@ class OwnerAdmin(AdminMixin, admin.ModelAdmin):
                     "uses_invoice",
                     "delinquent",
                     "stripe_customer_id",
+                    "stripe_customer_link",
                     "stripe_subscription_id",
+                    "stripe_subscription_link",
                     "plan_provider",
                 ]
             },
@@ -966,6 +970,30 @@ class OwnerAdmin(AdminMixin, admin.ModelAdmin):
             return obj.trial_fired_by
         url = reverse("admin:codecov_auth_owner_change", args=[owner.ownerid])
         return format_html('<a href="{}">{}</a>', url, owner.username or owner.ownerid)
+
+    @admin.display(description="Stripe customer")
+    def stripe_customer_link(self, obj):
+        # We don't store Stripe invoices/charges locally; the Stripe dashboard
+        # is the source of truth for this customer's billing records.
+        if not obj.stripe_customer_id:
+            return "-"
+        url = f"https://dashboard.stripe.com/customers/{obj.stripe_customer_id}"
+        return format_html(
+            '<a href="{}" target="_blank" rel="noopener noreferrer">{}</a>',
+            url,
+            obj.stripe_customer_id,
+        )
+
+    @admin.display(description="Stripe subscription")
+    def stripe_subscription_link(self, obj):
+        if not obj.stripe_subscription_id:
+            return "-"
+        url = f"https://dashboard.stripe.com/subscriptions/{obj.stripe_subscription_id}"
+        return format_html(
+            '<a href="{}" target="_blank" rel="noopener noreferrer">{}</a>',
+            url,
+            obj.stripe_subscription_id,
+        )
 
     def _links_table(self, ids, objects, url_name, label_fn, headers):
         """Render `ids` as a two-column table linking each to its admin page.

@@ -86,6 +86,26 @@ class OwnerAdminTest(TestCase):
         owner = OwnerFactory()
         assert self.owner_admin.github_app_installations_summary(owner) == "-"
 
+    def test_owner_admin_stripe_customer_link(self):
+        owner = OwnerFactory(stripe_customer_id="cus_ABC123")
+        result = self.owner_admin.stripe_customer_link(owner)
+        assert "https://dashboard.stripe.com/customers/cus_ABC123" in result
+        assert "cus_ABC123" in result
+
+    def test_owner_admin_stripe_customer_link_empty(self):
+        owner = OwnerFactory(stripe_customer_id=None)
+        assert self.owner_admin.stripe_customer_link(owner) == "-"
+
+    def test_owner_admin_stripe_subscription_link(self):
+        owner = OwnerFactory(stripe_subscription_id="sub_XYZ789")
+        result = self.owner_admin.stripe_subscription_link(owner)
+        assert "https://dashboard.stripe.com/subscriptions/sub_XYZ789" in result
+        assert "sub_XYZ789" in result
+
+    def test_owner_admin_stripe_subscription_link_empty(self):
+        owner = OwnerFactory(stripe_subscription_id=None)
+        assert self.owner_admin.stripe_subscription_link(owner) == "-"
+
     def test_owner_admin_github_app_installations_table(self):
         owner = OwnerFactory()
         GithubAppInstallationFactory(
