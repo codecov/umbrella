@@ -43,3 +43,7 @@ class OwnerNotActivatedError:
 
 class NotFoundError:
     message = "Not found"
+
+
+class ComponentsComparisonError:
+    message = "Error fetching components comparison"

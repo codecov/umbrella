@@ -1,4 +1,5 @@
 from .errors import (
+    ComponentsComparisonError,
     MissingBaseCommit,
     MissingBaseReport,
     MissingComparison,
@@ -10,6 +11,7 @@ from .errors import (
 )
 
 __all__ = [
+    "ComponentsComparisonError",
     "MissingBaseCommit",
     "MissingBaseReport",
     "MissingComparison",
