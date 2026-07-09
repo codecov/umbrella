@@ -20,6 +20,13 @@ class Migration(migrations.Migration):
     unlike the concurrent create, must be runnable inside a transaction so the
     migration-test harness can unapply it.
 
+    This also sets a server-side DEFAULT of gen_random_uuid() on external_id. The
+    model already assigns uuid.uuid4() at the Django layer, so ORM writes were
+    always covered; the DB default is belt-and-suspenders for any non-ORM insert
+    (raw SQL, COPY/ETL, cross-service writes) so those rows never land NULL. It is
+    a metadata-only change (no table rewrite) and does not affect Django's model
+    state, so it runs as a plain RunSQL with a DROP DEFAULT reverse.
+
     BEGIN;
     --
     -- (run outside a transaction)
@@ -52,5 +59,14 @@ class Migration(migrations.Migration):
                     ),
                 ),
             ],
+        ),
+        migrations.RunSQL(
+            sql=(
+                'ALTER TABLE "owners" '
+                'ALTER COLUMN "external_id" SET DEFAULT gen_random_uuid();'
+            ),
+            reverse_sql=(
+                'ALTER TABLE "owners" ALTER COLUMN "external_id" DROP DEFAULT;'
+            ),
         ),
     ]
