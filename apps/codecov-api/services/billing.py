@@ -573,6 +573,12 @@ class StripeService(AbstractPaymentService):
             cancel_url=cancel_url,
             customer=owner.stripe_customer_id,
             mode="subscription",
+            consent_collection={"terms_of_service": "required"},
+            custom_text={
+                "terms_of_service_acceptance": {
+                    "message": "By checking this box, I confirm that I have read and agree to be bound by the [Terms & Conditions](https://www.codecov.io/terms)."
+                },
+            },
             line_items=[
                 {
                     "price": plan.stripe_id,
