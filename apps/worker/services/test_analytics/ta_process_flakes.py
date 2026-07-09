@@ -140,18 +140,38 @@ def process_flakes_for_commit(repo_id: int, commit_id: str):
     )
 
 
+MAX_COMMITS_PER_TASK = 50
+
+
 @sentry_sdk.trace
-def process_flakes_for_repo(repo_id: int):
+def process_flakes_for_repo(repo_id: int) -> tuple[bool, bool]:
+    """
+    Process flakes for a repository.
+
+    Returns a tuple of (success, has_more) where:
+    - success: True if processing completed without errors, False if lock was not acquired
+    - has_more: True if there are still commits left in the queue to process
+    """
     redis_client = get_redis_connection()
     lock_name = LOCK_NAME.format(repo_id)
     key_name = KEY_NAME.format(repo_id)
     try:
-        with redis_client.lock(lock_name, timeout=300, blocking_timeout=3):
+        with redis_client.lock(lock_name, timeout=60, blocking_timeout=3):
+            processed = 0
             while commit_ids := redis_client.lpop(key_name, 10):
-                for commit_id in commit_ids:
+                for i, commit_id in enumerate(commit_ids):
                     with process_flakes_summary.labels("new").time():
                         process_flakes_for_commit(repo_id, commit_id.decode())
-            return True
+                    processed += 1
+                    if processed >= MAX_COMMITS_PER_TASK:
+                        # Push any remaining unprocessed commits from this batch
+                        # back to the front of the queue so they are not lost.
+                        leftover = commit_ids[i + 1 :]
+                        if leftover:
+                            redis_client.lpush(key_name, *reversed(leftover))
+                        has_more = bool(redis_client.llen(key_name))
+                        return True, has_more
+            return True, False
     except LockError:
         log.warning("Failed to acquire lock for repo %s", repo_id)
-        return False
+        return False, False

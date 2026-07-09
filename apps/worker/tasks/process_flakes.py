@@ -27,8 +27,14 @@ class ProcessFlakesTask(BaseCodecovTask, name=process_flakes_task_name):
         log.info("Received process flakes task for repo %s", repo_id)
 
         try:
-            process_flakes_for_repo(repo_id)
-            return {"successful": True}
+            success, has_more = process_flakes_for_repo(repo_id)
+            if has_more:
+                log.info(
+                    "Commit backlog not fully drained for repo %s, re-queuing task",
+                    repo_id,
+                )
+                process_flakes_task.apply_async(kwargs={"repo_id": repo_id})
+            return {"successful": success}
         except Exception as e:
             log.error("Error processing flakes for repo %s: %s", repo_id, str(e))
             sentry_sdk.capture_exception(e)
