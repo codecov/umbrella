@@ -5,7 +5,6 @@ type Owner {
   billing: Billing
   defaultOrgUsername: String
   delinquent: Boolean
-  externalId: String
   hashOwnerid: String
   hasActiveRepos: Boolean
   hasPrivateRepos: Boolean
