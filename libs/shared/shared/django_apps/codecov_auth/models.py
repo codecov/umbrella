@@ -463,6 +463,10 @@ class Owner(ExportModelOperationsMixin("codecov_auth.owner"), models.Model):
         max_length=6, null=True, blank=True, default="000000"
     )
 
+    external_id = models.UUIDField(
+        null=True, blank=True, default=uuid.uuid4, editable=False
+    )
+
     sentry_user_id = models.TextField(null=True, blank=True, unique=True)
     sentry_user_data = models.JSONField(null=True)
 

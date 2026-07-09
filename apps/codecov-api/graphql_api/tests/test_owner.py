@@ -844,6 +844,32 @@ class TestOwnerType(GraphQLTestHelper, TestCase):
         data = self.gql_request(query, owner=user)
         assert data["owner"]["hashOwnerid"] is not None
 
+    def test_owner_external_id(self):
+        user = OwnerFactory(username="sample-user")
+        owner = OwnerFactory(username="sample-owner", plan_activated_users=None)
+        user.organizations = [owner.ownerid]
+        user.save()
+        query = f"""{{
+            owner(username: "{owner.username}") {{
+                externalId
+            }}
+        }}
+        """
+        data = self.gql_request(query, owner=user)
+        assert data["owner"]["externalId"] == str(owner.external_id)
+
+    def test_owner_external_id_not_part_of_org(self):
+        user = OwnerFactory(username="not-a-member")
+        owner = OwnerFactory(username="private-owner", plan_activated_users=None)
+        query = f"""{{
+            owner(username: "{owner.username}") {{
+                externalId
+            }}
+        }}
+        """
+        data = self.gql_request(query, owner=user)
+        assert data["owner"]["externalId"] is None
+
     @override_settings(IS_ENTERPRISE=True, GUEST_ACCESS=False)
     def test_fetch_owner_on_unauthenticated_enteprise_guest_access(self):
         owner = OwnerFactory(username="sample-owner", service="github")

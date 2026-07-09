@@ -249,6 +249,12 @@ async def resolve_is_only_using_sentry_app(
     return await sync_to_async(is_owner_only_using_sentry_app)(owner.ownerid)
 
 
+@owner_bindable.field("externalId")
+@require_part_of_org
+def resolve_external_id(owner: Owner, info: GraphQLResolveInfo) -> str | None:
+    return str(owner.external_id) if owner.external_id else None
+
+
 @owner_bindable.field("hashOwnerid")
 @require_part_of_org
 def resolve_hash_ownerid(owner: Owner, info: GraphQLResolveInfo) -> str:
