@@ -5,7 +5,6 @@ from hashlib import sha1, sha256
 from unittest.mock import call, patch
 
 import pytest
-from django.test import override_settings
 from freezegun import freeze_time
 from rest_framework import status
 from rest_framework.reverse import reverse
@@ -507,6 +506,21 @@ class GithubWebhookHandlerTests(APITestCase):
 
         pulls_sync_mock.assert_has_calls(
             [call(repoid=self.repo.repoid, pullid=pull.pullid)] * len(valid_actions)
+        )
+
+    @patch("services.task.TaskService.pulls_sync")
+    def test_pull_request_ready_for_review_triggers_pulls_sync(self, pulls_sync_mock):
+        pull = PullFactory(repository=self.repo)
+        self._post_event_data(
+            event=GitHubWebhookEvents.PULL_REQUEST,
+            data={
+                "repository": {"id": self.repo.service_id},
+                "action": "ready_for_review",
+                "number": pull.pullid,
+            },
+        )
+        pulls_sync_mock.assert_called_once_with(
+            repoid=self.repo.repoid, pullid=pull.pullid
         )
 
     def test_pull_request_updates_title_if_edited(self):
@@ -1086,56 +1100,6 @@ class GithubWebhookHandlerTests(APITestCase):
         assert response.status_code == 200
         assert mock_refresh.call_count == 0
 
-    @override_settings(
-        GITHUB_SENTRY_APP_NAME="sentry_app",
-        GITHUB_SENTRY_APP_ID=424242,
-        GITHUB_SENTRY_APP_PEM="/tmp/sentry_app.pem",
-    )
-    @patch(
-        "services.task.TaskService.refresh",
-        lambda self,
-        ownerid,
-        username,
-        sync_teams,
-        sync_repos,
-        using_integration,
-        repos_affected: None,
-    )
-    def test_installation_sets_pem_path_for_sentry_app(self):
-        username, service_id = "sentryuser", 998877
-
-        self._post_event_data(
-            event=GitHubWebhookEvents.INSTALLATION,
-            data={
-                "installation": {
-                    "id": 77,
-                    "repository_selection": "selected",
-                    "account": {"id": service_id, "login": username},
-                    "app_id": 424242,
-                },
-                "repositories": [
-                    {"id": "111", "node_id": "R_nodeA"},
-                    {"id": "222", "node_id": "R_nodeB"},
-                ],
-                "sender": {"type": "User"},
-            },
-        )
-
-        owner_set = Owner.objects.filter(
-            service="github", service_id=service_id, username=username
-        )
-        assert owner_set.exists()
-        owner = owner_set.first()
-
-        ghapp_installations_set = GithubAppInstallation.objects.filter(
-            owner_id=owner.ownerid, installation_id=77, app_id=424242
-        )
-        assert ghapp_installations_set.count() == 1
-        installation = ghapp_installations_set.first()
-        assert installation.name == "sentry_app"
-        assert installation.app_id == 424242
-        assert installation.pem_path is None
-
     @patch("services.task.TaskService.refresh")
     def test_organization_with_removed_action_removes_user_from_org_and_activated_user_list(
         self,
@@ -1592,7 +1556,7 @@ class GithubWebhookHandlerTests(APITestCase):
         )
         assert response.data == {"auto_review_enabled": False}
 
-    def test_non_installation_event_routed_to_github_when_no_sentry_account(self):
+    def test_non_installation_event_processed_by_github(self):
         self.repo.private = True
         self.repo.activated = True
         self.repo.save()

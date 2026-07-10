@@ -305,6 +305,51 @@ class TestOwnerType(GraphQLTestHelper, TestCase):
         data = self.gql_request(query, owner=user)
         assert data["owner"]["isCurrentUserPartOfOrg"] is True
 
+    def test_is_only_using_sentry_app_true(self):
+        owner = OwnerFactory(username="sentry-only-user", service="github")
+        GithubAppInstallationFactory(owner=owner, app_id=12637)
+        query = """
+            query ($username: String!) {
+                owner(username: $username) {
+                    isOnlyUsingSentryApp
+                }
+            }
+        """
+        data = self.gql_request(
+            query, owner=owner, variables={"username": owner.username}
+        )
+        assert data["owner"]["isOnlyUsingSentryApp"] is True
+
+    def test_is_only_using_sentry_app_false_when_has_other_app(self):
+        owner = OwnerFactory(username="multi-app-user", service="github")
+        GithubAppInstallationFactory(owner=owner, app_id=12637)
+        GithubAppInstallationFactory(owner=owner, app_id=9999)
+        query = """
+            query ($username: String!) {
+                owner(username: $username) {
+                    isOnlyUsingSentryApp
+                }
+            }
+        """
+        data = self.gql_request(
+            query, owner=owner, variables={"username": owner.username}
+        )
+        assert data["owner"]["isOnlyUsingSentryApp"] is False
+
+    def test_is_only_using_sentry_app_false_when_no_installations(self):
+        owner = OwnerFactory(username="no-app-user", service="github")
+        query = """
+            query ($username: String!) {
+                owner(username: $username) {
+                    isOnlyUsingSentryApp
+                }
+            }
+        """
+        data = self.gql_request(
+            query, owner=owner, variables={"username": owner.username}
+        )
+        assert data["owner"]["isOnlyUsingSentryApp"] is False
+
     def test_yaml_when_owner_not_have_yaml(self):
         org = OwnerFactory(username="no_yaml", yaml=None, service="github")
         self.owner.organizations = [org.ownerid]
@@ -798,6 +843,32 @@ class TestOwnerType(GraphQLTestHelper, TestCase):
         """
         data = self.gql_request(query, owner=user)
         assert data["owner"]["hashOwnerid"] is not None
+
+    def test_owner_external_id(self):
+        user = OwnerFactory(username="sample-user")
+        owner = OwnerFactory(username="sample-owner", plan_activated_users=None)
+        user.organizations = [owner.ownerid]
+        user.save()
+        query = f"""{{
+            owner(username: "{owner.username}") {{
+                externalId
+            }}
+        }}
+        """
+        data = self.gql_request(query, owner=user)
+        assert data["owner"]["externalId"] == str(owner.external_id)
+
+    def test_owner_external_id_not_part_of_org(self):
+        user = OwnerFactory(username="not-a-member")
+        owner = OwnerFactory(username="private-owner", plan_activated_users=None)
+        query = f"""{{
+            owner(username: "{owner.username}") {{
+                externalId
+            }}
+        }}
+        """
+        data = self.gql_request(query, owner=user)
+        assert data["owner"]["externalId"] is None
 
     @override_settings(IS_ENTERPRISE=True, GUEST_ACCESS=False)
     def test_fetch_owner_on_unauthenticated_enteprise_guest_access(self):

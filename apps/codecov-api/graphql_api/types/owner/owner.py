@@ -41,6 +41,9 @@ from graphql_api.types.enums import OrderingDirection, RepositoryOrdering
 from graphql_api.types.errors.errors import NotFoundError
 from graphql_api.types.repository.repository import TOKEN_UNAVAILABLE
 from services.billing import BillingService
+from shared.django_apps.codecov_auth.sentry_app_deprecation import (
+    is_owner_only_using_sentry_app,
+)
 from shared.helpers.redis import get_redis_connection
 from shared.plan.constants import DEFAULT_FREE_PLAN
 from shared.plan.service import PlanService
@@ -236,6 +239,20 @@ def resolve_is_current_user_an_admin(owner: Owner, info: GraphQLResolveInfo) -> 
     current_owner = info.context["request"].current_owner
     command = info.context["executor"].get_command("owner")
     return command.get_is_current_user_an_admin(owner, current_owner)
+
+
+@owner_bindable.field("isOnlyUsingSentryApp")
+@require_part_of_org
+async def resolve_is_only_using_sentry_app(
+    owner: Owner, info: GraphQLResolveInfo
+) -> bool:
+    return await sync_to_async(is_owner_only_using_sentry_app)(owner.ownerid)
+
+
+@owner_bindable.field("externalId")
+@require_part_of_org
+def resolve_external_id(owner: Owner, info: GraphQLResolveInfo) -> str | None:
+    return str(owner.external_id) if owner.external_id else None
 
 
 @owner_bindable.field("hashOwnerid")

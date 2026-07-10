@@ -23,6 +23,26 @@ class GitHubWebhookEvents:
     repository_events = [PULL_REQUEST, DELETE, PUSH, PUBLIC, STATUS, REPOSITORY, MEMBER]
 
 
+class GitHubPullRequestActions:
+    CLOSED = "closed"
+    LABELED = "labeled"
+    OPENED = "opened"
+    READY_FOR_REVIEW = "ready_for_review"
+    REOPENED = "reopened"
+    SYNCHRONIZE = "synchronize"
+
+    EDITED = "edited"
+
+    PULLS_SYNC_ACTIONS = [
+        CLOSED,
+        LABELED,
+        OPENED,
+        READY_FOR_REVIEW,
+        REOPENED,
+        SYNCHRONIZE,
+    ]
+
+
 class BitbucketHTTPHeaders:
     EVENT = "HTTP_X_EVENT_KEY"
     UUID = "HTTP_X_HOOK_UUID"
@@ -39,6 +59,7 @@ class BitbucketWebhookEvents:
     PULL_REQUEST_REJECTED = "pullrequest:rejected"
     PULL_REQUEST_FULFILLED = "pullrequest:fulfilled"
     REPO_PUSH = "repo:push"
+    REPO_UPDATED = "repo:updated"
     REPO_COMMIT_STATUS_CREATED = "repo:commit_status_created"
     REPO_COMMIT_STATUS_UPDATED = "repo:commit_status_updated"
 

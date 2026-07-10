@@ -1,6 +1,7 @@
 import binascii
 import logging
 import os
+import secrets
 import uuid
 from datetime import datetime
 from hashlib import md5
@@ -81,6 +82,12 @@ class User(ExportModelOperationsMixin("codecov_auth.user"), BaseCodecovModel):
         BUSINESS = "BUSINESS"
         PERSONAL = "PERSONAL"
 
+    class StaffRole(models.TextChoices):
+        NONE = "none", "None"
+        VIEWER = "viewer"
+        MEMBER = "member"
+        ADMIN = "admin"
+
     email = CITextField(null=True)
     name = models.TextField(null=True)
     is_staff = models.BooleanField(null=True, default=False)
@@ -90,6 +97,12 @@ class User(ExportModelOperationsMixin("codecov_auth.user"), BaseCodecovModel):
     terms_agreement_at = DateTimeWithoutTZField(null=True, blank=True)
     customer_intent = models.TextField(choices=CustomerIntent.choices, null=True)
     email_opt_in = models.BooleanField(default=False)
+    staff_role = models.TextField(
+        choices=StaffRole.choices,
+        default=StaffRole.NONE,
+        null=True,
+        blank=True,
+    )
 
     REQUIRED_FIELDS = []
     USERNAME_FIELD = "external_id"
@@ -99,6 +112,56 @@ class User(ExportModelOperationsMixin("codecov_auth.user"), BaseCodecovModel):
     class Meta:
         db_table = "users"
         app_label = CODECOV_AUTH_APP_LABEL
+
+    def save(self, *args, **kwargs):
+        role_changed = self._sync_staff_role_with_flags()
+
+        update_fields = kwargs.get("update_fields")
+        if role_changed and update_fields is not None:
+            kwargs["update_fields"] = set(update_fields) | {"staff_role"}
+
+        return super().save(*args, **kwargs)
+
+    def _sync_staff_role_with_flags(self) -> bool:
+        """Keep `staff_role` in sync with the `is_superuser`/`is_staff` flags.
+
+        `is_superuser` forces ADMIN, a non-staff user has no role (NONE),
+        demoting an admin drops them to VIEWER, and any other staff user is at
+        least a VIEWER. Returns True if the role changed.
+        """
+        original_role = self.staff_role
+
+        if self.is_superuser:
+            self.staff_role = User.StaffRole.ADMIN
+        elif not self.is_staff:
+            self.staff_role = User.StaffRole.NONE
+        else:
+            previous_is_superuser = None
+            if self.pk is not None:
+                previous_is_superuser = (
+                    User.objects.filter(pk=self.pk)
+                    .values_list("is_superuser", flat=True)
+                    .first()
+                )
+            if previous_is_superuser or self.staff_role in (
+                None,
+                "",
+                User.StaffRole.NONE,
+            ):
+                self.staff_role = User.StaffRole.VIEWER
+
+        return self.staff_role != original_role
+
+    @property
+    def effective_staff_role(self) -> "User.StaffRole":
+        if self.is_superuser:
+            return User.StaffRole.ADMIN
+        if not self.is_staff:
+            return User.StaffRole.NONE
+        role = self.staff_role
+        if not role or role == User.StaffRole.NONE:
+            return User.StaffRole.VIEWER
+        return User.StaffRole(role)
 
     @property
     def is_active(self):
@@ -302,6 +365,15 @@ class Account(BaseModel):
         return
 
 
+def _generate_support_pin() -> str:
+    """Generate a cryptographically random 6-digit support PIN.
+
+    Kept as a 6-char string (not an int) so leading zeros like "042381" are
+    preserved.
+    """
+    return f"{secrets.randbelow(1_000_000):06d}"
+
+
 class Owner(ExportModelOperationsMixin("codecov_auth.owner"), models.Model):
     class Meta:
         db_table = "owners"
@@ -313,6 +385,12 @@ class Owner(ExportModelOperationsMixin("codecov_auth.owner"), models.Model):
             ),
             models.UniqueConstraint(
                 fields=["service", "service_id"], name="owner_service_ids"
+            ),
+            # Postgres treats NULLs as distinct, so this stays satisfiable while
+            # rows are still being backfilled; the backing index is created
+            # CONCURRENTLY in migration 0078 to avoid locking the owners table.
+            models.UniqueConstraint(
+                fields=["external_id"], name="owner_external_id_uniq"
             ),
         ]
 
@@ -383,6 +461,18 @@ class Owner(ExportModelOperationsMixin("codecov_auth.owner"), models.Model):
     max_upload_limit = models.IntegerField(null=True, default=150, blank=True)
     upload_token_required_for_public_repos = models.BooleanField(default=False)
 
+    # 6-digit PIN a user provides to a support agent to verify their identity.
+    # Defaults to the "000000" placeholder so inserts stay cheap; the
+    # `backfill_support_pins` management command assigns real random PINs in
+    # batches.
+    support_pin = models.CharField(
+        max_length=6, null=True, blank=True, default="000000"
+    )
+
+    external_id = models.UUIDField(
+        null=True, blank=True, default=uuid.uuid4, editable=False
+    )
+
     sentry_user_id = models.TextField(null=True, blank=True, unique=True)
     sentry_user_data = models.JSONField(null=True)
 
@@ -409,7 +499,7 @@ class Owner(ExportModelOperationsMixin("codecov_auth.owner"), models.Model):
     repository_set = RepositoryManager()
 
     def __str__(self):
-        return f"Owner<{self.service}/{self.username}>"
+        return f"{self.service}/{self.username}"
 
     def save(self, *args, **kwargs):
         self.updatestamp = timezone.now()
@@ -567,9 +657,9 @@ class Owner(ExportModelOperationsMixin("codecov_auth.owner"), models.Model):
     def clean(self):
         if self.staff:
             domain = self.email.split("@")[1] if self.email else ""
-            if domain not in ["codecov.io", "sentry.io"]:
+            if domain not in ["codecov.io", "harness.io"]:
                 raise ValidationError(
-                    "User not part of Codecov or Sentry cannot be a staff member"
+                    "User not part of Codecov or Harness cannot be a staff member"
                 )
         if not self.plan:
             self.plan = None

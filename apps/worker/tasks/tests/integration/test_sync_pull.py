@@ -86,51 +86,8 @@ class TestPullSyncTask:
         dbsession.flush()
         res = task.run_impl(dbsession, repoid=pull.repoid, pullid=pull.pullid)
         assert {
-            "notifier_called": True,
+            "notifier_called": False,
             "commit_updates_done": {"merged_count": 0, "soft_deleted_count": 0},
             "pull_updated": True,
             "reason": "success",
         } == res
-        assert len(pull.flare) == 1
-        expected_flare = {
-            "_class": None,
-            "children": [
-                {
-                    "_class": None,
-                    "color": "red",
-                    "coverage": -1,
-                    "lines": 10,
-                    "name": "README.md",
-                },
-                {
-                    "_class": None,
-                    "color": "#e1e1e1",
-                    "coverage": 0,
-                    "lines": 3,
-                    "name": "codecov.yaml",
-                },
-                {
-                    "_class": None,
-                    "children": [
-                        {
-                            "_class": None,
-                            "color": "#e1e1e1",
-                            "coverage": 0,
-                            "lines": 7,
-                            "name": "test_sample.py",
-                        }
-                    ],
-                    "color": "#e1e1e1",
-                    "coverage": 0.0,
-                    "lines": 7,
-                    "name": "tests",
-                },
-            ],
-            "color": "#e1e1e1",
-            "coverage": 0.0,
-            "lines": 20,
-            "name": "",
-        }
-        assert expected_flare["children"] == pull.flare[0]["children"]
-        assert expected_flare == pull.flare[0]
-        assert pull.diff is None

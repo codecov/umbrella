@@ -125,6 +125,19 @@ def resolve_business_email(current_owner: Owner, _, **kwargs) -> str | None:
     return current_owner.business_email
 
 
+@me_bindable.field("supportPin")
+def resolve_support_pin(current_owner: Owner, _, **kwargs) -> str | None:
+    return current_owner.support_pin
+
+
+@me_bindable.field("hasLinkedSentryLogin")
+@sync_to_async
+def resolve_has_linked_sentry_login(owner: Owner, _, **kwargs) -> bool:
+    if owner.user_id is None:
+        return False
+    return owner.user.sentry_user.exists()
+
+
 @me_bindable.field("privateAccess")
 @sync_to_async
 def resolve_private_access(owner: Owner, info) -> bool:

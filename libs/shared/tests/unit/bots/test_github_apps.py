@@ -1,7 +1,6 @@
 import datetime
 
 import pytest
-from django.test import override_settings
 
 from shared.bots.exceptions import NoConfiguredAppsAvailable, RequestedGithubAppNotFound
 from shared.bots.github_apps import (
@@ -11,13 +10,13 @@ from shared.bots.github_apps import (
 )
 from shared.django_apps.codecov_auth.models import (
     GITHUB_APP_INSTALLATION_DEFAULT_NAME,
-    Account,
     GithubAppInstallation,
     Owner,
     Service,
 )
 from shared.django_apps.codecov_auth.tests.factories import OwnerFactory
 from shared.github import InvalidInstallationError
+from shared.orms.owner_helper import DjangoSQLAlchemyOwnerWrapper
 from shared.typings.torngit import GithubInstallationInfo
 
 
@@ -135,31 +134,6 @@ class TestGetSpecificGithubAppDetails:
         assert exp.value.suspended_count == int(app.is_suspended)
         assert exp.value.rate_limited_count == int(is_rate_limited)
 
-    @pytest.mark.django_db
-    @override_settings(GITHUB_SENTRY_APP_NAME="test_sentry_app")
-    def test_sentry_org_id_overrides_installation_name(self, mocker):
-        owner = OwnerFactory(service="github")
-        account = Account.objects.create(name="test_account", sentry_org_id=12345)
-        owner.account = account
-        owner.save()
-
-        sentry_app = GithubAppInstallation(
-            owner=owner,
-            installation_id=2000,
-            app_id=20,
-            name="test_sentry_app",
-            pem_path="sentry_pem",
-        )
-        sentry_app.save()
-
-        result = get_github_app_info_for_owner(
-            owner, installation_name=GITHUB_APP_INSTALLATION_DEFAULT_NAME
-        )
-
-        assert len(result) == 1
-        assert result[0]["installation_id"] == 2000
-        assert result[0]["app_id"] == 20
-
 
 class TestGettingGitHubAppTokenSideEffect:
     @pytest.mark.django_db
@@ -251,3 +225,26 @@ class TestGettingGitHubAppTokenSideEffect:
         installations[0].refresh_from_db()
         installations[1].refresh_from_db()
         assert all(installation.is_suspended == False for installation in installations)
+
+
+class TestGithubAppInstallationsOrdering:
+    @pytest.mark.django_db
+    def test_get_github_app_installations_returns_apps_in_id_order(self):
+        owner = OwnerFactory(service="github")
+        app_1 = GithubAppInstallation.objects.create(
+            owner=owner, installation_id=100, app_id=10, pem_path="pem1"
+        )
+        app_2 = GithubAppInstallation.objects.create(
+            owner=owner, installation_id=200, app_id=20, pem_path="pem2"
+        )
+        app_3 = GithubAppInstallation.objects.create(
+            owner=owner, installation_id=300, app_id=30, pem_path="pem3"
+        )
+        # Delete app_1 and recreate to get a higher ID, breaking natural insertion order
+        app_1.delete()
+        app_1_new = GithubAppInstallation.objects.create(
+            owner=owner, installation_id=100, app_id=10, pem_path="pem1"
+        )
+        expected = sorted([app_1_new, app_2, app_3], key=lambda x: x.id)
+        result = list(DjangoSQLAlchemyOwnerWrapper.get_github_app_installations(owner))
+        assert result == expected

@@ -7,10 +7,10 @@ from django.db.models import Q, QuerySet
 from django.http import HttpRequest, HttpResponseRedirect
 from django.urls import path, reverse
 from django.utils import timezone
-from django.utils.html import format_html
+from django.utils.html import format_html, format_html_join
 
-from codecov.admin import AdminMixin
-from codecov_auth.models import RepositoryToken
+from codecov.admin import AdminMixin, deny_viewers, is_viewer
+from codecov_auth.models import Owner, RepositoryToken
 from core.models import Commit, Pull, Repository
 from reports.models import CommitReport, ReportSession
 from services.task.task import TaskService
@@ -24,6 +24,75 @@ from shared.reports.enums import UploadState
 from shared.yaml import UserYaml
 from shared.yaml.user_yaml import OwnerContext
 from upload.helpers import dispatch_upload_task
+
+
+def _installation_change_url(installation):
+    return reverse(
+        "admin:codecov_auth_githubappinstallation_change", args=[installation.pk]
+    )
+
+
+def installation_summary(installations):
+    """Comma-separated, one-line summary of GitHub App installations for lists.
+
+    Each entry links to the GithubAppInstallation admin change page.
+    """
+    installations = list(installations)
+    if not installations:
+        return "-"
+    return format_html_join(
+        ", ",
+        '<a href="{}">{} (installation {})</a>',
+        (
+            (
+                _installation_change_url(installation),
+                installation.name,
+                installation.installation_id,
+            )
+            for installation in installations
+        ),
+    )
+
+
+def installation_table(installations):
+    """Read-only HTML table of GitHub App installations for detail views.
+
+    The name in each row links to the GithubAppInstallation admin change page.
+    """
+    installations = list(installations)
+    if not installations:
+        return "-"
+    rows = format_html_join(
+        "",
+        "<tr>"
+        "<td style='padding:2px 16px 2px 0'><a href='{}'>{}</a></td>"
+        "<td style='padding:2px 16px 2px 0'>{}</td>"
+        "<td style='padding:2px 16px 2px 0'>{}</td>"
+        "<td style='padding:2px 16px 2px 0'>{}</td>"
+        "<td>{}</td>"
+        "</tr>",
+        (
+            (
+                _installation_change_url(installation),
+                installation.name,
+                installation.app_id,
+                installation.installation_id,
+                "all repos" if installation.covers_all_repos() else "scoped repos",
+                "yes" if installation.is_suspended else "no",
+            )
+            for installation in installations
+        ),
+    )
+    return format_html(
+        "<table><thead><tr>"
+        "<th style='text-align:left;padding-right:16px'>Name</th>"
+        "<th style='text-align:left;padding-right:16px'>App ID</th>"
+        "<th style='text-align:left;padding-right:16px'>Installation ID</th>"
+        "<th style='text-align:left;padding-right:16px'>Scope</th>"
+        "<th style='text-align:left'>Suspended</th>"
+        "</tr></thead><tbody>{}</tbody></table>",
+        rows,
+    )
 
 
 @dataclass
@@ -134,12 +203,26 @@ class RepositoryAdminForm(forms.ModelForm):
 @admin.register(Repository)
 class RepositoryAdmin(AdminMixin, admin.ModelAdmin):
     inlines = [RepositoryTokenInline]
-    list_display = ("name", "service_id", "author")
+    list_display = (
+        "repo_slug",
+        "service_id",
+        "author_link",
+        "active",
+        "private",
+        "activated",
+        "deleted",
+        "integrations",
+    )
+    list_filter = ("active", "private", "activated", "deleted", "using_integration")
+    list_select_related = ("author",)
     search_fields = (
         "name",
         "author__username__exact",
         "service_id__exact",
     )
+    # pg_trgm builds 3-char trigrams, so substring name search can only use the
+    # repos_name_trgm_idx GIN index for terms of at least this length.
+    name_search_min_length = 3
     show_full_result_count = False
     autocomplete_fields = ("bot",)
     form = RepositoryAdminForm
@@ -160,6 +243,7 @@ class RepositoryAdmin(AdminMixin, admin.ModelAdmin):
         "hookid",
         "activated",
         "deleted",
+        "integrations_table",
     )
     fields = readonly_fields + (
         "bot",
@@ -168,6 +252,54 @@ class RepositoryAdmin(AdminMixin, admin.ModelAdmin):
         "private",
         "webhook_secret",
     )
+
+    @admin.display(description="name", ordering="name")
+    def repo_slug(self, obj):
+        author = obj.author
+        if author is None:
+            return obj.name
+        return f"{author.service}:{author.username}/{obj.name}"
+
+    def get_queryset(self, request):
+        # Prefetch the owner's GitHub App installations so the `integrations`
+        # column resolves in one extra query per page instead of N+1 per row.
+        return (
+            super()
+            .get_queryset(request)
+            .prefetch_related("author__github_app_installations")
+        )
+
+    @admin.display(description="author", ordering="author")
+    def author_link(self, obj):
+        author = obj.author
+        if author is None:
+            return "-"
+        url = reverse("admin:codecov_auth_owner_change", args=[author.ownerid])
+        return format_html(
+            '<a href="{}">{}/{}</a>', url, author.service, author.username
+        )
+
+    def _covering_installations(self, obj):
+        # GitHub App installations covering this repo. Relies on the
+        # `author__github_app_installations` prefetch in `get_queryset`.
+        author = obj.author
+        if author is None:
+            return []
+        return [
+            installation
+            for installation in author.github_app_installations.all()
+            if installation.is_repo_covered_by_integration(obj)
+        ]
+
+    @admin.display(description="integrations")
+    def integrations(self, obj):
+        # Comma-separated list of the GitHub App installations covering this
+        # repo, replacing the legacy `using_integration` boolean column.
+        return installation_summary(self._covering_installations(obj))
+
+    @admin.display(description="GitHub App installations")
+    def integrations_table(self, obj):
+        return installation_table(self._covering_installations(obj))
 
     def get_search_results(
         self,
@@ -178,23 +310,41 @@ class RepositoryAdmin(AdminMixin, admin.ModelAdmin):
         """
         Search for repositories by name, service_id, author username, or repoid.
         https://docs.djangoproject.com/en/5.2/ref/contrib/admin/#django.contrib.admin.ModelAdmin.get_search_results
+
+        Django's default search ORs `search_fields` across the repos<->owners
+        join. Because `author__username` lives on a different table, Postgres
+        cannot use per-table indexes for that OR and falls back to a full join
+        scan (~4.4s over 24.6M repos). Instead we resolve usernames to ownerids
+        first and build a single-table OR on repos, so every branch uses its own
+        index (name trigram, service_id, ownerid, pk) via a BitmapOr.
         """
-        # Default search is by name, author username, and service_id (defined in `search_fields`)
-        queryset, may_have_duplicates = super().get_search_results(
-            request,
-            queryset,
-            search_term,
+        term = search_term.strip()
+        if not term:
+            return queryset, False
+
+        filters = Q()
+
+        # Substring name match -> repos_name_trgm_idx (GIN trigram). Only usable
+        # for terms >= name_search_min_length; shorter terms skip name search.
+        if len(term) >= self.name_search_min_length:
+            filters |= Q(name__icontains=term)
+
+        # Exact service_id -> repos_service_id_author / repos_service_ids.
+        filters |= Q(service_id=term)
+
+        # Resolve author username to ownerids with one indexed query on owners so
+        # the repos filter stays single-table (no cross-table OR).
+        owner_ids = list(
+            Owner.objects.filter(username=term).values_list("ownerid", flat=True)
         )
-        # Also search by repoid if the search term is numeric
-        try:
-            search_term_as_int = int(search_term)
-        except ValueError:
-            pass
-        else:
-            queryset |= self.model.objects.filter(repoid=search_term_as_int)
-        # avoid N+1 queries for with union
-        queryset = queryset.select_related("author")
-        return queryset, may_have_duplicates
+        if owner_ids:
+            filters |= Q(author_id__in=owner_ids)
+
+        # Exact repoid when the term is numeric.
+        if term.isdigit():
+            filters |= Q(repoid=int(term))
+
+        return queryset.filter(filters), False
 
     def has_add_permission(self, _, obj=None):
         return False
@@ -286,6 +436,11 @@ class CommitAdmin(AdminMixin, admin.ModelAdmin):
     def has_delete_permission(self, request, obj=None):
         return False
 
+    def changeform_view(self, request, *args, **kwargs):
+        # Stash the request so `reprocess_actions` can hide buttons for Viewers.
+        self._reprocess_actions_request = request
+        return super().changeform_view(request, *args, **kwargs)
+
     def get_urls(self):
         urls = super().get_urls()
         custom_urls = [
@@ -316,6 +471,10 @@ class CommitAdmin(AdminMixin, admin.ModelAdmin):
     def reprocess_actions(self, obj):
         if obj.pk is None:
             return ""
+
+        request = getattr(self, "_reprocess_actions_request", None)
+        if request is not None and is_viewer(request):
+            return "No reprocessing actions available"
 
         # Check what actions are available for this commit
         has_coverage = CommitReport.objects.filter(
@@ -486,6 +645,7 @@ class CommitAdmin(AdminMixin, admin.ModelAdmin):
         )
 
     def reprocess_coverage_view(self, request, object_id):
+        deny_viewers(request)
         commit = self.get_object(request, object_id)
         if commit is None:
             self.message_user(request, "Commit not found", level=messages.ERROR)
@@ -493,6 +653,7 @@ class CommitAdmin(AdminMixin, admin.ModelAdmin):
         return self._reprocess_uploads(request, commit, REPROCESS_CONFIGS["coverage"])
 
     def reprocess_test_analytics_view(self, request, object_id):
+        deny_viewers(request)
         commit = self.get_object(request, object_id)
         if commit is None:
             self.message_user(request, "Commit not found", level=messages.ERROR)
@@ -502,6 +663,7 @@ class CommitAdmin(AdminMixin, admin.ModelAdmin):
         )
 
     def reprocess_bundle_analysis_view(self, request, object_id):
+        deny_viewers(request)
         commit = self.get_object(request, object_id)
         if commit is None:
             self.message_user(request, "Commit not found", level=messages.ERROR)
@@ -511,6 +673,7 @@ class CommitAdmin(AdminMixin, admin.ModelAdmin):
         )
 
     def trigger_notifications_view(self, request, object_id):
+        deny_viewers(request)
         commit = self.get_object(request, object_id)
         if commit is None:
             self.message_user(request, "Commit not found", level=messages.ERROR)

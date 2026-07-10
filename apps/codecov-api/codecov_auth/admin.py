@@ -6,28 +6,34 @@ import django.forms as forms
 from django.conf import settings
 from django.contrib import admin, messages
 from django.contrib.admin.models import LogEntry
-from django.db.models import OuterRef, Subquery
+from django.db.models import Count, OuterRef, Subquery
 from django.db.models.fields import BLANK_CHOICE_DASH
+from django.db.models.functions import Coalesce
 from django.forms import CheckboxInput, Select, Textarea
 from django.http import HttpRequest
 from django.shortcuts import redirect, render
+from django.urls import reverse
 from django.utils import timezone
-from django.utils.html import format_html
+from django.utils.html import format_html, format_html_join
 
 from codecov.admin import AdminMixin
 from codecov.commands.exceptions import ValidationError
 from codecov_auth.helpers import History
 from codecov_auth.models import OrganizationLevelToken, Owner, SentryUser, Session, User
 from codecov_auth.services.org_level_token_service import OrgLevelTokenService
+from core.admin import installation_summary, installation_table
+from core.models import Repository
 from services.task import TaskService
 from shared.django_apps.codecov_auth.models import (
     Account,
     AccountsUsers,
+    GithubAppInstallation,
     InvoiceBilling,
     OwnerExport,
     Plan,
     StripeBilling,
     Tier,
+    _generate_support_pin,
 )
 from shared.django_apps.codecov_auth.models import User as CodecovUser
 from shared.owner_data_export.config import EXPORT_DAYS_DEFAULT
@@ -229,14 +235,42 @@ def export_owner_data(self, request, queryset):
 export_owner_data.short_description = "Export owner data (SQL dumps + archives)"
 
 
+def regenerate_support_pin(self, request, queryset):
+    """Regenerate the 6-digit support PIN for the selected owner(s)."""
+    count = 0
+    for owner in queryset:
+        owner.support_pin = _generate_support_pin()
+        owner.save(update_fields=["support_pin", "updatestamp"])
+        History.log(
+            Owner.objects.get(ownerid=owner.ownerid),
+            "Support PIN regenerated",
+            request.user,
+        )
+        count += 1
+
+    self.message_user(
+        request,
+        f"Regenerated support PIN for {count} owner(s).",
+        level=messages.SUCCESS,
+    )
+    return
+
+
+regenerate_support_pin.short_description = "Regenerate support PIN"
+
+
 class AccountsUsersInline(admin.TabularInline):
     model = AccountsUsers
     max_num = 10
-    extra = 1
+    extra = 0
     verbose_name_plural = "Accounts Users (click save to commit changes)"
     verbose_name = "Account User"
     can_delete = False
     can_edit = False
+    autocomplete_fields = ("account",)
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related("account", "user")
 
 
 class OwnerUserInline(admin.TabularInline):
@@ -259,12 +293,32 @@ class OwnerUserInline(admin.TabularInline):
     fields = [] + readonly_fields
 
 
+class StaffRoleListFilter(admin.SimpleListFilter):
+    """Filter users by `staff_role` (kept in sync with the flags by `User.save`)."""
+
+    title = "role"
+    parameter_name = "role"
+
+    def lookups(self, request, model_admin):
+        return User.StaffRole.choices
+
+    def queryset(self, request, queryset):
+        value = self.value()
+        if value:
+            return queryset.filter(staff_role=value)
+        return queryset
+
+
 @admin.register(User)
 class UserAdmin(AdminMixin, admin.ModelAdmin):
     list_display = (
         "name",
         "email",
+        "is_staff",
+        "is_superuser",
+        "staff_role",
     )
+    list_filter = (StaffRoleListFilter,)
     inlines = [AccountsUsersInline, OwnerUserInline]
     search_fields = (
         "name__iregex",
@@ -280,6 +334,8 @@ class UserAdmin(AdminMixin, admin.ModelAdmin):
         "name",
         "email",
         "is_staff",
+        "is_superuser",
+        "staff_role",
         "terms_agreement",
         "terms_agreement_at",
     )
@@ -287,8 +343,30 @@ class UserAdmin(AdminMixin, admin.ModelAdmin):
     def get_form(self, request, obj=None, change=False, **kwargs):
         form = super().get_form(request, obj, change, **kwargs)
 
+        # Only superusers may change admin access levels.
         if not request.user.is_superuser:
-            form.base_fields["is_staff"].disabled = True
+            for field_name in ("is_staff", "is_superuser", "staff_role"):
+                if field_name in form.base_fields:
+                    form.base_fields[field_name].disabled = True
+
+        # Admin/None are flag-derived and read-only; only staff toggle Viewer/Member.
+        staff_role_field = form.base_fields.get("staff_role")
+        if staff_role_field is not None:
+            if obj is not None and obj.is_superuser:
+                staff_role_field.choices = [
+                    (User.StaffRole.ADMIN.value, User.StaffRole.ADMIN.label),
+                ]
+                staff_role_field.disabled = True
+            elif obj is not None and not obj.is_staff:
+                staff_role_field.choices = [
+                    (User.StaffRole.NONE.value, User.StaffRole.NONE.label),
+                ]
+                staff_role_field.disabled = True
+            else:
+                staff_role_field.choices = [
+                    (User.StaffRole.VIEWER.value, User.StaffRole.VIEWER.label),
+                    (User.StaffRole.MEMBER.value, User.StaffRole.MEMBER.label),
+                ]
 
         return form
 
@@ -674,15 +752,34 @@ class AccountAdmin(AdminMixin, admin.ModelAdmin):
 @admin.register(Owner)
 class OwnerAdmin(AdminMixin, admin.ModelAdmin):
     exclude = ("oauth_token",)
-    list_display = ("name", "username", "email", "service")
+    list_display = (
+        "username",
+        "name",
+        "external_id",
+        "repository_count",
+        "github_app_installations_summary",
+        "email",
+        "service",
+        "plan_display",
+        "seats_display",
+        "support_pin",
+    )
+    list_select_related = ("account",)
     readonly_fields = []
     search_fields = ("name__iregex", "username__iregex", "email__iregex", "ownerid")
-    actions = [impersonate_owner, extend_trial, refresh_owner, export_owner_data]
+    actions = [
+        impersonate_owner,
+        extend_trial,
+        refresh_owner,
+        export_owner_data,
+        regenerate_support_pin,
+    ]
     autocomplete_fields = ("bot", "account")
     inlines = [OrgUploadTokenInline]
 
     readonly_fields = (
         "ownerid",
+        "external_id",
         "username",
         "service",
         "email",
@@ -696,13 +793,19 @@ class OwnerAdmin(AdminMixin, admin.ModelAdmin):
         "invoice_details",
         "yaml",
         "updatestamp",
-        "permission",
+        "permission_list",
         "student",
         "student_created_at",
         "student_updated_at",
-        "user",
-        "trial_fired_by",
+        "user_link",
+        "trial_fired_by_link",
+        "stripe_customer_link",
+        "stripe_subscription_link",
         "sentry_user_id",
+        "support_pin",
+        "plan_activated_users_list",
+        "admins_list",
+        "github_app_installations_table",
     )
 
     fieldsets = [
@@ -711,12 +814,13 @@ class OwnerAdmin(AdminMixin, admin.ModelAdmin):
             {
                 "fields": [
                     "ownerid",
+                    "external_id",
                     "username",
                     "service",
                     "name",
                     "service_id",
                     "student",
-                    "user",
+                    "user_link",
                     "sentry_user_id",
                 ]
             },
@@ -726,7 +830,7 @@ class OwnerAdmin(AdminMixin, admin.ModelAdmin):
             {
                 "fields": [
                     "trial_status",
-                    "trial_fired_by",
+                    "trial_fired_by_link",
                     "trial_start_date",
                     "trial_end_date",
                 ]
@@ -742,6 +846,7 @@ class OwnerAdmin(AdminMixin, admin.ModelAdmin):
                     "plan_user_count",
                     "free",
                     "plan_activated_users",
+                    "plan_activated_users_list",
                 ]
             },
         ),
@@ -752,8 +857,18 @@ class OwnerAdmin(AdminMixin, admin.ModelAdmin):
                     "uses_invoice",
                     "delinquent",
                     "stripe_customer_id",
+                    "stripe_customer_link",
                     "stripe_subscription_id",
+                    "stripe_subscription_link",
                     "plan_provider",
+                ]
+            },
+        ),
+        (
+            "GitHub App installations",
+            {
+                "fields": [
+                    "github_app_installations_table",
                 ]
             },
         ),
@@ -761,7 +876,7 @@ class OwnerAdmin(AdminMixin, admin.ModelAdmin):
             "Reference fields",
             {
                 "fields": [
-                    "admins",
+                    "admins_list",
                     "staff",
                     "upload_token_required_for_public_repos",
                     "email",
@@ -773,17 +888,205 @@ class OwnerAdmin(AdminMixin, admin.ModelAdmin):
                     "bot",
                     "max_upload_limit",
                     "organizations",
-                    "permission",
+                    "permission_list",
                     "student_created_at",
                     "student_updated_at",
                     "onboarding_completed",
                     "did_trial",
                     "createstamp",
                     "updatestamp",
+                    "support_pin",
                 ]
             },
         ),
     ]
+
+    show_full_result_count = False
+
+    def get_queryset(self, request):
+        repository_count_subquery = (
+            Repository.objects.filter(author=OuterRef("pk"))
+            .order_by()
+            .values("author")
+            .annotate(count=Count("repoid"))
+            .values("count")
+        )
+        return (
+            super()
+            .get_queryset(request)
+            .annotate(repository_count=Coalesce(Subquery(repository_count_subquery), 0))
+            .prefetch_related("github_app_installations")
+        )
+
+    @admin.display(description="repositories", ordering="repository_count")
+    def repository_count(self, obj):
+        return obj.repository_count
+
+    @admin.display(description="GitHub App installations")
+    def github_app_installations_summary(self, obj):
+        # Comma-separated summary for the changelist. Relies on the
+        # `github_app_installations` prefetch in `get_queryset`.
+        return installation_summary(obj.github_app_installations.all())
+
+    @admin.display(description="GitHub App installations")
+    def github_app_installations_table(self, obj):
+        return installation_table(obj.github_app_installations.all())
+
+    @admin.display(description="Plan")
+    def plan_display(self, obj):
+        # An owner's plan lives on its Account when one is attached.
+        if obj.account_id:
+            return obj.account.plan
+        return obj.plan
+
+    @admin.display(description="Seats (taken / total)")
+    def seats_display(self, obj):
+        if obj.account_id:
+            taken = obj.account.activated_user_count
+            total = obj.account.total_seat_count
+        else:
+            taken = len(obj.plan_activated_users or [])
+            total = (obj.plan_user_count or 0) + (obj.free or 0)
+        return f"{taken} / {total}"
+
+    @admin.display(description="User")
+    def user_link(self, obj):
+        user = obj.user
+        if user is None:
+            return "-"
+        if user.name and user.email:
+            label = f"{user.name} ({user.email})"
+        else:
+            label = user.name or user.email or user.pk
+        url = reverse("admin:codecov_auth_user_change", args=[user.pk])
+        return format_html('<a href="{}">{}</a>', url, label)
+
+    @admin.display(description="Trial fired by")
+    def trial_fired_by_link(self, obj):
+        if not obj.trial_fired_by:
+            return "-"
+        owner = Owner.objects.filter(ownerid=obj.trial_fired_by).first()
+        if owner is None:
+            return obj.trial_fired_by
+        url = reverse("admin:codecov_auth_owner_change", args=[owner.ownerid])
+        return format_html('<a href="{}">{}</a>', url, owner.username or owner.ownerid)
+
+    @admin.display(description="Stripe customer")
+    def stripe_customer_link(self, obj):
+        # We don't store Stripe invoices/charges locally; the Stripe dashboard
+        # is the source of truth for this customer's billing records.
+        if not obj.stripe_customer_id:
+            return "-"
+        url = f"https://dashboard.stripe.com/customers/{obj.stripe_customer_id}"
+        return format_html(
+            '<a href="{}" target="_blank" rel="noopener noreferrer">{}</a>',
+            url,
+            obj.stripe_customer_id,
+        )
+
+    @admin.display(description="Stripe subscription")
+    def stripe_subscription_link(self, obj):
+        if not obj.stripe_subscription_id:
+            return "-"
+        url = f"https://dashboard.stripe.com/subscriptions/{obj.stripe_subscription_id}"
+        return format_html(
+            '<a href="{}" target="_blank" rel="noopener noreferrer">{}</a>',
+            url,
+            obj.stripe_subscription_id,
+        )
+
+    def _links_table(self, ids, objects, url_name, label_fn, headers):
+        """Render `ids` as a two-column table linking each to its admin page.
+
+        `objects` maps id -> instance for the ids that still resolve; unresolved
+        ids are shown inline as missing.
+        """
+        if not ids:
+            return "-"
+        rows = format_html_join(
+            "",
+            "<tr><td style='padding:2px 16px 2px 0'>{}</td><td>{}</td></tr>",
+            (
+                (
+                    obj_id,
+                    (
+                        format_html(
+                            '<a href="{}">{}</a>',
+                            reverse(url_name, args=[obj_id]),
+                            label_fn(objects[obj_id]),
+                        )
+                        if obj_id in objects
+                        else format_html("<em>missing ({})</em>", obj_id)
+                    ),
+                )
+                for obj_id in ids
+            ),
+        )
+        return format_html(
+            "<table><thead><tr>"
+            "<th style='text-align:left;padding-right:16px'>{}</th>"
+            "<th style='text-align:left'>{}</th>"
+            "</tr></thead><tbody>{}</tbody></table>",
+            headers[0],
+            headers[1],
+            rows,
+        )
+
+    def _owners_table(self, ownerids):
+        owners = {
+            owner.ownerid: owner
+            for owner in Owner.objects.filter(ownerid__in=ownerids or [])
+        }
+        return self._links_table(
+            ownerids,
+            owners,
+            "admin:codecov_auth_owner_change",
+            lambda owner: owner.username or owner.ownerid,
+            ("Owner ID", "Username"),
+        )
+
+    def _repo_slug(self, repo):
+        author = repo.author
+        if author is not None:
+            return f"{author.service}:{author.username}/{repo.name}"
+        return repo.name or repo.repoid
+
+    def _repos_table(self, repoids):
+        repos = {
+            repo.repoid: repo
+            for repo in Repository.objects.filter(
+                repoid__in=repoids or []
+            ).select_related("author")
+        }
+        return self._links_table(
+            repoids,
+            repos,
+            "admin:core_repository_change",
+            self._repo_slug,
+            ("Repo ID", "Repository"),
+        )
+
+    @admin.display(description="Plan activated users (linked)")
+    def plan_activated_users_list(self, obj):
+        return self._owners_table(obj.plan_activated_users)
+
+    @admin.display(description="Admins")
+    def admins_list(self, obj):
+        ownerids = obj.admins or []
+        return format_html(
+            "<div style='margin-bottom:6px'>Total: {}</div>{}",
+            len(ownerids),
+            self._owners_table(ownerids),
+        )
+
+    @admin.display(description="Permission")
+    def permission_list(self, obj):
+        repoids = obj.permission or []
+        return format_html(
+            "<div style='margin-bottom:6px'>Total: {}</div>{}",
+            len(repoids),
+            self._repos_table(repoids),
+        )
 
     def get_form(self, request, obj=None, change=False, **kwargs):
         form = super().get_form(request, obj, change, **kwargs)
@@ -817,11 +1120,18 @@ class OwnerAdmin(AdminMixin, admin.ModelAdmin):
 
         return form
 
+    def get_actions(self, request):
+        actions = super().get_actions(request)
+        # The "Regenerate support PIN" action is only available to staff users.
+        if not (request.user and request.user.is_staff):
+            actions.pop("regenerate_support_pin", None)
+        return actions
+
     def has_add_permission(self, _, obj=None):
         return False
 
     def has_delete_permission(self, request, obj=None):
-        return bool(request.user and request.user.is_superuser)
+        return bool(request.user and request.user.is_staff)
 
     def delete_queryset(self, request, queryset) -> None:
         for owner in queryset:
@@ -842,6 +1152,143 @@ class OwnerAdmin(AdminMixin, admin.ModelAdmin):
             if formset.is_valid() and token_id and token_refresh:
                 OrgLevelTokenService.refresh_token(token_id)
         return super().save_related(request, form, formsets, change)
+
+
+@admin.register(GithubAppInstallation)
+class GithubAppInstallationAdmin(AdminMixin, admin.ModelAdmin):
+    list_display = (
+        "id",
+        "name",
+        "owner_link",
+        "app_id",
+        "installation_id",
+        "coverage",
+        "is_suspended",
+    )
+    list_filter = ("is_suspended", "name")
+    list_select_related = ("owner",)
+    search_fields = (
+        "owner__username",
+        "name",
+        "=installation_id",
+        "=app_id",
+    )
+    search_help_text = (
+        "Search by owner username, name, installation_id (exact), or app_id (exact)"
+    )
+    autocomplete_fields = ("owner",)
+
+    # Cap the covered-repositories table so an "all repos" installation for a
+    # large owner doesn't try to render thousands of rows.
+    COVERED_REPOS_DISPLAY_LIMIT = 200
+
+    readonly_fields = (
+        "id",
+        "external_id",
+        "created_at",
+        "updated_at",
+        "coverage",
+        "covered_repositories",
+    )
+    fields = (
+        "id",
+        "external_id",
+        "created_at",
+        "updated_at",
+        "owner",
+        "name",
+        "app_id",
+        "installation_id",
+        "coverage",
+        "repository_service_ids",
+        "covered_repositories",
+        "pem_path",
+        "is_suspended",
+    )
+
+    @admin.display(description="Owner")
+    def owner_link(self, obj):
+        owner = obj.owner
+        if owner is None:
+            return "-"
+        url = reverse("admin:codecov_auth_owner_change", args=[owner.ownerid])
+        return format_html('<a href="{}">{}/{}</a>', url, owner.service, owner.username)
+
+    @admin.display(description="Coverage")
+    def coverage(self, obj):
+        if obj.covers_all_repos():
+            return "all repos"
+        return f"{len(obj.repository_service_ids or [])} repo(s)"
+
+    @admin.display(description="Covered repositories")
+    def covered_repositories(self, obj):
+        """Read-only tabular list of the repos this installation covers.
+
+        A true Django ``TabularInline`` isn't possible here: coverage is
+        derived from the ``repository_service_ids`` array rather than a
+        ForeignKey back to the installation. This renders the same
+        information and links each row to the Repository admin page.
+        """
+        if obj.pk is None:
+            return "-"
+        if obj.covers_all_repos():
+            # Every repo for the owner is covered; linking to the filtered
+            # Repository changelist is friendlier than rendering thousands of rows.
+            url = reverse("admin:core_repository_changelist")
+            url += f"?author__ownerid__exact={obj.owner.ownerid}"
+            count = obj.repository_queryset().count()
+            return format_html(
+                '<a href="{}">View all {} repositories for this owner</a>',
+                url,
+                count,
+            )
+        queryset = obj.repository_queryset().order_by("name")
+        total = queryset.count()
+        if total == 0:
+            return "-"
+        repos = list(queryset[: self.COVERED_REPOS_DISPLAY_LIMIT])
+        rows = format_html_join(
+            "",
+            "<tr>"
+            "<td style='padding:2px 16px 2px 0'><a href='{}'>{}</a></td>"
+            "<td style='padding:2px 16px 2px 0'>{}</td>"
+            "<td style='padding:2px 16px 2px 0'>{}</td>"
+            "<td>{}</td>"
+            "</tr>",
+            (
+                (
+                    reverse("admin:core_repository_change", args=[repo.repoid]),
+                    repo.name,
+                    repo.service_id,
+                    "yes" if repo.private else "no",
+                    "yes" if repo.active else "no",
+                )
+                for repo in repos
+            ),
+        )
+        table = format_html(
+            "<table><thead><tr>"
+            "<th style='text-align:left;padding-right:16px'>Name</th>"
+            "<th style='text-align:left;padding-right:16px'>Service ID</th>"
+            "<th style='text-align:left;padding-right:16px'>Private</th>"
+            "<th style='text-align:left'>Active</th>"
+            "</tr></thead><tbody>{}</tbody></table>",
+            rows,
+        )
+        if total > len(repos):
+            return format_html(
+                "{}<p>Showing {} of {} covered repositories.</p>",
+                table,
+                len(repos),
+                total,
+            )
+        return table
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
 
 
 @admin.register(LogEntry)

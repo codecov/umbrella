@@ -2,7 +2,7 @@ import pytest
 from asgiref.sync import async_to_sync
 from django.test import TestCase
 
-from codecov.commands.exceptions import ValidationError
+from codecov.commands.exceptions import Unauthorized, ValidationError
 from shared.django_apps.bundle_analysis.models import CacheConfig
 from shared.django_apps.core.tests.factories import (
     OwnerFactory,
@@ -17,8 +17,12 @@ class UpdateBundleCacheConfigInteractorTest(TestCase):
 
     def setUp(self):
         self.org = OwnerFactory(username="test-org")
-        self.repo = RepositoryFactory(author=self.org, name="test-repo", active=True)
-        self.user = OwnerFactory(permission=[self.repo.pk])
+        self.repo = RepositoryFactory(
+            author=self.org, name="test-repo", active=True, private=False
+        )
+        self.user = OwnerFactory(
+            organizations=[self.org.ownerid], permission=[self.repo.pk]
+        )
 
     @async_to_sync
     def execute(self, owner, repo_name=None, cache_config=[]):
@@ -27,6 +31,15 @@ class UpdateBundleCacheConfigInteractorTest(TestCase):
             owner_username="test-org",
             cache_config=cache_config,
         )
+
+    def test_unauthorized_user_not_part_of_org(self):
+        random_user = OwnerFactory()
+        with pytest.raises(Unauthorized):
+            self.execute(
+                owner=random_user,
+                repo_name="test-repo",
+                cache_config=[{"bundle_name": "any", "toggle_caching": False}],
+            )
 
     def test_repo_not_found(self):
         with pytest.raises(ValidationError):

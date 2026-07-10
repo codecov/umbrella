@@ -35,6 +35,10 @@ from .regenerate_repository_upload_token import (
     error_regenerate_repository_upload_token,
     resolve_regenerate_repository_upload_token,
 )
+from .regenerate_support_pin import (
+    error_regenerate_support_pin,
+    resolve_regenerate_support_pin,
+)
 from .revoke_user_token import error_revoke_user_token, resolve_revoke_user_token
 from .save_okta_config import error_save_okta_config, resolve_save_okta_config
 from .save_sentry_state import error_save_sentry_state, resolve_save_sentry_state
@@ -90,6 +94,7 @@ mutation_bindable.field("regenerateRepositoryToken")(
 )
 mutation_bindable.field("activateMeasurements")(resolve_activate_measurements)
 mutation_bindable.field("regenerateOrgUploadToken")(resolve_regenerate_org_upload_token)
+mutation_bindable.field("regenerateSupportPin")(resolve_regenerate_support_pin)
 mutation_bindable.field("deleteFlag")(resolve_delete_flag)
 mutation_bindable.field("saveSentryState")(resolve_save_sentry_state)
 mutation_bindable.field("saveTermsAgreement")(resolve_save_terms_agreement)
@@ -128,6 +133,7 @@ mutation_resolvers = [
     error_regenerate_repository_token,
     error_activate_measurements,
     error_generate_org_upload_token,
+    error_regenerate_support_pin,
     error_delete_component_measurements,
     error_delete_flag,
     error_save_sentry_state,

@@ -5,7 +5,6 @@ from hashlib import sha1, sha256
 from typing import Literal
 
 import sentry_sdk
-from django.conf import settings
 from django.db.models import Q
 from django.utils import timezone
 from django.utils.crypto import constant_time_compare
@@ -28,10 +27,10 @@ from shared.helpers.redis import get_redis_connection
 from utils.config import get_config
 from webhook_handlers.constants import (
     GitHubHTTPHeaders,
+    GitHubPullRequestActions,
     GitHubWebhookEvents,
     WebhookHandlerErrorMessages,
 )
-from webhook_handlers.helpers import HANDLER, should_process
 
 from . import WEBHOOKS_ERRORED, WEBHOOKS_RECEIVED
 
@@ -316,15 +315,17 @@ class GithubWebhookHandler(APIView):
         if not repo.active:
             return Response(data=WebhookHandlerErrorMessages.SKIP_NOT_ACTIVE)
 
-        action, pullid = request.data.get("action"), request.data.get("number")
+        action = request.data.get("action")
+        pullid = request.data.get("number")
 
-        if action in ["opened", "closed", "reopened", "synchronize", "labeled"]:
-            TaskService().pulls_sync(repoid=repo.repoid, pullid=pullid)
-
-        elif action == "edited":
+        if action == GitHubPullRequestActions.EDITED:
             Pull.objects.filter(repository=repo, pullid=pullid).update(
                 title=request.data.get("pull_request", {}).get("title")
             )
+            return Response()
+
+        if action in GitHubPullRequestActions.PULLS_SYNC_ACTIONS:
+            TaskService().pulls_sync(repoid=repo.repoid, pullid=pullid)
 
         return Response()
 
@@ -496,12 +497,6 @@ class GithubWebhookHandler(APIView):
                     return self._invalid_owner_on_existing_app_install(
                         ghapp_installation, owner, request, app_id, installation_id
                     )
-
-            # handle sentry app specifically
-            sentry_app_id = settings.GITHUB_SENTRY_APP_ID
-            if sentry_app_id is not None and ghapp_installation.app_id == sentry_app_id:
-                ghapp_installation.app_id = app_id
-                ghapp_installation.name = settings.GITHUB_SENTRY_APP_NAME
 
             ghapp_installation.name = self._decide_app_name(ghapp_installation)
 
@@ -741,10 +736,6 @@ class GithubWebhookHandler(APIView):
             },
         )
         self.validate_signature(request)
-
-        handlers = should_process(request.data, self.event, self.service_name)
-        if HANDLER.GITHUB not in handlers:
-            return Response()
 
         if handler := getattr(self, self.event, None):
             self._inc_recv()

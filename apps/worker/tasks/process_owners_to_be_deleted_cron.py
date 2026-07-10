@@ -1,7 +1,9 @@
 import logging
+from datetime import timedelta
 from typing import Any
 
 from django.conf import settings
+from django.utils import timezone
 
 from app import celery_app
 from shared.celery_config import (
@@ -28,10 +30,9 @@ class ProcessOwnersToBeDeletedCronTask(
 
     @classmethod
     def get_min_seconds_interval_between_executions(cls) -> int:
-        """
-        This task should run every hour to process owners marked for deletion.
-        """
-        return 60 * 60  # 1 hour
+        return (
+            60 * 45
+        )  # this is  crontab interval for jobs that have large data sets that timeout.
 
     def run_cron_task(self, db_session, *args, **kwargs) -> dict[str, Any]:
         """
@@ -49,14 +50,17 @@ class ProcessOwnersToBeDeletedCronTask(
         )
 
         log.info(
-            f"Starting to process owners marked for deletion. Max per run: {max_owners_per_run}"
+            f"Starting to process owners marked for deletion (48h delay). Max per run: {max_owners_per_run}"
         )
 
-        # Get owners that need to be deleted, limited by max_owners_per_run
-        owners_to_delete = list(OwnerToBeDeleted.objects.all()[:max_owners_per_run])
+        # Only process owners that have been waiting at least 48 hours
+        cutoff = timezone.now() - timedelta(hours=48)
+        owners_to_delete = list(
+            OwnerToBeDeleted.objects.filter(created_at__lte=cutoff)[:max_owners_per_run]
+        )
 
         if not owners_to_delete:
-            log.info("No owners found in OwnerToBeDeleted table")
+            log.info("No owners eligible for deletion (none older than 48 hours)")
             return {
                 "owners_processed": 0,
                 "tasks_started": 0,

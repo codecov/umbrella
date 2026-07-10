@@ -5,6 +5,7 @@ type Owner {
   billing: Billing
   defaultOrgUsername: String
   delinquent: Boolean
+  externalId: String
   hashOwnerid: String
   hasActiveRepos: Boolean
   hasPrivateRepos: Boolean
@@ -14,6 +15,7 @@ type Owner {
   isAdmin: Boolean
   isCurrentUserActivated: Boolean
   isCurrentUserPartOfOrg: Boolean!
+  isOnlyUsingSentryApp: Boolean
   isGithubRateLimited: Boolean
   isUserOktaAuthenticated: Boolean
   measurements(

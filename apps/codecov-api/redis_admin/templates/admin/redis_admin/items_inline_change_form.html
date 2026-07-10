@@ -1,0 +1,10 @@
+{% extends "admin/change_form.html" %}
+
+{# Renders a tabular-inline-style "Items" block right after the readonly
+   field sets. The HTML is built server-side in `admin._render_items_inline`
+   because the `RedisQueueItem` model is unmanaged (no FK back to the
+   parent queue), so a real `TabularInline` won't work. #}
+{% block after_field_sets %}
+{{ block.super }}
+{% if redis_admin_items_inline %}{{ redis_admin_items_inline }}{% endif %}
+{% endblock %}

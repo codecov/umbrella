@@ -1,4 +1,7 @@
 import logging
+import os
+import tempfile
+from contextlib import contextmanager
 from typing import Any, cast
 
 import sentry_sdk
@@ -17,11 +20,14 @@ from services.lock_manager import (
     get_bundle_analysis_lock_manager,
 )
 from services.processing.types import UploadArguments
+from shared.api_archive.archive import ArchiveService
+from shared.bundle_analysis.storage import get_bucket_name
 from shared.celery_config import (
     BUNDLE_ANALYSIS_PROCESSOR_MAX_RETRIES,
     bundle_analysis_processor_task_name,
 )
 from shared.reports.enums import UploadState
+from shared.storage.exceptions import FileNotInStorageError
 from shared.yaml import UserYaml
 from tasks.base import BaseCodecovTask
 from tasks.bundle_analysis_save_measurements import (
@@ -65,6 +71,81 @@ def _set_upload_error_and_commit(
             f"Failed to commit upload error state{log_suffix}",
             extra={"commit": commitid, "repoid": repoid, "upload_id": upload.id_},
         )
+
+
+@contextmanager
+def temporary_upload_file(db_session, repoid: int, upload_params: UploadArguments):
+    """
+    Context manager that pre-downloads a bundle upload file to a temporary location
+    before lock acquisition. The file is cleaned up automatically on exit.
+
+    Yields:
+        str: Empty string when no file is expected (carryforward tasks, upload
+             record not yet committed, or upload has no storage path). A real
+             path when a download was attempted; the file will be empty if the
+             download failed, which triggers a pre-lock retry.
+    """
+    temp_file_path = None
+
+    try:
+        upload_id = upload_params.get("upload_id")
+        if upload_id is None:
+            yield ""
+            return
+
+        upload = db_session.query(Upload).filter_by(id_=upload_id).first()
+        if upload is None or not upload.storage_path:
+            # No file to download: upload doesn't exist yet or has no storage
+            # path. Yield "" so the pre-lock check doesn't mistake this for a
+            # failed download. process_impl_within_lock handles these cases.
+            yield ""
+            return
+
+        # Only create the temp file when we have a real storage path to download.
+        # An empty file after this point means the download failed; the pre-lock
+        # check will retry without entering the lock.
+        fd, temp_file_path = tempfile.mkstemp()
+        os.close(fd)
+
+        commit = upload.report.commit
+        archive_service = ArchiveService(commit.repository)
+        storage_service = archive_service.storage
+
+        log_extra = {
+            "repoid": repoid,
+            "commitid": commit.commitid,
+            "upload_id": upload.id_,
+        }
+        try:
+            with open(temp_file_path, "wb") as f:
+                storage_service.read_file(
+                    get_bucket_name(), upload.storage_path, file_obj=f
+                )
+            log.debug(
+                "Pre-downloaded upload file before lock acquisition", extra=log_extra
+            )
+        except FileNotInStorageError:
+            log.info(
+                "Upload file not yet available in storage for pre-download",
+                extra=log_extra,
+            )
+        except Exception as e:
+            log.warning(
+                "Failed to pre-download upload file",
+                extra={**log_extra, "error": str(e)},
+            )
+
+        yield temp_file_path
+
+    finally:
+        if temp_file_path and os.path.exists(temp_file_path):
+            try:
+                os.remove(temp_file_path)
+            except OSError as e:
+                log.warning(
+                    "Failed to clean up temporary file",
+                    extra={"local_path": temp_file_path, "error": str(e)},
+                )
 
 
 class BundleAnalysisProcessorTask(
@@ -119,41 +200,73 @@ class BundleAnalysisProcessorTask(
                 )
                 return processing_results
 
-        lock_manager = get_bundle_analysis_lock_manager(
-            repoid=repoid,
-            commitid=commitid,
-        )
-
-        try:
-            with lock_manager.locked(
-                LockType.BUNDLE_ANALYSIS_PROCESSING,
-                retry_num=self.attempts,
-                max_retries=self.max_retries,
+        with temporary_upload_file(db_session, repoid, params) as pre_downloaded_path:
+            # If pre-download failed (empty file), retry without entering the lock.
+            # pre_downloaded_path is "" when no file is expected (carryforward,
+            # upload not found, no storage path) — only check real paths.
+            if pre_downloaded_path and (
+                not os.path.exists(pre_downloaded_path)
+                or os.path.getsize(pre_downloaded_path) == 0
             ):
-                return self.process_impl_within_lock(
-                    db_session,
-                    repoid,
-                    commitid,
-                    UserYaml.from_dict(commit_yaml),
-                    params,
-                    previous_result,
+                log.warning(
+                    "Pre-downloaded file missing or empty; retrying without lock",
+                    extra={"repoid": repoid, "commit": commitid},
                 )
-        except LockRetry as retry:
-            # Honor LockManager cap (Redis attempt count) so re-delivered messages stop.
-            if retry.max_retries_exceeded or self._has_exceeded_max_attempts(
-                self.max_retries
-            ):
-                _log_max_retries_exceeded(
-                    commitid=commitid,
-                    repoid=repoid,
-                    attempts=(
-                        retry.retry_num if retry.max_retries_exceeded else self.attempts
-                    ),
+                if self._has_exceeded_max_attempts(self.max_retries):
+                    _log_max_retries_exceeded(
+                        commitid=commitid,
+                        repoid=repoid,
+                        attempts=self.attempts,
+                        max_retries=self.max_retries,
+                    )
+                    return previous_result if isinstance(previous_result, list) else []
+                self.retry(
                     max_retries=self.max_retries,
-                    retry_num=self.request.retries,
+                    countdown=min(30 * (2**self.request.retries), 870),
                 )
-                return previous_result
-            self.retry(max_retries=self.max_retries, countdown=retry.countdown)
+
+            lock_manager = get_bundle_analysis_lock_manager(
+                repoid=repoid,
+                commitid=commitid,
+            )
+
+            try:
+                with lock_manager.locked(
+                    LockType.BUNDLE_ANALYSIS_PROCESSING,
+                    retry_num=self.attempts,
+                    max_retries=self.max_retries,
+                ):
+                    return self.process_impl_within_lock(
+                        db_session,
+                        repoid,
+                        commitid,
+                        UserYaml.from_dict(commit_yaml),
+                        params,
+                        previous_result,
+                        pre_downloaded_path=pre_downloaded_path,
+                    )
+            except LockRetry as retry:
+                # Honor LockManager cap (Redis attempt count) so re-delivered messages stop.
+                if retry.max_retries_exceeded or self._has_exceeded_max_attempts(
+                    self.max_retries
+                ):
+                    _log_max_retries_exceeded(
+                        commitid=commitid,
+                        repoid=repoid,
+                        attempts=(
+                            retry.retry_num
+                            if retry.max_retries_exceeded
+                            else self.attempts
+                        ),
+                        max_retries=self.max_retries,
+                        retry_num=self.request.retries,
+                    )
+                    return previous_result
+                # Cap at 870s (30s below the 900s Redis visibility timeout) so the
+                # message is never held unacked longer than the visibility window.
+                self.retry(
+                    max_retries=self.max_retries, countdown=min(retry.countdown, 870)
+                )
 
     @staticmethod
     def _ba_report_already_exists(db_session, repoid: int, commitid: str) -> bool:
@@ -185,6 +298,7 @@ class BundleAnalysisProcessorTask(
         commit_yaml: UserYaml,
         params: UploadArguments,
         previous_result: list[dict[str, Any]],
+        pre_downloaded_path: str = "",
     ):
         log.info(
             "Running bundle analysis processor",
@@ -276,7 +390,9 @@ class BundleAnalysisProcessorTask(
             )
             assert params.get("commit") == commit.commitid
 
-            result = report_service.process_upload(commit, upload, compare_sha)
+            result = report_service.process_upload(
+                commit, upload, pre_downloaded_path, compare_sha
+            )
             if result.error and result.error.is_retryable:
                 if self._has_exceeded_max_attempts(self.max_retries):
                     _log_max_retries_exceeded(
@@ -311,9 +427,17 @@ class BundleAnalysisProcessorTask(
                         "result": result.as_dict(),
                     },
                 )
+                # Cap at 870s (30s below the 900s Redis visibility timeout) so
+                # the message is never held unacked longer than the visibility
+                # window. Without this cap, retries 5+ produce countdowns >900s
+                # (e.g. 960s, 1920s, 3840s, 7680s, 15360s) which the Redis
+                # broker redelivers to additional workers, causing exponential
+                # task amplification on retryable errors like
+                # `file_not_in_storage`. Mirrors the cap applied to the
+                # LockRetry path above (PR #852).
                 self.retry(
                     max_retries=self.max_retries,
-                    countdown=30 * (2**self.request.retries),
+                    countdown=min(30 * (2**self.request.retries), 870),
                 )
             result.update_upload(carriedforward=carriedforward)
             db_session.commit()

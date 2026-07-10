@@ -21,6 +21,9 @@ INSTALLED_APPS.append("debug_toolbar")
 MIDDLEWARE.insert(0, "debug_toolbar.middleware.DebugToolbarMiddleware")
 SHOW_TOOLBAR_CALLBACK = "debug_toolbar.middleware.show_toolbar_with_docker"
 
+# Django extensions
+INSTALLED_APPS.append("django_extensions")
+
 
 def get_internal_ips() -> list[str]:
     ips = ["127.0.0.1"]

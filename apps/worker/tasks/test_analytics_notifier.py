@@ -4,7 +4,6 @@ from typing import cast
 
 from asgiref.sync import async_to_sync
 from celery.exceptions import MaxRetriesExceededError as CeleryMaxRetriesExceededError
-from django.conf import settings
 from redis import Redis
 from sqlalchemy.orm import Session
 
@@ -40,7 +39,7 @@ from shared.django_apps.core.models import Commit, Repository
 from shared.helpers.redis import get_redis_connection
 from shared.reports.types import UploadType
 from shared.typings.torngit import AdditionalData
-from shared.upload.types import TAUploadContext, UploadPipeline
+from shared.upload.types import TAUploadContext
 from shared.yaml.user_yaml import UserYaml
 from tasks.base import BaseCodecovTask
 
@@ -337,17 +336,7 @@ class TestAnalyticsNotifierTask(
 
         additional_data: AdditionalData = {"upload_type": UploadType.TEST_RESULTS}
 
-        match upload_context["pipeline"]:
-            case UploadPipeline.CODECOV:
-                repo_service = get_repo_provider_service(
-                    repo, additional_data=additional_data
-                )
-            case UploadPipeline.SENTRY:
-                repo_service = get_repo_provider_service(
-                    repo,
-                    installation_name_to_use=settings.GITHUB_SENTRY_APP_NAME,
-                    additional_data=additional_data,
-                )
+        repo_service = get_repo_provider_service(repo, additional_data=additional_data)
         pull = async_to_sync(fetch_pull_request_information)(
             repo_service,
             repo_id,

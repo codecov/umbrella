@@ -4,7 +4,6 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from hashlib import sha256
 from typing import Literal, TypedDict, TypeVar
-from urllib.parse import quote_plus
 
 import sentry_sdk
 
@@ -216,31 +215,6 @@ def generate_view_test_analytics_line(
     return f"\nTo view more test analytics, go to the [Test Analytics Dashboard]({test_analytics_url})\n<sub>📋 Got 3 mins? [Take this short survey](https://forms.gle/22i53Qa1CySZjA6c7) to help us improve Test Analytics.</sub>"
 
 
-def generate_view_prevent_analytics_line(
-    repo: Repository, commit_branch: str | None
-) -> str | None:
-    owner = getattr(repo, "author", None)
-    account = getattr(owner, "account", None) if owner else None
-    account_name = getattr(account, "name", None) if account else None
-    owner_username = getattr(owner, "username", None) if owner else None
-    repo_name = getattr(repo, "name", None)
-
-    if not all([account_name, owner_username, repo_name, commit_branch]):
-        return None
-
-    prevent_url = (
-        f"https://{account_name}.sentry.io/prevent/tests/?preventPeriod=30d"
-        f"&integratedOrgName={quote_plus(owner_username)}"
-        f"&repository={quote_plus(repo_name)}"
-        f"&branch={quote_plus(commit_branch)}"
-    )
-
-    return (
-        "\nTo view more test analytics, go to the "
-        f"[Prevent Tests Dashboard]({prevent_url})"
-    )
-
-
 def messagify_failure[T: (str, bytes)](
     failure: TestResultsNotificationFailure[T],
 ) -> str:
@@ -335,7 +309,6 @@ def specific_error_message(error: ErrorPayload) -> str:
 class TestResultsNotifier[T: (str, bytes)](BaseNotifier):
     payload: TestResultsNotificationPayload[T] | None = None
     error: ErrorPayload | None = None
-    for_prevent: bool = False
 
     def build_message(self) -> str:
         if self.payload is None:
@@ -400,20 +373,13 @@ class TestResultsNotifier[T: (str, bytes)](BaseNotifier):
                 message.append(flaky_section)
 
             commit_branch = self.commit.branch
-            if not self.for_prevent:
-                message.append(
-                    generate_view_test_analytics_line(
-                        # TODO: Deprecate database-reliant code path after old TA pipeline is removed
-                        self.repo,
-                        commit_branch,
-                    )
+            message.append(
+                generate_view_test_analytics_line(
+                    # TODO: Deprecate database-reliant code path after old TA pipeline is removed
+                    self.repo,
+                    commit_branch,
                 )
-            else:
-                prevent_line = generate_view_prevent_analytics_line(
-                    self.repo, commit_branch
-                )
-                if prevent_line:
-                    message.append(prevent_line)
+            )
         return "\n".join(message)
 
     def error_comment(self):
@@ -430,25 +396,6 @@ class TestResultsNotifier[T: (str, bytes)](BaseNotifier):
 
         sent_to_provider = self.send_to_provider(pull, message)
 
-        if sent_to_provider is False:
-            return False, "torngit_error"
-
-        return True, "comment_posted"
-
-    def all_passed_comment(self, duration_seconds: float | None = None):
-        # TODO: use something like:
-        # https://github.com/getsentry/sentry/blob/ca40c14646767fdcd06dd90a8089c116bd8f6cde/static/app/utils/duration/getDuration.tsx
-        # to format the duration nicely
-        if duration_seconds is not None:
-            message = f":white_check_mark: All tests passed in {duration_seconds:.2f}s."
-        else:
-            message = ":white_check_mark: All tests passed."
-
-        pull = self.get_pull()
-        if pull is None:
-            return False, "no_pull"
-
-        sent_to_provider = self.send_to_provider(pull, message)
         if sent_to_provider is False:
             return False, "torngit_error"
 

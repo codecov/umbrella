@@ -1,7 +1,8 @@
 from asgiref.sync import sync_to_async
 
 from codecov.commands.base import BaseInteractor
-from codecov.commands.exceptions import ValidationError
+from codecov.commands.exceptions import Unauthorized, ValidationError
+from codecov_auth.helpers import current_user_part_of_org
 from core.models import Repository
 from shared.django_apps.bundle_analysis.models import CacheConfig
 from shared.django_apps.bundle_analysis.service.bundle_analysis import (
@@ -38,9 +39,12 @@ class UpdateBundleCacheConfigInteractor(BaseInteractor):
         repo_name: str,
         cache_config: list[dict[str, str | bool]],
     ) -> list[dict[str, str | bool]]:
-        _owner, repo = self.resolve_owner_and_repo(
+        owner, repo = self.resolve_owner_and_repo(
             owner_username, repo_name, only_viewable=True
         )
+
+        if not current_user_part_of_org(self.current_owner, owner):
+            raise Unauthorized()
 
         self.validate(repo, cache_config)
 

@@ -7,7 +7,7 @@ interactions:
       User-Agent:
       - Default
     method: GET
-    uri: https://bitbucket.org/api/2.0/repositories/ThiagoCodecov/example-python/commit/6895b64?oauth_consumer_key=testzdcviyi3x7f8h0&oauth_token=H6scSkq7rKZDXtDqe4&oauth_signature_method=HMAC-SHA1&oauth_timestamp=1569615857&oauth_nonce=b98bd6399cff4029ae7cadeef4d7ecd2&oauth_version=1.0&oauth_signature=QoXcCFU5p8sc0mHtAypAkqXi1wQ%3D
+    uri: https://api.bitbucket.org/2.0/repositories/ThiagoCodecov/example-python/commit/6895b64?oauth_consumer_key=testzdcviyi3x7f8h0&oauth_token=H6scSkq7rKZDXtDqe4&oauth_signature_method=HMAC-SHA1&oauth_timestamp=1569615857&oauth_nonce=b98bd6399cff4029ae7cadeef4d7ecd2&oauth_version=1.0&oauth_signature=QoXcCFU5p8sc0mHtAypAkqXi1wQ%3D
   response:
     content: '{"rendered": {"message": {"raw": "Adding ''include'' term if multiple
       sources\n\nbased on a support ticket around multiple sources\r\n\r\nhttps://codecov.freshdesk.com/a/tickets/87",
@@ -91,5 +91,5 @@ interactions:
       code: 200
       message: OK
     status_code: 200
-    url: https://bitbucket.org/api/2.0/repositories/ThiagoCodecov/example-python/commit/6895b64?oauth_consumer_key=testzdcviyi3x7f8h0&oauth_token=H6scSkq7rKZDXtDqe4&oauth_signature_method=HMAC-SHA1&oauth_timestamp=1569615857&oauth_nonce=b98bd6399cff4029ae7cadeef4d7ecd2&oauth_version=1.0&oauth_signature=QoXcCFU5p8sc0mHtAypAkqXi1wQ%3D
+    url: https://api.bitbucket.org/2.0/repositories/ThiagoCodecov/example-python/commit/6895b64?oauth_consumer_key=testzdcviyi3x7f8h0&oauth_token=H6scSkq7rKZDXtDqe4&oauth_signature_method=HMAC-SHA1&oauth_timestamp=1569615857&oauth_nonce=b98bd6399cff4029ae7cadeef4d7ecd2&oauth_version=1.0&oauth_signature=QoXcCFU5p8sc0mHtAypAkqXi1wQ%3D
 version: 1

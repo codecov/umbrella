@@ -198,6 +198,7 @@ class StripeServiceTests(TestCase):
         plan = Plan.objects.get(name=desired_plan["value"])
         subscription_modify_mock.assert_called_once_with(
             owner.stripe_subscription_id,
+            automatic_tax={"enabled": True},
             cancel_at_period_end=False,
             items=[
                 {
@@ -229,6 +230,7 @@ class StripeServiceTests(TestCase):
         plan = Plan.objects.get(name=desired_plan["value"])
         schedule_modify_mock.assert_called_once_with(
             schedule_id,
+            default_settings={"automatic_tax": {"enabled": True}},
             end_behavior="release",
             phases=[
                 {
@@ -333,6 +335,7 @@ class StripeServiceTests(TestCase):
         self.stripe.delete_subscription(owner)
         modify_mock.assert_called_once_with(
             stripe_subscription_id,
+            automatic_tax={"enabled": True},
             cancel_at_period_end=True,
             proration_behavior="none",
         )
@@ -387,6 +390,7 @@ class StripeServiceTests(TestCase):
         schedule_release_mock.assert_called_once_with(stripe_schedule_id)
         modify_mock.assert_called_once_with(
             stripe_subscription_id,
+            automatic_tax={"enabled": True},
             cancel_at_period_end=True,
             proration_behavior="none",
         )
@@ -684,6 +688,7 @@ class StripeServiceTests(TestCase):
         modify_customer_mock.assert_not_called()
         modify_sub_mock.assert_called_once_with(
             stripe_subscription_id,
+            automatic_tax={"enabled": True},
             cancel_at_period_end=True,
             proration_behavior="none",
         )
@@ -1648,6 +1653,7 @@ class StripeServiceTests(TestCase):
             },
             tax_id_collection={"enabled": True},
             customer_update=None,
+            automatic_tax={"enabled": True},
         )
 
     @patch("services.billing.stripe.checkout.Session.create")
@@ -1698,6 +1704,7 @@ class StripeServiceTests(TestCase):
             },
             tax_id_collection={"enabled": True},
             customer_update={"name": "auto", "address": "auto"},
+            automatic_tax={"enabled": True},
         )
 
     @patch("logging.Logger.error")
@@ -1778,7 +1785,9 @@ class StripeServiceTests(TestCase):
         )
 
         modify_sub_mock.assert_called_once_with(
-            subscription_id, default_payment_method=payment_method_id
+            subscription_id,
+            automatic_tax={"enabled": True},
+            default_payment_method=payment_method_id,
         )
 
     @patch("services.billing.stripe.PaymentMethod.attach")

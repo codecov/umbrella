@@ -3,7 +3,7 @@ from unittest.mock import patch
 from django.test import TestCase
 
 from graphql_api.tests.helper import GraphQLTestHelper
-from shared.django_apps.core.tests.factories import OwnerFactory
+from shared.django_apps.core.tests.factories import OwnerFactory, RepositoryFactory
 
 query = """
 mutation($input: ActivateMeasurementsInput!) {
@@ -37,6 +37,9 @@ mutation UpdateBundleCacheConfig(
             ... on UnauthenticatedError {
                 message
             }
+            ... on UnauthorizedError {
+                message
+            }
             ... on ValidationError {
                 message
             }
@@ -48,7 +51,9 @@ mutation UpdateBundleCacheConfig(
 
 class UpdateBundleCacheConfigTestCase(GraphQLTestHelper, TestCase):
     def setUp(self):
-        self.owner = OwnerFactory()
+        self.org = OwnerFactory(username="codecov")
+        self.repo = RepositoryFactory(author=self.org, name="test-repo", private=False)
+        self.owner = OwnerFactory(organizations=[self.org.ownerid])
 
     def test_when_unauthenticated(self):
         data = self.gql_request(
@@ -62,6 +67,22 @@ class UpdateBundleCacheConfigTestCase(GraphQLTestHelper, TestCase):
         assert (
             data["updateBundleCacheConfig"]["error"]["__typename"]
             == "UnauthenticatedError"
+        )
+
+    def test_when_unauthorized_user_not_part_of_org(self):
+        random_user = OwnerFactory()
+        data = self.gql_request(
+            query,
+            owner=random_user,
+            variables={
+                "owner": "codecov",
+                "repoName": "test-repo",
+                "bundles": [{"bundleName": "pr_bundle1", "toggleCaching": False}],
+            },
+        )
+        assert (
+            data["updateBundleCacheConfig"]["error"]["__typename"]
+            == "UnauthorizedError"
         )
 
     @patch(

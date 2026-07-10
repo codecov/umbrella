@@ -280,6 +280,42 @@ def test_call_pullsync_task_no_provider_pull_only(
     }
 
 
+def test_call_pullsync_task_pull_closed(
+    dbsession, mocker, mock_redis, repository, pull
+):
+    task = PullSyncTask()
+    mocked_fetch_pr = mocker.patch(
+        "tasks.sync_pull.fetch_and_update_pull_request_information"
+    )
+    pull.state = "closed"
+    mocked_fetch_pr.return_value = EnrichedPull(database_pull=pull, provider_pull=None)
+    res = task.run_impl(dbsession, repoid=repository.repoid, pullid=99)
+    assert res == {
+        "commit_updates_done": {"merged_count": 0, "soft_deleted_count": 0},
+        "notifier_called": False,
+        "pull_updated": False,
+        "reason": "pull_not_open",
+    }
+
+
+def test_call_pullsync_task_pull_merged_no_notification(
+    dbsession, mocker, mock_redis, repository, pull
+):
+    task = PullSyncTask()
+    mocked_fetch_pr = mocker.patch(
+        "tasks.sync_pull.fetch_and_update_pull_request_information"
+    )
+    pull.state = "merged"
+    mocked_fetch_pr.return_value = EnrichedPull(database_pull=pull, provider_pull=None)
+    res = task.run_impl(dbsession, repoid=repository.repoid, pullid=99)
+    assert res == {
+        "commit_updates_done": {"merged_count": 0, "soft_deleted_count": 0},
+        "notifier_called": False,
+        "pull_updated": False,
+        "reason": "not_in_provider",
+    }
+
+
 def test_call_pullsync_no_bot(dbsession, mock_redis, mocker, pull):
     task = PullSyncTask()
     mocker.patch(

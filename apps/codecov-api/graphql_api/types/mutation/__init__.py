@@ -15,6 +15,7 @@ from .onboard_user import gql_onboard_user
 from .regenerate_org_upload_token import gql_regenerate_org_upload_token
 from .regenerate_repository_token import gql_regenerate_repository_token
 from .regenerate_repository_upload_token import gql_regenerate_repository_upload_token
+from .regenerate_support_pin import gql_regenerate_support_pin
 from .revoke_user_token import gql_revoke_user_token
 from .save_okta_config import gql_save_okta_config
 from .save_sentry_state import gql_save_sentry_state
@@ -44,6 +45,7 @@ mutation = mutation + gql_onboard_user
 mutation = mutation + gql_regenerate_repository_token
 mutation = mutation + gql_activate_measurements
 mutation = mutation + gql_regenerate_org_upload_token
+mutation = mutation + gql_regenerate_support_pin
 mutation = mutation + gql_create_user_token
 mutation = mutation + gql_revoke_user_token
 mutation = mutation + gql_delete_flag

@@ -39,6 +39,8 @@ class UserFactory(DjangoModelFactory):
     terms_agreement = False
     terms_agreement_at = None
     customer_intent = "Business"
+    # Default test users to Member, matching pre-RBAC staff access.
+    staff_role = User.StaffRole.MEMBER
 
 
 class OwnerFactory(DjangoModelFactory):

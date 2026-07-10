@@ -335,12 +335,13 @@ class CommentNotifier(MessageMixin, AbstractBaseNotifier):
         if comparison.pull.is_first_coverage_pull:
             return self._create_welcome_message()
         pull_dict = comparison.enriched_pull.provider_pull
-        return self.create_message(
+        message = self.create_message(
             comparison,
             pull_dict,
             self.notifier_yaml_settings,
             status_or_checks_helper_text=status_or_checks_helper_text,
         )
+        return message
 
     def should_see_project_coverage_cta(self):
         """

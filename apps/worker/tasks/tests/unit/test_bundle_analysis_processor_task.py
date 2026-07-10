@@ -1,3 +1,5 @@
+import os
+
 import pytest
 from celery.exceptions import Retry
 from redis.exceptions import LockError
@@ -12,7 +14,10 @@ from shared.bundle_analysis.storage import get_bucket_name
 from shared.celery_config import BUNDLE_ANALYSIS_PROCESSOR_MAX_RETRIES
 from shared.django_apps.bundle_analysis.models import CacheConfig
 from shared.storage.exceptions import PutRequestRateLimitError
-from tasks.bundle_analysis_processor import BundleAnalysisProcessorTask
+from tasks.bundle_analysis_processor import (
+    BundleAnalysisProcessorTask,
+    temporary_upload_file,
+)
 from tasks.bundle_analysis_save_measurements import (
     bundle_analysis_save_measurements_task_name,
 )
@@ -145,40 +150,31 @@ def test_bundle_analysis_processor_task_error(
     dbsession.flush()
 
     task = BundleAnalysisProcessorTask()
-    retry = mocker.patch.object(task, "retry")
+    retry = mocker.patch.object(task, "retry", side_effect=Retry())
     task.request.retries = 0
     task.request.headers = {}
 
-    result = task.run_impl(
-        dbsession,
-        [{"previous": "result"}],
-        repoid=commit.repoid,
-        commitid=commit.commitid,
-        commit_yaml={},
-        params={
-            "upload_id": upload.id_,
-            "commit": commit.commitid,
-        },
-    )
-    assert result == [
-        {"previous": "result"},
-        {
-            "error": {
-                "code": "file_not_in_storage",
-                "params": {"location": "invalid-storage-path"},
+    # Pre-download fails before the lock, so retry is raised without entering
+    # the lock. Upload state is unchanged (not yet marked error).
+    with pytest.raises(Retry):
+        task.run_impl(
+            dbsession,
+            [{"previous": "result"}],
+            repoid=commit.repoid,
+            commitid=commit.commitid,
+            commit_yaml={},
+            params={
+                "upload_id": upload.id_,
+                "commit": commit.commitid,
             },
-            "session_id": None,
-            "upload_id": upload.id_,
-            "bundle_name": None,
-        },
-    ]
+        )
 
-    assert commit.state == "error"
-    assert upload.state == "error"
     retry.assert_called_once()
     assert retry.call_args[1]["max_retries"] == task.max_retries
     expected_countdown = 30 * (2**task.request.retries)
     assert retry.call_args[1]["countdown"] == expected_countdown
+    # Upload not marked error yet — task will retry and re-attempt the download
+    assert upload.state != "error"
 
 
 def test_bundle_analysis_processor_task_general_error(
@@ -214,7 +210,7 @@ def test_bundle_analysis_processor_task_general_error(
 
     upload = UploadFactory.create(
         state="started",
-        storage_path="invalid-storage-path",
+        storage_path=storage_path,  # valid path so pre-download succeeds
         report=commit_report,
     )
     dbsession.add(upload)
@@ -2117,3 +2113,280 @@ def test_bundle_analysis_processor_task_cleanup_with_none_result(
 
     assert result == previous_result
     assert upload.state == "error"
+
+
+@pytest.mark.django_db(databases={"default", "timeseries"})
+def test_pre_download_upload_file_file_not_in_storage(
+    mocker,
+    dbsession,
+    mock_storage,
+):
+    """Test that temporary_upload_file returns None when file is not in storage"""
+    commit = CommitFactory.create(state="pending")
+    dbsession.add(commit)
+    dbsession.flush()
+
+    commit_report = CommitReport(commit_id=commit.id_)
+    dbsession.add(commit_report)
+    dbsession.flush()
+
+    # Create upload with a storage path that doesn't exist in mock_storage
+    upload = UploadFactory.create(
+        storage_path="v1/uploads/nonexistent.json", report=commit_report
+    )
+    dbsession.add(upload)
+    dbsession.flush()
+
+    params = {"upload_id": upload.id_, "commit": commit.commitid}
+
+    # The file doesn't exist in mock_storage; an empty temp file is still yielded
+    # so report.py can detect the failure via os.path.getsize and raise FileNotInStorageError.
+    with temporary_upload_file(dbsession, commit.repoid, params) as result:
+        assert result is not None
+        assert os.path.getsize(result) == 0
+
+
+@pytest.mark.django_db(databases={"default", "timeseries"})
+def test_pre_download_upload_file_general_error(
+    mocker,
+    dbsession,
+    mock_storage,
+):
+    """Test that temporary_upload_file yields an empty temp file on general error"""
+    commit = CommitFactory.create(state="pending")
+    dbsession.add(commit)
+    dbsession.flush()
+
+    commit_report = CommitReport(commit_id=commit.id_)
+    dbsession.add(commit_report)
+    dbsession.flush()
+
+    storage_path = "v1/uploads/test.json"
+    upload = UploadFactory.create(storage_path=storage_path, report=commit_report)
+    dbsession.add(upload)
+    dbsession.flush()
+
+    # Mock storage to raise a general exception
+    mocker.patch.object(
+        mock_storage, "read_file", side_effect=Exception("Connection error")
+    )
+
+    params = {"upload_id": upload.id_, "commit": commit.commitid}
+
+    # A general error leaves the temp file empty; report.py treats this as retryable.
+    with temporary_upload_file(dbsession, commit.repoid, params) as result:
+        assert result is not None
+        assert os.path.getsize(result) == 0
+
+
+@pytest.mark.django_db(databases={"default", "timeseries"})
+def test_pre_download_upload_file_no_upload_id(
+    mocker,
+    dbsession,
+):
+    """Test that temporary_upload_file returns empty string when no upload_id in params (carryforward)"""
+    params = {"commit": "abc123"}  # No upload_id
+
+    with temporary_upload_file(dbsession, 123, params) as result:
+        assert result == ""
+
+
+@pytest.mark.django_db(databases={"default", "timeseries"})
+def test_pre_download_upload_file_upload_not_found(
+    mocker,
+    dbsession,
+):
+    """Test that temporary_upload_file yields empty string when upload doesn't exist"""
+    params = {"upload_id": 99999, "commit": "abc123"}  # Non-existent upload_id
+
+    with temporary_upload_file(dbsession, 123, params) as result:
+        assert result == ""
+
+
+@pytest.mark.django_db(databases={"default", "timeseries"})
+def test_pre_download_upload_file_success(
+    mocker,
+    dbsession,
+    mock_storage,
+):
+    """Test that temporary_upload_file returns local path when successful"""
+    commit = CommitFactory.create(state="pending")
+    dbsession.add(commit)
+    dbsession.flush()
+
+    commit_report = CommitReport(commit_id=commit.id_)
+    dbsession.add(commit_report)
+    dbsession.flush()
+
+    storage_path = "v1/uploads/test.json"
+    mock_storage.write_file(get_bucket_name(), storage_path, b'{"bundleName": "test"}')
+
+    upload = UploadFactory.create(storage_path=storage_path, report=commit_report)
+    dbsession.add(upload)
+    dbsession.flush()
+
+    params = {"upload_id": upload.id_, "commit": commit.commitid}
+
+    with temporary_upload_file(dbsession, commit.repoid, params) as result:
+        assert result is not None
+        assert os.path.exists(result)
+        with open(result) as f:
+            content = f.read()
+        assert "bundleName" in content
+
+    # After context manager exits, file should be cleaned up
+    assert not os.path.exists(result)
+
+
+@pytest.mark.django_db(databases={"default", "timeseries"})
+def test_bundle_analysis_processor_passes_pre_downloaded_path(
+    mocker,
+    dbsession,
+    mock_storage,
+):
+    """Test that process_upload is called with pre_downloaded_path when pre-download succeeds"""
+    storage_path = "v1/uploads/test_bundle.json"
+    mock_storage.write_file(
+        get_bucket_name(), storage_path, b'{"bundleName": "test-bundle"}'
+    )
+
+    mocker.patch.object(
+        BundleAnalysisProcessorTask,
+        "app",
+        tasks={
+            bundle_analysis_save_measurements_task_name: mocker.MagicMock(),
+        },
+    )
+
+    commit = CommitFactory.create(state="pending")
+    dbsession.add(commit)
+    dbsession.flush()
+
+    commit_report = CommitReport(commit_id=commit.id_)
+    dbsession.add(commit_report)
+    dbsession.flush()
+
+    upload = UploadFactory.create(storage_path=storage_path, report=commit_report)
+    dbsession.add(upload)
+    dbsession.flush()
+
+    # Mock ingest to track what path was passed (following pattern from success tests)
+    ingest_mock = mocker.patch("shared.bundle_analysis.BundleAnalysisReport.ingest")
+    ingest_mock.return_value = (123, "test-bundle")
+
+    result = BundleAnalysisProcessorTask().run_impl(
+        dbsession,
+        [{"previous": "result"}],
+        repoid=commit.repoid,
+        commitid=commit.commitid,
+        commit_yaml={},
+        params={
+            "upload_id": upload.id_,
+            "commit": commit.commitid,
+        },
+    )
+
+    # Verify the task completed successfully
+    assert result[-1]["error"] is None
+    assert result[-1]["session_id"] == 123
+    assert result[-1]["bundle_name"] == "test-bundle"
+
+    # Verify ingest was called with the pre-downloaded temp file path (not a GCS URI)
+    assert ingest_mock.call_count == 1
+    pre_downloaded_path = ingest_mock.call_args[0][0]
+    assert pre_downloaded_path is not None
+    assert os.path.isabs(pre_downloaded_path), "Expected an absolute temp file path"
+
+
+@pytest.mark.parametrize(
+    "request_retries, expected_countdown",
+    [
+        (0, 30),
+        (1, 60),
+        (2, 120),
+        (3, 240),
+        (4, 480),
+        # retries 5+ would naturally produce countdowns >= 960s, which exceeds
+        # the 900s Redis visibility timeout and causes message redelivery /
+        # exponential task amplification. The cap pins them at 870s.
+        (5, 870),
+        (6, 870),
+        (7, 870),
+        (8, 870),
+        (9, 870),
+    ],
+)
+def test_bundle_analysis_processor_task_retryable_error_countdown_capped(
+    mocker,
+    dbsession,
+    mock_storage,
+    request_retries,
+    expected_countdown,
+):
+    """The retryable-error retry path must cap its countdown below the 900s
+    Redis visibility timeout so the broker never redelivers the still-unacked
+    ETA message to additional workers (which produced exponential task
+    amplification on the bundles_analysis queue, e.g. for repeated
+    `file_not_in_storage` errors).
+    """
+    storage_path = (
+        "v1/repos/testing/ed1bdd67-8fd2-4cdb-ac9e-39b99e4a3892/bundle_report.sqlite"
+    )
+    mock_storage.write_file(get_bucket_name(), storage_path, "test-content")
+
+    mocker.patch.object(
+        BundleAnalysisProcessorTask,
+        "app",
+        tasks={
+            bundle_analysis_save_measurements_task_name: mocker.MagicMock(),
+        },
+    )
+
+    commit = CommitFactory.create(state="pending")
+    dbsession.add(commit)
+    dbsession.flush()
+
+    commit_report = CommitReport(commit_id=commit.id_)
+    dbsession.add(commit_report)
+    dbsession.flush()
+
+    upload = UploadFactory.create(storage_path=storage_path, report=commit_report)
+    dbsession.add(upload)
+    dbsession.flush()
+
+    retryable_error = ProcessingError(
+        code="file_not_in_storage",
+        params={"location": storage_path},
+        is_retryable=True,
+    )
+    processing_result = ProcessingResult(
+        upload=upload,
+        commit=commit,
+        error=retryable_error,
+    )
+    mocker.patch(
+        "services.bundle_analysis.report.BundleAnalysisReportService.process_upload",
+        return_value=processing_result,
+    )
+
+    task = BundleAnalysisProcessorTask()
+    task.request.retries = request_retries
+    # Pin the attempts header to 1 for every case so we always take the retry
+    # branch (not the max-retries-exceeded early return). In production these
+    # two counters can drift apart anyway: visibility-timeout redeliveries
+    # increment `attempts` while keeping `request.retries` low.
+    task.request.headers = {"attempts": 1}
+    retry_call = mocker.patch.object(task, "retry")
+
+    task.run_impl(
+        dbsession,
+        [],
+        repoid=commit.repoid,
+        commitid=commit.commitid,
+        commit_yaml={},
+        params={"upload_id": upload.id_, "commit": commit.commitid},
+    )
+
+    retry_call.assert_called_once()
+    assert retry_call.call_args.kwargs["countdown"] == expected_countdown
+    assert retry_call.call_args.kwargs["countdown"] < 900
