@@ -50,7 +50,9 @@ class MarkOwnerForDeletionTask(BaseCodecovTask, name=mark_owner_for_deletion_tas
     acks_late = True  # retry the task when the worker dies for whatever reason
     max_retries = None  # aka, no limit on retries
 
-    def run_impl(self, _db_session, ownerid: int) -> dict:
+    def run_impl(
+        self, _db_session, ownerid: int, originator_user_id: int | None = None
+    ) -> dict:
         try:
             log.info(f"Starting to mark owner {ownerid} for deletion")
 
@@ -69,7 +71,9 @@ class MarkOwnerForDeletionTask(BaseCodecovTask, name=mark_owner_for_deletion_tas
                 obfuscate_owner_data(owner)
                 log.info(f"Obfuscated data for owner {ownerid}")
 
-                OwnerToBeDeleted.objects.create(owner_id=ownerid)
+                OwnerToBeDeleted.objects.create(
+                    owner_id=ownerid, requested_by_id=originator_user_id
+                )
                 log.info(f"Added owner {ownerid} to OwnerToBeDeleted table")
 
             return {

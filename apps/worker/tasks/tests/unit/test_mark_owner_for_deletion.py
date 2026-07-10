@@ -2,7 +2,12 @@ from unittest.mock import patch
 
 import pytest
 
-from shared.django_apps.codecov_auth.models import Owner, OwnerToBeDeleted, Service
+from shared.django_apps.codecov_auth.models import (
+    Owner,
+    OwnerToBeDeleted,
+    Service,
+    User,
+)
 from tasks.mark_owner_for_deletion import MarkOwnerForDeletionTask, obfuscate_owner_data
 
 pytestmark = pytest.mark.django_db
@@ -60,6 +65,22 @@ def test_mark_owner_for_deletion_success(owner, task):
     # Check return value
     assert result["status"] == "success"
     assert result["ownerid"] == 12345
+
+    # No originator was provided, so requested_by stays null
+    record = OwnerToBeDeleted.objects.get(owner_id=12345)
+    assert record.requested_by_id is None
+
+
+def test_mark_owner_for_deletion_records_originator(owner, task):
+    """Test that the originating user is recorded on the OwnerToBeDeleted row"""
+    originator = User.objects.create(name="Admin User", email="admin@example.com")
+
+    with patch("tasks.mark_owner_for_deletion.log"):
+        result = task.run_impl(None, 12345, originator_user_id=originator.id)
+
+    assert result["status"] == "success"
+    record = OwnerToBeDeleted.objects.get(owner_id=12345)
+    assert record.requested_by_id == originator.id
 
 
 def test_mark_owner_for_deletion_already_marked(owner, task):

@@ -2,7 +2,10 @@ from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock, patch
 
 import pytest
+from django.utils import timezone
 
+from shared.celery_config import delete_owner_task_name
+from shared.django_apps.codecov_auth.models import OwnerToBeDeleted
 from tasks.process_owners_to_be_deleted_cron import ProcessOwnersToBeDeletedCronTask
 
 pytestmark = pytest.mark.django_db
@@ -35,7 +38,7 @@ class TestProcessOwnersToBeDeletedCronTask:
 
         expected_cutoff = now - timedelta(hours=48)
         mock_model.objects.filter.assert_called_once_with(
-            created_at__lte=expected_cutoff
+            created_at__lte=expected_cutoff, on_hold=False
         )
         assert result["owners_processed"] == 0
         assert result["message"] == "No owners to process"
@@ -120,7 +123,7 @@ class TestProcessOwnersToBeDeletedCronTask:
 
         expected_cutoff = datetime(2026, 4, 18, 12, 0, 0, tzinfo=UTC)
         mock_model.objects.filter.assert_called_once_with(
-            created_at__lte=expected_cutoff
+            created_at__lte=expected_cutoff, on_hold=False
         )
 
     @patch("tasks.process_owners_to_be_deleted_cron.OwnerToBeDeleted")
@@ -138,3 +141,27 @@ class TestProcessOwnersToBeDeletedCronTask:
         result = task.run_cron_task(MagicMock())
 
         assert result["owners_processed"] == 2
+
+    def test_run_cron_task_skips_on_hold_rows(self):
+        """On-hold rows are skipped (and kept) while eligible rows are processed."""
+        old = timezone.now() - timedelta(hours=72)
+
+        eligible = OwnerToBeDeleted.objects.create(owner_id=101)
+        held = OwnerToBeDeleted.objects.create(owner_id=202, on_hold=True)
+        # created_at uses auto_now_add, so backdate both past the 48h cutoff.
+        OwnerToBeDeleted.objects.filter(id__in=[eligible.id, held.id]).update(
+            created_at=old
+        )
+
+        mock_delete_task = MagicMock()
+        task = self._make_task(mock_delete_task)
+        result = task.run_cron_task(MagicMock())
+
+        assert result["owners_processed"] == 1
+        mock_delete_task.apply_async.assert_called_once_with(kwargs={"ownerid": 101})
+        # The on-hold row is left in place for a future cycle.
+        assert OwnerToBeDeleted.objects.filter(owner_id=202).exists()
+
+    def test_make_task_uses_real_delete_owner_task_name(self):
+        """Guard: the mocked task registry key matches the real task name."""
+        assert delete_owner_task_name == "app.tasks.delete_owner.DeleteOwner"

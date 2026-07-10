@@ -16,7 +16,7 @@ from django.urls import reverse
 from django.utils import timezone
 from django.utils.html import format_html, format_html_join
 
-from codecov.admin import AdminMixin
+from codecov.admin import AdminMixin, get_staff_role
 from codecov.commands.exceptions import ValidationError
 from codecov_auth.helpers import History
 from codecov_auth.models import OrganizationLevelToken, Owner, SentryUser, Session, User
@@ -30,6 +30,7 @@ from shared.django_apps.codecov_auth.models import (
     GithubAppInstallation,
     InvoiceBilling,
     OwnerExport,
+    OwnerToBeDeleted,
     Plan,
     StripeBilling,
     Tier,
@@ -41,6 +42,16 @@ from shared.plan.service import PlanService
 from utils.services import get_short_service_name
 
 log = logging.getLogger(__name__)
+
+
+def _originator_user_id(request: HttpRequest) -> int | None:
+    """Return the id of the logged-in user driving an admin request.
+
+    Used to record who originated a deletion. Returns ``None`` when there is no
+    resolvable integer user id (e.g. anonymous users or synthetic test requests).
+    """
+    user_id = getattr(getattr(request, "user", None), "id", None)
+    return user_id if isinstance(user_id, int) else None
 
 
 class ExtendTrialForm(forms.Form):
@@ -1134,11 +1145,16 @@ class OwnerAdmin(AdminMixin, admin.ModelAdmin):
         return bool(request.user and request.user.is_staff)
 
     def delete_queryset(self, request, queryset) -> None:
+        originator_user_id = _originator_user_id(request)
         for owner in queryset:
-            TaskService().delete_owner(ownerid=owner.ownerid)
+            TaskService().delete_owner(
+                ownerid=owner.ownerid, originator_user_id=originator_user_id
+            )
 
     def delete_model(self, request, obj) -> None:
-        TaskService().delete_owner(ownerid=obj.ownerid)
+        TaskService().delete_owner(
+            ownerid=obj.ownerid, originator_user_id=_originator_user_id(request)
+        )
 
     def get_deleted_objects(self, objs, request):
         return [], {}, set(), []
@@ -1509,3 +1525,148 @@ class OwnerExportAdmin(AdminMixin, admin.ModelAdmin):
 
     def has_delete_permission(self, request, obj=None):
         return True
+
+
+@admin.register(OwnerToBeDeleted)
+class OwnerToBeDeletedAdmin(admin.ModelAdmin):
+    """Superuser-only view of owners queued for deletion.
+
+    Each row records an owner that has been marked for deletion (and had its
+    data obfuscated) but not yet purged from the database, along with the user
+    who originated the request.
+
+    Members and Admins can view the screen; only Admins (superusers) may mutate
+    rows via the provided actions: place a row on hold (exempt it from the
+    deletion cron), release a hold (make it eligible again), or cancel the
+    deletion entirely (remove the row so the pending deletion never runs).
+    """
+
+    list_display = (
+        "id",
+        "owner_link",
+        "requested_by_link",
+        "on_hold",
+        "created_at",
+        "updated_at",
+    )
+    list_filter = ("on_hold",)
+    search_fields = ("owner_id",)
+    search_help_text = "Search by owner id (exact)"
+    ordering = ("-created_at",)
+    list_select_related = ("requested_by",)
+    actions = ["place_on_hold", "release_from_hold", "cancel_deletion"]
+
+    readonly_fields = (
+        "id",
+        "owner_id",
+        "owner_link",
+        "requested_by_link",
+        "on_hold",
+        "created_at",
+        "updated_at",
+    )
+    fields = readonly_fields
+
+    def _can_view(self, request: HttpRequest) -> bool:
+        # Members and Admins get read-only visibility; Viewers/None do not.
+        return get_staff_role(request) in (
+            User.StaffRole.MEMBER,
+            User.StaffRole.ADMIN,
+        )
+
+    def _can_manage(self, request: HttpRequest) -> bool:
+        # Only Admins (superusers) may mutate rows.
+        return get_staff_role(request) == User.StaffRole.ADMIN
+
+    def has_module_permission(self, request: HttpRequest) -> bool:
+        return self._can_view(request)
+
+    def has_view_permission(self, request: HttpRequest, obj=None) -> bool:
+        return self._can_view(request)
+
+    def has_add_permission(self, request: HttpRequest) -> bool:
+        return False
+
+    def has_change_permission(self, request: HttpRequest, obj=None) -> bool:
+        return False
+
+    def has_delete_permission(self, request: HttpRequest, obj=None) -> bool:
+        return False
+
+    def get_actions(self, request: HttpRequest):
+        # The actions mutate rows, so restrict them to Admins/superusers.
+        if not self._can_manage(request):
+            return {}
+        return super().get_actions(request)
+
+    @admin.display(description="Owner")
+    def owner_link(self, obj):
+        owner = Owner.objects.filter(ownerid=obj.owner_id).first()
+        if owner is None:
+            return format_html("<em>missing ({})</em>", obj.owner_id)
+        url = reverse("admin:codecov_auth_owner_change", args=[owner.ownerid])
+        return format_html('<a href="{}">{}</a>', url, owner.username or owner.ownerid)
+
+    @admin.display(description="Requested by")
+    def requested_by_link(self, obj):
+        user = obj.requested_by
+        if user is None:
+            return "-"
+        if user.name and user.email:
+            label = f"{user.name} ({user.email})"
+        else:
+            label = user.name or user.email or user.pk
+        url = reverse("admin:codecov_auth_user_change", args=[user.pk])
+        return format_html('<a href="{}">{}</a>', url, label)
+
+    @admin.action(description="Place on hold (prevent deletion)")
+    def place_on_hold(self, request, queryset):
+        updated = queryset.update(on_hold=True)
+        log.info(
+            "Owners-to-be-deleted placed on hold via admin",
+            extra={
+                "owner_ids": list(queryset.values_list("owner_id", flat=True)),
+                "actor_user_id": _originator_user_id(request),
+            },
+        )
+        self.message_user(
+            request,
+            f"Placed {updated} row(s) on hold. These owners will be skipped by "
+            "the deletion cron until the hold is released.",
+            level=messages.SUCCESS,
+        )
+
+    @admin.action(description="Release hold (allow deletion in a future cycle)")
+    def release_from_hold(self, request, queryset):
+        updated = queryset.update(on_hold=False)
+        log.info(
+            "Owners-to-be-deleted released from hold via admin",
+            extra={
+                "owner_ids": list(queryset.values_list("owner_id", flat=True)),
+                "actor_user_id": _originator_user_id(request),
+            },
+        )
+        self.message_user(
+            request,
+            f"Released hold on {updated} row(s). These owners are now eligible "
+            "for deletion in a future cron cycle.",
+            level=messages.SUCCESS,
+        )
+
+    @admin.action(description="Cancel scheduled deletion (remove row completely)")
+    def cancel_deletion(self, request, queryset):
+        owner_ids = list(queryset.values_list("owner_id", flat=True))
+        deleted, _ = queryset.delete()
+        log.info(
+            "Owners-to-be-deleted rows removed via admin (deletion cancelled)",
+            extra={
+                "owner_ids": owner_ids,
+                "actor_user_id": _originator_user_id(request),
+            },
+        )
+        self.message_user(
+            request,
+            f"Removed {len(owner_ids)} row(s). The pending deletion has been "
+            "cancelled and these owners will not be purged.",
+            level=messages.SUCCESS,
+        )
