@@ -1540,7 +1540,7 @@ class OwnerToBeDeletedAdmin(admin.ModelAdmin):
     search_help_text = "Search by owner id (exact)"
     ordering = ("-created_at",)
     list_select_related = ("requested_by",)
-    actions = ["place_on_hold", "release_from_hold", "cancel_deletion"]
+    actions = ["place_on_hold", "release_from_hold"]
 
     readonly_fields = (
         "id",
@@ -1633,23 +1633,5 @@ class OwnerToBeDeletedAdmin(admin.ModelAdmin):
             request,
             f"Released hold on {updated} row(s). These owners are now eligible "
             "for deletion in a future cron cycle.",
-            level=messages.SUCCESS,
-        )
-
-    @admin.action(description="Cancel scheduled deletion (remove row completely)")
-    def cancel_deletion(self, request, queryset):
-        owner_ids = list(queryset.values_list("owner_id", flat=True))
-        deleted, _ = queryset.delete()
-        log.info(
-            "Owners-to-be-deleted rows removed via admin (deletion cancelled)",
-            extra={
-                "owner_ids": owner_ids,
-                "actor_user_id": _originator_user_id(request),
-            },
-        )
-        self.message_user(
-            request,
-            f"Removed {len(owner_ids)} row(s). The pending deletion has been "
-            "cancelled and these owners will not be purged.",
             level=messages.SUCCESS,
         )

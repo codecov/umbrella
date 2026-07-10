@@ -1351,7 +1351,6 @@ class OwnerToBeDeletedAdminTest(TestCase):
 
         assert "place_on_hold" in admin_actions
         assert "release_from_hold" in admin_actions
-        assert "cancel_deletion" in admin_actions
         assert member_actions == {}
         assert viewer_actions == {}
 
@@ -1418,35 +1417,25 @@ class OwnerToBeDeletedAdminTest(TestCase):
         record.refresh_from_db()
         assert record.on_hold is False
 
-    def test_cancel_deletion_action_removes_row(self):
-        self.client.force_login(user=self.superuser)
-        record = OwnerToBeDeleted.objects.create(owner_id=OwnerFactory().ownerid)
-        response = self.client.post(
-            reverse("admin:codecov_auth_ownertobedeleted_changelist"),
-            {"action": "cancel_deletion", ACTION_CHECKBOX_NAME: [record.pk]},
-        )
-        self.assertEqual(response.status_code, 302)
-        assert not OwnerToBeDeleted.objects.filter(pk=record.pk).exists()
-
     def test_actions_unavailable_to_member(self):
         self.client.force_login(user=self.member_user)
         record = OwnerToBeDeleted.objects.create(owner_id=OwnerFactory().ownerid)
         response = self.client.post(
             reverse("admin:codecov_auth_ownertobedeleted_changelist"),
-            {"action": "cancel_deletion", ACTION_CHECKBOX_NAME: [record.pk]},
+            {"action": "place_on_hold", ACTION_CHECKBOX_NAME: [record.pk]},
         )
         # Unavailable action re-renders the changelist rather than acting.
         self.assertEqual(response.status_code, 200)
         record.refresh_from_db()
         assert record.on_hold is False
-        assert OwnerToBeDeleted.objects.filter(pk=record.pk).exists()
 
     def test_actions_forbidden_to_viewer(self):
         self.client.force_login(user=self.viewer_user)
         record = OwnerToBeDeleted.objects.create(owner_id=OwnerFactory().ownerid)
         response = self.client.post(
             reverse("admin:codecov_auth_ownertobedeleted_changelist"),
-            {"action": "cancel_deletion", ACTION_CHECKBOX_NAME: [record.pk]},
+            {"action": "place_on_hold", ACTION_CHECKBOX_NAME: [record.pk]},
         )
         self.assertEqual(response.status_code, 403)
-        assert OwnerToBeDeleted.objects.filter(pk=record.pk).exists()
+        record.refresh_from_db()
+        assert record.on_hold is False
