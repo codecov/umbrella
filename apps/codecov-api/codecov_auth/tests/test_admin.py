@@ -30,7 +30,7 @@ from codecov_auth.models import (
     User,
 )
 from codecov_auth.services.owner_reconnect import reconnect_owner
-from core.models import Pull
+from core.models import Pull, Repository
 from shared.django_apps.codecov_auth.models import (
     Account,
     AccountsUsers,
@@ -1579,3 +1579,23 @@ class ReconnectOwnerServiceTest(TestCase):
             reconnect_owner(
                 original_ownerid=owner.ownerid, source_ownerid=owner.ownerid
             )
+
+    def test_merge_drops_duplicate_repos_on_conflict(self):
+        original = OwnerFactory(service="to_be_deleted")
+        source = OwnerFactory(service="github", service_id="222")
+        # The original already owns "dup"; the returning owner re-synced "dup"
+        # (a collision on the unique (ownerid, name)) plus a new "unique" repo.
+        RepositoryFactory(author=original, name="dup")
+        RepositoryFactory(author=source, name="dup")
+        RepositoryFactory(author=source, name="unique")
+        OwnerToBeDeleted.objects.create(owner_id=original.ownerid, on_hold=True)
+
+        reconnect_owner(
+            original_ownerid=original.ownerid, source_ownerid=source.ownerid
+        )
+
+        names = set(
+            Repository.objects.filter(author=original).values_list("name", flat=True)
+        )
+        assert names == {"dup", "unique"}
+        assert not Owner.objects.filter(ownerid=source.ownerid).exists()

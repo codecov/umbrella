@@ -11,7 +11,7 @@ original owner's identity from the returning owner, and removes the deletion row
 import logging
 from dataclasses import dataclass
 
-from django.db import transaction
+from django.db import IntegrityError, transaction
 
 from codecov_auth.models import Owner
 from shared.django_apps.codecov_auth.models import OwnerToBeDeleted
@@ -68,7 +68,13 @@ def build_reconnect_preview(original: Owner, source: Owner) -> ReconnectPreview:
 
 
 def _repoint_fk_relations(source: Owner, target: Owner) -> None:
-    """Move every direct foreign-key reference from ``source`` to ``target``."""
+    """Move every direct foreign-key reference from ``source`` to ``target``.
+
+    Some relations are unique per owner (e.g. ``Repository`` on ``(ownerid, name)``).
+    When the returning owner re-synced data the original already has, a blind
+    repoint would violate that constraint, so conflicting source rows are dropped
+    in favour of the original owner's canonical copy.
+    """
     for relation in Owner._meta.related_objects:
         if relation.many_to_many:
             continue
@@ -83,8 +89,27 @@ def _repoint_fk_relations(source: Owner, target: Owner) -> None:
                 source_rows.delete()
             else:
                 source_rows.update(**{field_name: target})
-        else:
-            source_rows.update(**{field_name: target})
+            continue
+
+        # Try a bulk repoint first; fall back to row-by-row on a unique conflict.
+        try:
+            with transaction.atomic():
+                source_rows.update(**{field_name: target})
+        except IntegrityError:
+            _repoint_rows_individually(model, field_name, source, target)
+
+
+def _repoint_rows_individually(
+    model, field_name: str, source: Owner, target: Owner
+) -> None:
+    """Repoint each source row to target, dropping rows that would collide."""
+    for obj in list(model.objects.filter(**{field_name: source})):
+        try:
+            with transaction.atomic():
+                setattr(obj, field_name, target)
+                obj.save(update_fields=[field_name])
+        except IntegrityError:
+            obj.delete()
 
 
 def _repoint_id_references(source_id: int, target_id: int) -> None:
