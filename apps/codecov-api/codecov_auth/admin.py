@@ -5,8 +5,9 @@ from datetime import timedelta
 import django.forms as forms
 from django.conf import settings
 from django.contrib import admin, messages
+from django.contrib.admin.helpers import ACTION_CHECKBOX_NAME
 from django.contrib.admin.models import LogEntry
-from django.db.models import Count, OuterRef, Subquery
+from django.db.models import Count, OuterRef, Q, Subquery
 from django.db.models.fields import BLANK_CHOICE_DASH
 from django.db.models.functions import Coalesce
 from django.forms import CheckboxInput, Select, Textarea
@@ -21,6 +22,12 @@ from codecov.commands.exceptions import ValidationError
 from codecov_auth.helpers import History
 from codecov_auth.models import OrganizationLevelToken, Owner, SentryUser, Session, User
 from codecov_auth.services.org_level_token_service import OrgLevelTokenService
+from codecov_auth.services.owner_reconnect import (
+    build_reconnect_preview,
+)
+from codecov_auth.services.owner_reconnect import (
+    reconnect_owner as reconnect_owner_merge,
+)
 from core.admin import installation_summary, installation_table
 from core.models import Repository
 from services.task import TaskService
@@ -32,6 +39,7 @@ from shared.django_apps.codecov_auth.models import (
     OwnerExport,
     OwnerToBeDeleted,
     Plan,
+    Service,
     StripeBilling,
     Tier,
     _generate_support_pin,
@@ -1540,7 +1548,7 @@ class OwnerToBeDeletedAdmin(admin.ModelAdmin):
     search_help_text = "Search by owner id (exact)"
     ordering = ("-created_at",)
     list_select_related = ("requested_by",)
-    actions = ["place_on_hold", "release_from_hold"]
+    actions = ["place_on_hold", "release_from_hold", "reconnect_owner"]
 
     readonly_fields = (
         "id",
@@ -1634,4 +1642,125 @@ class OwnerToBeDeletedAdmin(admin.ModelAdmin):
             f"Released hold on {updated} row(s). These owners are now eligible "
             "for deletion in a future cron cycle.",
             level=messages.SUCCESS,
+        )
+
+    def _render_reconnect(self, request, template, record, context):
+        return render(
+            request,
+            template,
+            context={
+                **self.admin_site.each_context(request),
+                "opts": self.model._meta,
+                "record": record,
+                "action_checkbox_name": ACTION_CHECKBOX_NAME,
+                **context,
+            },
+        )
+
+    @admin.action(description="Reconnect / undelete the original owner")
+    def reconnect_owner(self, request, queryset):
+        if queryset.count() != 1:
+            self.message_user(
+                request,
+                "Select exactly one row to reconnect.",
+                level=messages.ERROR,
+            )
+            return
+
+        record = queryset.first()
+        if not record.on_hold:
+            self.message_user(
+                request,
+                "Place the row on hold before reconnecting an owner.",
+                level=messages.ERROR,
+            )
+            return
+
+        original = Owner.objects.filter(ownerid=record.owner_id).first()
+        if original is None:
+            self.message_user(
+                request,
+                f"Original owner {record.owner_id} no longer exists.",
+                level=messages.ERROR,
+            )
+            return
+
+        step = request.POST.get("reconnect_step")
+
+        if step == "confirm" and "do_confirm" in request.POST:
+            source = Owner.objects.filter(
+                ownerid=request.POST.get("source_ownerid")
+            ).first()
+            if source is None or source.ownerid == original.ownerid:
+                self.message_user(
+                    request,
+                    "Select a valid owner to reconnect (not the original).",
+                    level=messages.ERROR,
+                )
+                return
+            reconnect_owner_merge(
+                original_ownerid=original.ownerid,
+                source_ownerid=source.ownerid,
+                actor_user_id=_originator_user_id(request),
+            )
+            self.message_user(
+                request,
+                f"Reconnected owner {original.ownerid}: merged data from owner "
+                f"{source.ownerid} and removed the deletion request.",
+                level=messages.SUCCESS,
+            )
+            return
+
+        if step == "select" and "do_continue" in request.POST:
+            source = Owner.objects.filter(
+                ownerid=request.POST.get("source_ownerid")
+            ).first()
+            if source is not None and source.ownerid != original.ownerid:
+                preview = build_reconnect_preview(original, source)
+                return self._render_reconnect(
+                    request,
+                    "admin/codecov_auth/ownertobedeleted/reconnect_confirm.html",
+                    record,
+                    {
+                        "title": "Confirm reconnect",
+                        "original": original,
+                        "source": source,
+                        "identity_changes": preview.identity_changes,
+                        "related_counts": preview.related_counts,
+                    },
+                )
+            self.message_user(
+                request,
+                "Select a valid owner to reconnect (not the original).",
+                level=messages.ERROR,
+            )
+
+        query = (request.POST.get("owner_search") or "").strip()
+        candidates = []
+        if query:
+            search = (
+                Q(username__icontains=query)
+                | Q(name__icontains=query)
+                | Q(email__icontains=query)
+                | Q(service_id=query)
+            )
+            if query.isdigit():
+                search = search | Q(ownerid=int(query))
+            candidates = list(
+                Owner.objects.exclude(ownerid=original.ownerid)
+                .exclude(service=Service.TO_BE_DELETED.value)
+                .filter(search)
+                .order_by("-ownerid")[:25]
+            )
+
+        return self._render_reconnect(
+            request,
+            "admin/codecov_auth/ownertobedeleted/reconnect_select.html",
+            record,
+            {
+                "title": "Reconnect owner",
+                "original": original,
+                "query": query,
+                "candidates": candidates,
+            },
         )

@@ -1,0 +1,48 @@
+{% extends "admin/base_site.html" %}
+
+{% block content %}
+<h1>Confirm reconnect</h1>
+
+<p>
+  This will merge owner <strong>{{ source.ownerid }}</strong> into the original owner
+  <strong>{{ original.ownerid }}</strong>, restore the original owner's identity, and
+  remove deletion request #{{ record.id }}. This cannot be undone.
+</p>
+
+<h2>Identity restored onto the original owner</h2>
+<table>
+  <thead>
+    <tr><th>Field</th><th>Original (current)</th><th>Will become</th></tr>
+  </thead>
+  <tbody>
+    {% for field, old, new in identity_changes %}
+      <tr>
+        <th>{{ field }}</th>
+        <td>{{ old|default:"-" }}</td>
+        <td>{{ new|default:"-" }}</td>
+      </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<h2>References merged from owner {{ source.ownerid }}</h2>
+{% if related_counts %}
+  <ul>
+    {% for rel, count in related_counts.items %}
+      <li>{{ rel }}: {{ count }}</li>
+    {% endfor %}
+  </ul>
+{% else %}
+  <p>No direct references found on the selected owner.</p>
+{% endif %}
+
+<form method="post">
+  {% csrf_token %}
+  <input type="hidden" name="action" value="reconnect_owner">
+  <input type="hidden" name="{{ action_checkbox_name }}" value="{{ record.pk }}">
+  <input type="hidden" name="reconnect_step" value="confirm">
+  <input type="hidden" name="source_ownerid" value="{{ source.ownerid }}">
+  <input type="submit" name="do_confirm" value="Confirm reconnect" class="default">
+  <a href="{% url 'admin:codecov_auth_ownertobedeleted_changelist' %}" class="button cancel-link">Cancel</a>
+</form>
+{% endblock %}

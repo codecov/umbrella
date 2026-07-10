@@ -1,0 +1,62 @@
+{% extends "admin/base_site.html" %}
+
+{% block content %}
+<h1>Reconnect owner for deletion request #{{ record.id }}</h1>
+
+<p>
+  Original (obfuscated) owner id: <strong>{{ original.ownerid }}</strong>
+  &mdash; service <code>{{ original.service }}</code>, service_id
+  <code>{{ original.service_id }}</code>.
+</p>
+<p>
+  Search for the returning owner (created when the user logged back in) to merge
+  back into the original. The original owner's history is preserved; the selected
+  owner's identity and references are merged in and the deletion request is removed.
+</p>
+
+<form method="post">
+  {% csrf_token %}
+  <input type="hidden" name="action" value="reconnect_owner">
+  <input type="hidden" name="{{ action_checkbox_name }}" value="{{ record.pk }}">
+  <input type="hidden" name="reconnect_step" value="select">
+
+  <p>
+    <input type="text" name="owner_search" value="{{ query }}" size="40"
+           placeholder="ownerid, username, name, email, or service_id">
+    <input type="submit" name="do_search" value="Search">
+  </p>
+
+  {% if query %}
+    {% if candidates %}
+      <table>
+        <thead>
+          <tr>
+            <th></th><th>ownerid</th><th>service</th><th>service_id</th>
+            <th>username</th><th>name</th><th>email</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for owner in candidates %}
+            <tr>
+              <td><input type="radio" name="source_ownerid" value="{{ owner.ownerid }}" required></td>
+              <td>{{ owner.ownerid }}</td>
+              <td>{{ owner.service }}</td>
+              <td>{{ owner.service_id }}</td>
+              <td>{{ owner.username|default:"-" }}</td>
+              <td>{{ owner.name|default:"-" }}</td>
+              <td>{{ owner.email|default:"-" }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <p><input type="submit" name="do_continue" value="Continue" class="default"></p>
+    {% else %}
+      <p>No matching owners found.</p>
+    {% endif %}
+  {% endif %}
+
+  <p>
+    <a href="{% url 'admin:codecov_auth_ownertobedeleted_changelist' %}">Cancel</a>
+  </p>
+</form>
+{% endblock %}
