@@ -1226,9 +1226,7 @@ class OwnerToBeDeleted(BaseModel):
     """
 
     owner_id = models.IntegerField(null=False)
-    # The user who originated the deletion request (e.g. the logged-in Django
-    # admin user who deleted the account). Null when the request had no
-    # associated user (e.g. programmatic / automated deletions).
+    # Who originated the deletion; null for programmatic requests.
     requested_by = models.ForeignKey(
         User,
         on_delete=models.SET_NULL,
@@ -1236,9 +1234,7 @@ class OwnerToBeDeleted(BaseModel):
         blank=True,
         related_name="requested_owner_deletions",
     )
-    # When True, the owner is exempt from the deletion cron: the row is kept in
-    # place but skipped until an admin releases the hold, at which point it
-    # becomes eligible for deletion again in a future cycle.
+    # Skipped by the deletion cron (row kept) until an admin releases it.
     on_hold = models.BooleanField(default=False)
 
     class Meta:

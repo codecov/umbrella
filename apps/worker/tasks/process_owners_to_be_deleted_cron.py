@@ -53,9 +53,7 @@ class ProcessOwnersToBeDeletedCronTask(
             f"Starting to process owners marked for deletion (48h delay). Max per run: {max_owners_per_run}"
         )
 
-        # Only process owners that have been waiting at least 48 hours and that
-        # are not on hold. Rows marked on hold are intentionally skipped (and
-        # kept in place) until an admin releases the hold.
+        # At least 48h old and not on hold.
         cutoff = timezone.now() - timedelta(hours=48)
         owners_to_delete = list(
             OwnerToBeDeleted.objects.filter(created_at__lte=cutoff, on_hold=False)[

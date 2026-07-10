@@ -1430,15 +1430,13 @@ class OwnerToBeDeletedAdminTest(TestCase):
         assert not OwnerToBeDeleted.objects.filter(pk=record.pk).exists()
 
     def test_actions_unavailable_to_member(self):
-        # A member can view the screen but cannot run mutating actions; the
-        # action is rejected and the row is left untouched.
         self.client.force_login(user=self.member_user)
         record = OwnerToBeDeleted.objects.create(owner_id=OwnerFactory().ownerid)
         response = self.client.post(
             reverse("admin:codecov_auth_ownertobedeleted_changelist"),
             {"action": "cancel_deletion", ACTION_CHECKBOX_NAME: [record.pk]},
         )
-        # Invalid/unavailable action re-renders the changelist rather than acting.
+        # Unavailable action re-renders the changelist rather than acting.
         self.assertEqual(response.status_code, 200)
         record.refresh_from_db()
         assert record.on_hold is False

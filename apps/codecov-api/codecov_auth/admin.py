@@ -45,11 +45,7 @@ log = logging.getLogger(__name__)
 
 
 def _originator_user_id(request: HttpRequest) -> int | None:
-    """Return the id of the logged-in user driving an admin request.
-
-    Used to record who originated a deletion. Returns ``None`` when there is no
-    resolvable integer user id (e.g. anonymous users or synthetic test requests).
-    """
+    """Id of the logged-in admin user, or None if not a resolvable int."""
     user_id = getattr(getattr(request, "user", None), "id", None)
     return user_id if isinstance(user_id, int) else None
 
@@ -1529,17 +1525,7 @@ class OwnerExportAdmin(AdminMixin, admin.ModelAdmin):
 
 @admin.register(OwnerToBeDeleted)
 class OwnerToBeDeletedAdmin(admin.ModelAdmin):
-    """Superuser-only view of owners queued for deletion.
-
-    Each row records an owner that has been marked for deletion (and had its
-    data obfuscated) but not yet purged from the database, along with the user
-    who originated the request.
-
-    Members and Admins can view the screen; only Admins (superusers) may mutate
-    rows via the provided actions: place a row on hold (exempt it from the
-    deletion cron), release a hold (make it eligible again), or cancel the
-    deletion entirely (remove the row so the pending deletion never runs).
-    """
+    """Owners queued for deletion. Members/Admins view; only Admins act."""
 
     list_display = (
         "id",
@@ -1568,14 +1554,12 @@ class OwnerToBeDeletedAdmin(admin.ModelAdmin):
     fields = readonly_fields
 
     def _can_view(self, request: HttpRequest) -> bool:
-        # Members and Admins get read-only visibility; Viewers/None do not.
         return get_staff_role(request) in (
             User.StaffRole.MEMBER,
             User.StaffRole.ADMIN,
         )
 
     def _can_manage(self, request: HttpRequest) -> bool:
-        # Only Admins (superusers) may mutate rows.
         return get_staff_role(request) == User.StaffRole.ADMIN
 
     def has_module_permission(self, request: HttpRequest) -> bool:
@@ -1594,7 +1578,6 @@ class OwnerToBeDeletedAdmin(admin.ModelAdmin):
         return False
 
     def get_actions(self, request: HttpRequest):
-        # The actions mutate rows, so restrict them to Admins/superusers.
         if not self._can_manage(request):
             return {}
         return super().get_actions(request)
