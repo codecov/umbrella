@@ -124,7 +124,7 @@ def test_get_pr_comment_duration_multiple_testruns_same_test():
         timestamp=base_time, commit_sha="same_commit", duration_seconds=10.0
     )
     testrun2 = TestrunFactory.create(
-        timestamp=base_time.replace(second=base_time.second + 1),
+        timestamp=base_time + timedelta(seconds=1),
         commit_sha="same_commit",
         duration_seconds=15.0,
     )
