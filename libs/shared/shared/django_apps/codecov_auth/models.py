@@ -1239,6 +1239,8 @@ class OwnerToBeDeleted(BaseModel):
 
     class Meta:
         app_label = CODECOV_AUTH_APP_LABEL
+        verbose_name = "Owner to be deleted"
+        verbose_name_plural = "Owners to be deleted"
 
     def __str__(self):
         return f"Owner to be deleted: {self.owner_id}"

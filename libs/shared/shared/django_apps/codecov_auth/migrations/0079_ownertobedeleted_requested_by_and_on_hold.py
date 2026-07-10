@@ -9,6 +9,13 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
+        migrations.AlterModelOptions(
+            name="ownertobedeleted",
+            options={
+                "verbose_name": "Owner to be deleted",
+                "verbose_name_plural": "Owners to be deleted",
+            },
+        ),
         migrations.AddField(
             model_name="ownertobedeleted",
             name="requested_by",
