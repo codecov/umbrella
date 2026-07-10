@@ -1315,8 +1315,7 @@ class OwnerToBeDeletedAdminTest(TestCase):
     def setUp(self):
         self.superuser = UserFactory(is_staff=True, is_superuser=True)
         self.member_user = UserFactory(is_staff=True, staff_role="member")
-        # A plain staff user syncs to the Viewer role.
-        self.viewer_user = UserFactory(is_staff=True)
+        self.viewer_user = UserFactory(is_staff=True, staff_role="viewer")
         admin_site = AdminSite()
         self.model_admin = OwnerToBeDeletedAdmin(OwnerToBeDeleted, admin_site)
 
