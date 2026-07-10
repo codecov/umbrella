@@ -259,7 +259,14 @@ class LoginMixin:
             )
 
         request.session["current_owner_id"] = owner.pk
-        RefreshService().trigger_refresh(owner.ownerid, owner.username)
+        try:
+            RefreshService().trigger_refresh(owner.ownerid, owner.username)
+        except Exception:
+            log.warning(
+                "Failed to trigger refresh after login due to broker connection error",
+                extra={"ownerid": owner.ownerid, "username": owner.username},
+                exc_info=True,
+            )
 
         self.delete_expired_sessions_and_django_sessions(owner)
         self.store_login_session(owner)
