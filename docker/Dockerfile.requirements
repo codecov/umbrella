@@ -56,13 +56,18 @@ FROM $PYTHON_IMAGE
 
 ARG APP_DIR
 
-RUN apt-get update
-RUN apt-get install -y \
+# Patch stale OS packages carried by the base image (this is the scanned stage)
+# and avoid pulling optional codec recommends (libheif/libde265/tiff) that have
+# no Debian fix and are unused at runtime.
+RUN apt-get update \
+    && apt-get -y upgrade \
+    && apt-get install -y --no-install-recommends \
     libxml2-dev \
     libxslt-dev \
     libpq-dev \
     libexpat1 \
-    make
+    make \
+    && rm -rf /var/lib/apt/lists/*
 
 COPY --from=build /wheels/ /wheels/
 
