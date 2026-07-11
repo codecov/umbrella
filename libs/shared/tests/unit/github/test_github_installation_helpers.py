@@ -29,7 +29,7 @@ def test_get_github_jwt_token(mock_jwt, mocker):
         {
             "iat": int(time()),
             "exp": int(time()) + 300,
-            "iss": 15000,
+            "iss": "15000",
         },
         "--------BEGIN RSA PRIVATE KEY-----...",
         algorithm="RS256",
