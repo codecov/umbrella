@@ -16,6 +16,7 @@ from codecov_auth.admin import (
     InvoiceBillingAdmin,
     OrgUploadTokenInline,
     OwnerAdmin,
+    OwnerToBeDeletedAdmin,
     StripeBillingAdmin,
     UserAdmin,
     find_and_remove_stale_users,
@@ -34,6 +35,7 @@ from shared.django_apps.codecov_auth.models import (
     AccountsUsers,
     GithubAppInstallation,
     InvoiceBilling,
+    OwnerToBeDeleted,
     StripeBilling,
 )
 from shared.django_apps.codecov_auth.tests.factories import (
@@ -245,16 +247,31 @@ class OwnerAdminTest(TestCase):
         queryset = MagicMock()
         queryset.__iter__.return_value = [user_to_delete]
 
-        self.owner_admin.delete_queryset(MagicMock(), queryset)
+        request = RequestFactory().get("/admin")
+        request.user = self.staff_user
+        self.owner_admin.delete_queryset(request, queryset)
 
-        delete_mock.assert_called_once_with(ownerid=ownerid)
+        delete_mock.assert_called_once_with(
+            ownerid=ownerid, originator_user_id=self.staff_user.id
+        )
 
     @patch("codecov_auth.admin.TaskService.delete_owner")
     def test_delete_model(self, delete_mock):
         user_to_delete = OwnerFactory(plan=DEFAULT_FREE_PLAN)
         ownerid = user_to_delete.ownerid
+        request = RequestFactory().get("/admin")
+        request.user = self.staff_user
+        self.owner_admin.delete_model(request, user_to_delete)
+        delete_mock.assert_called_once_with(
+            ownerid=ownerid, originator_user_id=self.staff_user.id
+        )
+
+    @patch("codecov_auth.admin.TaskService.delete_owner")
+    def test_delete_model_without_resolvable_user(self, delete_mock):
+        user_to_delete = OwnerFactory(plan=DEFAULT_FREE_PLAN)
+        ownerid = user_to_delete.ownerid
         self.owner_admin.delete_model(MagicMock(), user_to_delete)
-        delete_mock.assert_called_once_with(ownerid=ownerid)
+        delete_mock.assert_called_once_with(ownerid=ownerid, originator_user_id=None)
 
     @patch("codecov_auth.admin.admin.ModelAdmin.log_change")
     def test_prev_and_new_values_in_log_entry(self, mocked_super_log_change):
@@ -1292,3 +1309,133 @@ class TierAdminTest(TestCase):
             "private_repo_support",
         ]:
             self.assertContains(response, f"id_{field}")
+
+
+class OwnerToBeDeletedAdminTest(TestCase):
+    def setUp(self):
+        self.superuser = UserFactory(is_staff=True, is_superuser=True)
+        self.member_user = UserFactory(is_staff=True, staff_role="member")
+        self.viewer_user = UserFactory(is_staff=True, staff_role="viewer")
+        admin_site = AdminSite()
+        self.model_admin = OwnerToBeDeletedAdmin(OwnerToBeDeleted, admin_site)
+
+    def _request_for(self, user):
+        request = RequestFactory().get("/admin/")
+        request.user = user
+        return request
+
+    def test_members_and_admins_can_view_viewers_cannot(self):
+        for user in (self.superuser, self.member_user):
+            request = self._request_for(user)
+            assert self.model_admin.has_module_permission(request) is True
+            assert self.model_admin.has_view_permission(request) is True
+
+        viewer_request = self._request_for(self.viewer_user)
+        assert self.model_admin.has_module_permission(viewer_request) is False
+        assert self.model_admin.has_view_permission(viewer_request) is False
+
+    def test_is_read_only(self):
+        request = self._request_for(self.superuser)
+        assert self.model_admin.has_add_permission(request) is False
+        assert self.model_admin.has_change_permission(request) is False
+        assert self.model_admin.has_delete_permission(request) is False
+
+    def test_actions_only_for_admins(self):
+        admin_actions = self.model_admin.get_actions(self._request_for(self.superuser))
+        member_actions = self.model_admin.get_actions(
+            self._request_for(self.member_user)
+        )
+        viewer_actions = self.model_admin.get_actions(
+            self._request_for(self.viewer_user)
+        )
+
+        assert "place_on_hold" in admin_actions
+        assert "release_from_hold" in admin_actions
+        assert member_actions == {}
+        assert viewer_actions == {}
+
+    def test_owner_link_resolves_owner(self):
+        owner = OwnerFactory()
+        record = OwnerToBeDeleted.objects.create(owner_id=owner.ownerid)
+        link = self.model_admin.owner_link(record)
+        assert reverse("admin:codecov_auth_owner_change", args=[owner.ownerid]) in link
+
+    def test_owner_link_missing_owner(self):
+        record = OwnerToBeDeleted.objects.create(owner_id=99999999)
+        assert "missing" in self.model_admin.owner_link(record)
+
+    def test_requested_by_link(self):
+        requester = UserFactory(name="Deleter", email="deleter@example.com")
+        record = OwnerToBeDeleted.objects.create(
+            owner_id=OwnerFactory().ownerid, requested_by=requester
+        )
+        link = self.model_admin.requested_by_link(record)
+        assert "deleter@example.com" in link
+        assert reverse("admin:codecov_auth_user_change", args=[requester.pk]) in link
+
+    def test_requested_by_link_none(self):
+        record = OwnerToBeDeleted.objects.create(owner_id=OwnerFactory().ownerid)
+        assert self.model_admin.requested_by_link(record) == "-"
+
+    def test_changelist_visible_to_superuser_and_member(self):
+        OwnerToBeDeleted.objects.create(owner_id=OwnerFactory().ownerid)
+        for user in (self.superuser, self.member_user):
+            self.client.force_login(user=user)
+            response = self.client.get(
+                reverse("admin:codecov_auth_ownertobedeleted_changelist")
+            )
+            self.assertEqual(response.status_code, 200)
+
+    def test_changelist_forbidden_to_viewer(self):
+        self.client.force_login(user=self.viewer_user)
+        response = self.client.get(
+            reverse("admin:codecov_auth_ownertobedeleted_changelist")
+        )
+        self.assertEqual(response.status_code, 403)
+
+    def test_place_on_hold_action(self):
+        self.client.force_login(user=self.superuser)
+        record = OwnerToBeDeleted.objects.create(owner_id=OwnerFactory().ownerid)
+        response = self.client.post(
+            reverse("admin:codecov_auth_ownertobedeleted_changelist"),
+            {"action": "place_on_hold", ACTION_CHECKBOX_NAME: [record.pk]},
+        )
+        self.assertEqual(response.status_code, 302)
+        record.refresh_from_db()
+        assert record.on_hold is True
+
+    def test_release_from_hold_action(self):
+        self.client.force_login(user=self.superuser)
+        record = OwnerToBeDeleted.objects.create(
+            owner_id=OwnerFactory().ownerid, on_hold=True
+        )
+        response = self.client.post(
+            reverse("admin:codecov_auth_ownertobedeleted_changelist"),
+            {"action": "release_from_hold", ACTION_CHECKBOX_NAME: [record.pk]},
+        )
+        self.assertEqual(response.status_code, 302)
+        record.refresh_from_db()
+        assert record.on_hold is False
+
+    def test_actions_unavailable_to_member(self):
+        self.client.force_login(user=self.member_user)
+        record = OwnerToBeDeleted.objects.create(owner_id=OwnerFactory().ownerid)
+        response = self.client.post(
+            reverse("admin:codecov_auth_ownertobedeleted_changelist"),
+            {"action": "place_on_hold", ACTION_CHECKBOX_NAME: [record.pk]},
+        )
+        # Unavailable action re-renders the changelist rather than acting.
+        self.assertEqual(response.status_code, 200)
+        record.refresh_from_db()
+        assert record.on_hold is False
+
+    def test_actions_forbidden_to_viewer(self):
+        self.client.force_login(user=self.viewer_user)
+        record = OwnerToBeDeleted.objects.create(owner_id=OwnerFactory().ownerid)
+        response = self.client.post(
+            reverse("admin:codecov_auth_ownertobedeleted_changelist"),
+            {"action": "place_on_hold", ACTION_CHECKBOX_NAME: [record.pk]},
+        )
+        self.assertEqual(response.status_code, 403)
+        record.refresh_from_db()
+        assert record.on_hold is False

@@ -1226,9 +1226,21 @@ class OwnerToBeDeleted(BaseModel):
     """
 
     owner_id = models.IntegerField(null=False)
+    # Who originated the deletion; null for programmatic requests.
+    requested_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="requested_owner_deletions",
+    )
+    # Skipped by the deletion cron (row kept) until an admin releases it.
+    on_hold = models.BooleanField(default=False)
 
     class Meta:
         app_label = CODECOV_AUTH_APP_LABEL
+        verbose_name = "Owner to be deleted"
+        verbose_name_plural = "Owners to be deleted"
 
     def __str__(self):
         return f"Owner to be deleted: {self.owner_id}"
