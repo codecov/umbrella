@@ -773,7 +773,7 @@ class OwnerAdmin(AdminMixin, admin.ModelAdmin):
     )
     list_select_related = ("account",)
     readonly_fields = []
-    search_fields = ("name__iregex", "username__iregex", "email__iregex", "ownerid")
+    search_fields = ("name__icontains", "username__icontains", "email__icontains", "ownerid")
     actions = [
         impersonate_owner,
         extend_trial,
