@@ -17,7 +17,7 @@ from services.yaml import UserYaml
 from shared.django_apps.core.models import Repository
 from shared.django_apps.test_analytics.models import TAPullComment
 from shared.torngit.base import TorngitBaseAdapter
-from shared.torngit.exceptions import TorngitClientError
+from shared.torngit.exceptions import TorngitClientError, TorngitServerFailureError
 from shared.torngit.response_types import ProviderPull
 from shared.upload.types import TAUploadContext
 
@@ -130,6 +130,17 @@ class BaseNotifier:
                     )
             return True
 
+        except TorngitServerFailureError:
+            log.warning(
+                "Git provider unreachable when creating/updating PR comment",
+                extra={
+                    "commitid": self.commit.commitid
+                    if isinstance(self.commit, Commit)
+                    else self.commit["commit_sha"],
+                    "pullid": pullid,
+                },
+            )
+            return False
         except TorngitClientError:
             log.error(
                 "Error creating/updating PR comment",
