@@ -25,10 +25,6 @@ from services.notification.notifiers.comment.conditions import (
 )
 from services.notification.notifiers.mixins.message import MessageMixin
 from services.urls import append_tracking_params_to_urls, get_members_url, get_plan_url
-from shared.django_apps.codecov_auth.sentry_app_deprecation import (
-    SENTRY_APP_DEPRECATION_DATE,
-    is_owner_only_using_sentry_app,
-)
 from shared.metrics import Counter, inc_counter
 from shared.plan.constants import PlanName
 from shared.torngit.exceptions import (
@@ -319,22 +315,9 @@ class CommentNotifier(MessageMixin, AbstractBaseNotifier):
         }
 
     def is_enabled(self) -> bool:
-        if is_owner_only_using_sentry_app(self.repository.ownerid):
-            return True
         return bool(self.notifier_yaml_settings) and isinstance(
             self.notifier_yaml_settings, dict
         )
-
-    SENTRY_APP_DEPRECATION_NOTICE = (
-        "> [!CAUTION]\n"
-        "> This repository is currently using the Sentry GitHub App to receive Codecov PR comments. "
-        f"This integration will be deprecated on {SENTRY_APP_DEPRECATION_DATE}. "
-        "Please [install the Codecov GitHub App](https://github.com/apps/codecov/installations/select_target) "
-        "to continue receiving coverage reports on your pull requests."
-    )
-
-    def is_only_using_sentry_app(self, comparison: ComparisonProxy) -> bool:
-        return is_owner_only_using_sentry_app(self.repository.ownerid)
 
     def build_message(
         self,
@@ -358,12 +341,6 @@ class CommentNotifier(MessageMixin, AbstractBaseNotifier):
             self.notifier_yaml_settings,
             status_or_checks_helper_text=status_or_checks_helper_text,
         )
-        if self.is_only_using_sentry_app(comparison):
-            for i, line in enumerate(message):
-                if line.startswith("## [Codecov]"):
-                    message.insert(i + 1, "")
-                    message.insert(i + 2, self.SENTRY_APP_DEPRECATION_NOTICE)
-                    break
         return message
 
     def should_see_project_coverage_cta(self):

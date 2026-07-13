@@ -36,7 +36,6 @@ from services.test_results import (
 from shared.celery_config import process_flakes_task_name
 from shared.django_apps.reports.models import ReportSession, UploadError
 from shared.helpers.redis import get_redis_connection
-from shared.helpers.sentry import owner_uses_sentry
 from shared.reports.types import UploadType
 from shared.typings.torngit import AdditionalData
 from shared.yaml import UserYaml
@@ -190,8 +189,6 @@ def ta_finish_upload(
             "queue_notify": False,
         }
 
-    for_prevent = owner_uses_sentry(repo.author)
-
     notifier = TestResultsNotifier(
         repo,
         commit,
@@ -199,7 +196,6 @@ def ta_finish_upload(
         _pull=pull,
         _repo_service=repo_service,
         error=error,
-        for_prevent=for_prevent,
     )
 
     seat_needs_activation = check_seat_activation(db_session, pull)
@@ -229,9 +225,6 @@ def ta_finish_upload(
 
     if summary["failed"] == 0:
         log.info("All tests passed, not posting comment", extra=extra)
-        if for_prevent:
-            notifier.all_passed_comment()
-
         return {
             "notify_attempted": False,
             "notify_succeeded": True,

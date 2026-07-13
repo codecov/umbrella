@@ -239,10 +239,11 @@ class TaskService:
             kwargs={"sender": sender, "account": account, "action": action},
         ).apply_async()
 
-    def delete_owner(self, ownerid):
+    def delete_owner(self, ownerid, originator_user_id: int | None = None):
         log.info(f"Triggering delete_owner task for owner: {ownerid}")
         self._create_signature(
-            celery_config.mark_owner_for_deletion_task_name, kwargs={"ownerid": ownerid}
+            celery_config.mark_owner_for_deletion_task_name,
+            kwargs={"ownerid": ownerid, "originator_user_id": originator_user_id},
         ).apply_async()
 
     def export_owner_data(

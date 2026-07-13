@@ -9,7 +9,6 @@ class UploaderType(Enum):
 
 class UploadPipeline(StrEnum):
     CODECOV = "codecov"
-    SENTRY = "sentry"
 
 
 class TAUploadContext(TypedDict):

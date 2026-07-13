@@ -42,7 +42,6 @@ from shared.config import get_config
 from shared.django_apps.upload_breadcrumbs.models import Errors, Milestones
 from shared.django_apps.user_measurements.models import UserMeasurement
 from shared.helpers.redis import get_redis_connection
-from shared.helpers.sentry import owner_uses_sentry
 from shared.metrics import Counter, Histogram, inc_counter
 from shared.torngit.exceptions import TorngitClientError, TorngitRepoNotFoundError
 from shared.upload.types import UploaderType
@@ -926,11 +925,7 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
             test_results_finisher_task.signature(kwargs=finisher_kwargs),
         )
 
-        product = (
-            "prevent" if owner_uses_sentry(commit.repository.author) else "codecov"
-        )
-
-        inc_counter(TA_SCHEDULED_COUNTER, labels={"product": product})
+        inc_counter(TA_SCHEDULED_COUNTER, labels={"product": "codecov"})
 
         chain_result = chain(*task_group).apply_async()
 

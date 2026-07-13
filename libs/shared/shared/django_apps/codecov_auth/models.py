@@ -386,6 +386,12 @@ class Owner(ExportModelOperationsMixin("codecov_auth.owner"), models.Model):
             models.UniqueConstraint(
                 fields=["service", "service_id"], name="owner_service_ids"
             ),
+            # Postgres treats NULLs as distinct, so this stays satisfiable while
+            # rows are still being backfilled; the backing index is created
+            # CONCURRENTLY in migration 0078 to avoid locking the owners table.
+            models.UniqueConstraint(
+                fields=["external_id"], name="owner_external_id_uniq"
+            ),
         ]
 
     REQUIRED_FIELDS = []
@@ -461,6 +467,10 @@ class Owner(ExportModelOperationsMixin("codecov_auth.owner"), models.Model):
     # batches.
     support_pin = models.CharField(
         max_length=6, null=True, blank=True, default="000000"
+    )
+
+    external_id = models.UUIDField(
+        null=True, blank=True, default=uuid.uuid4, editable=False
     )
 
     sentry_user_id = models.TextField(null=True, blank=True, unique=True)
@@ -1216,9 +1226,21 @@ class OwnerToBeDeleted(BaseModel):
     """
 
     owner_id = models.IntegerField(null=False)
+    # Who originated the deletion; null for programmatic requests.
+    requested_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="requested_owner_deletions",
+    )
+    # Skipped by the deletion cron (row kept) until an admin releases it.
+    on_hold = models.BooleanField(default=False)
 
     class Meta:
         app_label = CODECOV_AUTH_APP_LABEL
+        verbose_name = "Owner to be deleted"
+        verbose_name_plural = "Owners to be deleted"
 
     def __str__(self):
         return f"Owner to be deleted: {self.owner_id}"

@@ -74,9 +74,9 @@ TEMPLATES = [
     }
 ]
 
-GITHUB_SENTRY_APP_NAME = "sentry_app"
+# Used only by the (disabled) inbound Sentry supertoken flow to look up the
+# Sentry app's pre-existing GithubAppInstallation for already-linked owners.
 GITHUB_SENTRY_APP_ID = get_config("github", "sentry_merge_app_id")
-GITHUB_SENTRY_APP_PEM = get_config("github", "sentry_merge_app_pem")
 
 
 # Password validation

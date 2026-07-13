@@ -242,10 +242,17 @@ def resolve_is_current_user_an_admin(owner: Owner, info: GraphQLResolveInfo) -> 
 
 
 @owner_bindable.field("isOnlyUsingSentryApp")
+@require_part_of_org
 async def resolve_is_only_using_sentry_app(
     owner: Owner, info: GraphQLResolveInfo
 ) -> bool:
     return await sync_to_async(is_owner_only_using_sentry_app)(owner.ownerid)
+
+
+@owner_bindable.field("externalId")
+@require_part_of_org
+def resolve_external_id(owner: Owner, info: GraphQLResolveInfo) -> str | None:
+    return str(owner.external_id) if owner.external_id else None
 
 
 @owner_bindable.field("hashOwnerid")

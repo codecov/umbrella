@@ -326,9 +326,9 @@ GITHUB_ENTERPRISE_TOKENLESS_BOT_KEY = get_config(
 )
 GITHUB_ENTERPRISE_ACTIONS_TOKEN = get_config("github_enterprise", "actions_token")
 
-GITHUB_SENTRY_APP_NAME = "sentry_app"
+# Used only by the (disabled) inbound Sentry supertoken flow to look up the
+# Sentry app's pre-existing GithubAppInstallation for already-linked owners.
 GITHUB_SENTRY_APP_ID = get_config("github", "sentry_merge_app_id")
-GITHUB_SENTRY_APP_PEM = get_config("github", "sentry_merge_app_pem")
 
 BITBUCKET_CLIENT_ID = get_config("bitbucket", "client_id")
 BITBUCKET_CLIENT_SECRET = get_config("bitbucket", "client_secret")
@@ -417,17 +417,8 @@ SENTRY_JWT_SHARED_SECRET = get_config(
 SENTRY_USER_WEBHOOK_URL = get_config(
     "sentry", "webhook_url", default=None
 ) or get_config("setup", "sentry", "webhook_url", default=None)
-SENTRY_OAUTH_CLIENT_ID = get_config("sentry", "client_id") or get_config(
-    "setup", "sentry", "oauth_client_id"
-)
-SENTRY_OAUTH_CLIENT_SECRET = get_config("sentry", "client_secret") or get_config(
-    "setup", "sentry", "oauth_client_secret"
-)
 SENTRY_OIDC_SHARED_SECRET = get_config("sentry", "oidc_shared_secret") or get_config(
     "setup", "sentry", "oidc_shared_secret"
-)
-SENTRY_OAUTH_REDIRECT_URI = get_config(
-    "setup", "sentry", "oauth_redirect_uri", default=f"{CODECOV_API_URL}/login/sentry"
 )
 
 OKTA_OAUTH_CLIENT_ID = get_config("setup", "okta", "oauth_client_id")

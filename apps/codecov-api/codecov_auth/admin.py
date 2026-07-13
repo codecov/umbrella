@@ -12,21 +12,25 @@ from django.db.models.functions import Coalesce
 from django.forms import CheckboxInput, Select, Textarea
 from django.http import HttpRequest
 from django.shortcuts import redirect, render
+from django.urls import reverse
 from django.utils import timezone
-from django.utils.html import format_html
+from django.utils.html import format_html, format_html_join
 
-from codecov.admin import AdminMixin
+from codecov.admin import AdminMixin, get_staff_role
 from codecov.commands.exceptions import ValidationError
 from codecov_auth.helpers import History
 from codecov_auth.models import OrganizationLevelToken, Owner, SentryUser, Session, User
 from codecov_auth.services.org_level_token_service import OrgLevelTokenService
+from core.admin import installation_summary, installation_table
 from core.models import Repository
 from services.task import TaskService
 from shared.django_apps.codecov_auth.models import (
     Account,
     AccountsUsers,
+    GithubAppInstallation,
     InvoiceBilling,
     OwnerExport,
+    OwnerToBeDeleted,
     Plan,
     StripeBilling,
     Tier,
@@ -38,6 +42,12 @@ from shared.plan.service import PlanService
 from utils.services import get_short_service_name
 
 log = logging.getLogger(__name__)
+
+
+def _originator_user_id(request: HttpRequest) -> int | None:
+    """Id of the logged-in admin user, or None if not a resolvable int."""
+    user_id = getattr(getattr(request, "user", None), "id", None)
+    return user_id if isinstance(user_id, int) else None
 
 
 class ExtendTrialForm(forms.Form):
@@ -752,11 +762,16 @@ class OwnerAdmin(AdminMixin, admin.ModelAdmin):
     list_display = (
         "username",
         "name",
+        "external_id",
         "repository_count",
+        "github_app_installations_summary",
         "email",
         "service",
+        "plan_display",
+        "seats_display",
         "support_pin",
     )
+    list_select_related = ("account",)
     readonly_fields = []
     search_fields = ("name__iregex", "username__iregex", "email__iregex", "ownerid")
     actions = [
@@ -771,6 +786,7 @@ class OwnerAdmin(AdminMixin, admin.ModelAdmin):
 
     readonly_fields = (
         "ownerid",
+        "external_id",
         "username",
         "service",
         "email",
@@ -784,14 +800,19 @@ class OwnerAdmin(AdminMixin, admin.ModelAdmin):
         "invoice_details",
         "yaml",
         "updatestamp",
-        "permission",
+        "permission_list",
         "student",
         "student_created_at",
         "student_updated_at",
-        "user",
-        "trial_fired_by",
+        "user_link",
+        "trial_fired_by_link",
+        "stripe_customer_link",
+        "stripe_subscription_link",
         "sentry_user_id",
         "support_pin",
+        "plan_activated_users_list",
+        "admins_list",
+        "github_app_installations_table",
     )
 
     fieldsets = [
@@ -800,12 +821,13 @@ class OwnerAdmin(AdminMixin, admin.ModelAdmin):
             {
                 "fields": [
                     "ownerid",
+                    "external_id",
                     "username",
                     "service",
                     "name",
                     "service_id",
                     "student",
-                    "user",
+                    "user_link",
                     "sentry_user_id",
                 ]
             },
@@ -815,7 +837,7 @@ class OwnerAdmin(AdminMixin, admin.ModelAdmin):
             {
                 "fields": [
                     "trial_status",
-                    "trial_fired_by",
+                    "trial_fired_by_link",
                     "trial_start_date",
                     "trial_end_date",
                 ]
@@ -831,6 +853,7 @@ class OwnerAdmin(AdminMixin, admin.ModelAdmin):
                     "plan_user_count",
                     "free",
                     "plan_activated_users",
+                    "plan_activated_users_list",
                 ]
             },
         ),
@@ -841,8 +864,18 @@ class OwnerAdmin(AdminMixin, admin.ModelAdmin):
                     "uses_invoice",
                     "delinquent",
                     "stripe_customer_id",
+                    "stripe_customer_link",
                     "stripe_subscription_id",
+                    "stripe_subscription_link",
                     "plan_provider",
+                ]
+            },
+        ),
+        (
+            "GitHub App installations",
+            {
+                "fields": [
+                    "github_app_installations_table",
                 ]
             },
         ),
@@ -850,7 +883,7 @@ class OwnerAdmin(AdminMixin, admin.ModelAdmin):
             "Reference fields",
             {
                 "fields": [
-                    "admins",
+                    "admins_list",
                     "staff",
                     "upload_token_required_for_public_repos",
                     "email",
@@ -862,7 +895,7 @@ class OwnerAdmin(AdminMixin, admin.ModelAdmin):
                     "bot",
                     "max_upload_limit",
                     "organizations",
-                    "permission",
+                    "permission_list",
                     "student_created_at",
                     "student_updated_at",
                     "onboarding_completed",
@@ -889,11 +922,178 @@ class OwnerAdmin(AdminMixin, admin.ModelAdmin):
             super()
             .get_queryset(request)
             .annotate(repository_count=Coalesce(Subquery(repository_count_subquery), 0))
+            .prefetch_related("github_app_installations")
         )
 
     @admin.display(description="repositories", ordering="repository_count")
     def repository_count(self, obj):
         return obj.repository_count
+
+    @admin.display(description="GitHub App installations")
+    def github_app_installations_summary(self, obj):
+        # Comma-separated summary for the changelist. Relies on the
+        # `github_app_installations` prefetch in `get_queryset`.
+        return installation_summary(obj.github_app_installations.all())
+
+    @admin.display(description="GitHub App installations")
+    def github_app_installations_table(self, obj):
+        return installation_table(obj.github_app_installations.all())
+
+    @admin.display(description="Plan")
+    def plan_display(self, obj):
+        # An owner's plan lives on its Account when one is attached.
+        if obj.account_id:
+            return obj.account.plan
+        return obj.plan
+
+    @admin.display(description="Seats (taken / total)")
+    def seats_display(self, obj):
+        if obj.account_id:
+            taken = obj.account.activated_user_count
+            total = obj.account.total_seat_count
+        else:
+            taken = len(obj.plan_activated_users or [])
+            total = (obj.plan_user_count or 0) + (obj.free or 0)
+        return f"{taken} / {total}"
+
+    @admin.display(description="User")
+    def user_link(self, obj):
+        user = obj.user
+        if user is None:
+            return "-"
+        if user.name and user.email:
+            label = f"{user.name} ({user.email})"
+        else:
+            label = user.name or user.email or user.pk
+        url = reverse("admin:codecov_auth_user_change", args=[user.pk])
+        return format_html('<a href="{}">{}</a>', url, label)
+
+    @admin.display(description="Trial fired by")
+    def trial_fired_by_link(self, obj):
+        if not obj.trial_fired_by:
+            return "-"
+        owner = Owner.objects.filter(ownerid=obj.trial_fired_by).first()
+        if owner is None:
+            return obj.trial_fired_by
+        url = reverse("admin:codecov_auth_owner_change", args=[owner.ownerid])
+        return format_html('<a href="{}">{}</a>', url, owner.username or owner.ownerid)
+
+    @admin.display(description="Stripe customer")
+    def stripe_customer_link(self, obj):
+        # We don't store Stripe invoices/charges locally; the Stripe dashboard
+        # is the source of truth for this customer's billing records.
+        if not obj.stripe_customer_id:
+            return "-"
+        url = f"https://dashboard.stripe.com/customers/{obj.stripe_customer_id}"
+        return format_html(
+            '<a href="{}" target="_blank" rel="noopener noreferrer">{}</a>',
+            url,
+            obj.stripe_customer_id,
+        )
+
+    @admin.display(description="Stripe subscription")
+    def stripe_subscription_link(self, obj):
+        if not obj.stripe_subscription_id:
+            return "-"
+        url = f"https://dashboard.stripe.com/subscriptions/{obj.stripe_subscription_id}"
+        return format_html(
+            '<a href="{}" target="_blank" rel="noopener noreferrer">{}</a>',
+            url,
+            obj.stripe_subscription_id,
+        )
+
+    def _links_table(self, ids, objects, url_name, label_fn, headers):
+        """Render `ids` as a two-column table linking each to its admin page.
+
+        `objects` maps id -> instance for the ids that still resolve; unresolved
+        ids are shown inline as missing.
+        """
+        if not ids:
+            return "-"
+        rows = format_html_join(
+            "",
+            "<tr><td style='padding:2px 16px 2px 0'>{}</td><td>{}</td></tr>",
+            (
+                (
+                    obj_id,
+                    (
+                        format_html(
+                            '<a href="{}">{}</a>',
+                            reverse(url_name, args=[obj_id]),
+                            label_fn(objects[obj_id]),
+                        )
+                        if obj_id in objects
+                        else format_html("<em>missing ({})</em>", obj_id)
+                    ),
+                )
+                for obj_id in ids
+            ),
+        )
+        return format_html(
+            "<table><thead><tr>"
+            "<th style='text-align:left;padding-right:16px'>{}</th>"
+            "<th style='text-align:left'>{}</th>"
+            "</tr></thead><tbody>{}</tbody></table>",
+            headers[0],
+            headers[1],
+            rows,
+        )
+
+    def _owners_table(self, ownerids):
+        owners = {
+            owner.ownerid: owner
+            for owner in Owner.objects.filter(ownerid__in=ownerids or [])
+        }
+        return self._links_table(
+            ownerids,
+            owners,
+            "admin:codecov_auth_owner_change",
+            lambda owner: owner.username or owner.ownerid,
+            ("Owner ID", "Username"),
+        )
+
+    def _repo_slug(self, repo):
+        author = repo.author
+        if author is not None:
+            return f"{author.service}:{author.username}/{repo.name}"
+        return repo.name or repo.repoid
+
+    def _repos_table(self, repoids):
+        repos = {
+            repo.repoid: repo
+            for repo in Repository.objects.filter(
+                repoid__in=repoids or []
+            ).select_related("author")
+        }
+        return self._links_table(
+            repoids,
+            repos,
+            "admin:core_repository_change",
+            self._repo_slug,
+            ("Repo ID", "Repository"),
+        )
+
+    @admin.display(description="Plan activated users (linked)")
+    def plan_activated_users_list(self, obj):
+        return self._owners_table(obj.plan_activated_users)
+
+    @admin.display(description="Admins")
+    def admins_list(self, obj):
+        ownerids = obj.admins or []
+        return format_html(
+            "<div style='margin-bottom:6px'>Total: {}</div>{}",
+            len(ownerids),
+            self._owners_table(ownerids),
+        )
+
+    @admin.display(description="Permission")
+    def permission_list(self, obj):
+        repoids = obj.permission or []
+        return format_html(
+            "<div style='margin-bottom:6px'>Total: {}</div>{}",
+            len(repoids),
+            self._repos_table(repoids),
+        )
 
     def get_form(self, request, obj=None, change=False, **kwargs):
         form = super().get_form(request, obj, change, **kwargs)
@@ -941,11 +1141,16 @@ class OwnerAdmin(AdminMixin, admin.ModelAdmin):
         return bool(request.user and request.user.is_staff)
 
     def delete_queryset(self, request, queryset) -> None:
+        originator_user_id = _originator_user_id(request)
         for owner in queryset:
-            TaskService().delete_owner(ownerid=owner.ownerid)
+            TaskService().delete_owner(
+                ownerid=owner.ownerid, originator_user_id=originator_user_id
+            )
 
     def delete_model(self, request, obj) -> None:
-        TaskService().delete_owner(ownerid=obj.ownerid)
+        TaskService().delete_owner(
+            ownerid=obj.ownerid, originator_user_id=_originator_user_id(request)
+        )
 
     def get_deleted_objects(self, objs, request):
         return [], {}, set(), []
@@ -959,6 +1164,143 @@ class OwnerAdmin(AdminMixin, admin.ModelAdmin):
             if formset.is_valid() and token_id and token_refresh:
                 OrgLevelTokenService.refresh_token(token_id)
         return super().save_related(request, form, formsets, change)
+
+
+@admin.register(GithubAppInstallation)
+class GithubAppInstallationAdmin(AdminMixin, admin.ModelAdmin):
+    list_display = (
+        "id",
+        "name",
+        "owner_link",
+        "app_id",
+        "installation_id",
+        "coverage",
+        "is_suspended",
+    )
+    list_filter = ("is_suspended", "name")
+    list_select_related = ("owner",)
+    search_fields = (
+        "owner__username",
+        "name",
+        "=installation_id",
+        "=app_id",
+    )
+    search_help_text = (
+        "Search by owner username, name, installation_id (exact), or app_id (exact)"
+    )
+    autocomplete_fields = ("owner",)
+
+    # Cap the covered-repositories table so an "all repos" installation for a
+    # large owner doesn't try to render thousands of rows.
+    COVERED_REPOS_DISPLAY_LIMIT = 200
+
+    readonly_fields = (
+        "id",
+        "external_id",
+        "created_at",
+        "updated_at",
+        "coverage",
+        "covered_repositories",
+    )
+    fields = (
+        "id",
+        "external_id",
+        "created_at",
+        "updated_at",
+        "owner",
+        "name",
+        "app_id",
+        "installation_id",
+        "coverage",
+        "repository_service_ids",
+        "covered_repositories",
+        "pem_path",
+        "is_suspended",
+    )
+
+    @admin.display(description="Owner")
+    def owner_link(self, obj):
+        owner = obj.owner
+        if owner is None:
+            return "-"
+        url = reverse("admin:codecov_auth_owner_change", args=[owner.ownerid])
+        return format_html('<a href="{}">{}/{}</a>', url, owner.service, owner.username)
+
+    @admin.display(description="Coverage")
+    def coverage(self, obj):
+        if obj.covers_all_repos():
+            return "all repos"
+        return f"{len(obj.repository_service_ids or [])} repo(s)"
+
+    @admin.display(description="Covered repositories")
+    def covered_repositories(self, obj):
+        """Read-only tabular list of the repos this installation covers.
+
+        A true Django ``TabularInline`` isn't possible here: coverage is
+        derived from the ``repository_service_ids`` array rather than a
+        ForeignKey back to the installation. This renders the same
+        information and links each row to the Repository admin page.
+        """
+        if obj.pk is None:
+            return "-"
+        if obj.covers_all_repos():
+            # Every repo for the owner is covered; linking to the filtered
+            # Repository changelist is friendlier than rendering thousands of rows.
+            url = reverse("admin:core_repository_changelist")
+            url += f"?author__ownerid__exact={obj.owner.ownerid}"
+            count = obj.repository_queryset().count()
+            return format_html(
+                '<a href="{}">View all {} repositories for this owner</a>',
+                url,
+                count,
+            )
+        queryset = obj.repository_queryset().order_by("name")
+        total = queryset.count()
+        if total == 0:
+            return "-"
+        repos = list(queryset[: self.COVERED_REPOS_DISPLAY_LIMIT])
+        rows = format_html_join(
+            "",
+            "<tr>"
+            "<td style='padding:2px 16px 2px 0'><a href='{}'>{}</a></td>"
+            "<td style='padding:2px 16px 2px 0'>{}</td>"
+            "<td style='padding:2px 16px 2px 0'>{}</td>"
+            "<td>{}</td>"
+            "</tr>",
+            (
+                (
+                    reverse("admin:core_repository_change", args=[repo.repoid]),
+                    repo.name,
+                    repo.service_id,
+                    "yes" if repo.private else "no",
+                    "yes" if repo.active else "no",
+                )
+                for repo in repos
+            ),
+        )
+        table = format_html(
+            "<table><thead><tr>"
+            "<th style='text-align:left;padding-right:16px'>Name</th>"
+            "<th style='text-align:left;padding-right:16px'>Service ID</th>"
+            "<th style='text-align:left;padding-right:16px'>Private</th>"
+            "<th style='text-align:left'>Active</th>"
+            "</tr></thead><tbody>{}</tbody></table>",
+            rows,
+        )
+        if total > len(repos):
+            return format_html(
+                "{}<p>Showing {} of {} covered repositories.</p>",
+                table,
+                len(repos),
+                total,
+            )
+        return table
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
 
 
 @admin.register(LogEntry)
@@ -1179,3 +1521,117 @@ class OwnerExportAdmin(AdminMixin, admin.ModelAdmin):
 
     def has_delete_permission(self, request, obj=None):
         return True
+
+
+@admin.register(OwnerToBeDeleted)
+class OwnerToBeDeletedAdmin(admin.ModelAdmin):
+    """Owners queued for deletion. Members/Admins view; only Admins act."""
+
+    list_display = (
+        "id",
+        "owner_link",
+        "requested_by_link",
+        "on_hold",
+        "created_at",
+        "updated_at",
+    )
+    list_filter = ("on_hold",)
+    search_fields = ("owner_id",)
+    search_help_text = "Search by owner id (exact)"
+    ordering = ("-created_at",)
+    list_select_related = ("requested_by",)
+    actions = ["place_on_hold", "release_from_hold"]
+
+    readonly_fields = (
+        "id",
+        "owner_id",
+        "owner_link",
+        "requested_by_link",
+        "on_hold",
+        "created_at",
+        "updated_at",
+    )
+    fields = readonly_fields
+
+    def _can_view(self, request: HttpRequest) -> bool:
+        return get_staff_role(request) in (
+            User.StaffRole.MEMBER,
+            User.StaffRole.ADMIN,
+        )
+
+    def _can_manage(self, request: HttpRequest) -> bool:
+        return get_staff_role(request) == User.StaffRole.ADMIN
+
+    def has_module_permission(self, request: HttpRequest) -> bool:
+        return self._can_view(request)
+
+    def has_view_permission(self, request: HttpRequest, obj=None) -> bool:
+        return self._can_view(request)
+
+    def has_add_permission(self, request: HttpRequest) -> bool:
+        return False
+
+    def has_change_permission(self, request: HttpRequest, obj=None) -> bool:
+        return False
+
+    def has_delete_permission(self, request: HttpRequest, obj=None) -> bool:
+        return False
+
+    def get_actions(self, request: HttpRequest):
+        if not self._can_manage(request):
+            return {}
+        return super().get_actions(request)
+
+    @admin.display(description="Owner")
+    def owner_link(self, obj):
+        owner = Owner.objects.filter(ownerid=obj.owner_id).first()
+        if owner is None:
+            return format_html("<em>missing ({})</em>", obj.owner_id)
+        url = reverse("admin:codecov_auth_owner_change", args=[owner.ownerid])
+        return format_html('<a href="{}">{}</a>', url, owner.username or owner.ownerid)
+
+    @admin.display(description="Requested by")
+    def requested_by_link(self, obj):
+        user = obj.requested_by
+        if user is None:
+            return "-"
+        if user.name and user.email:
+            label = f"{user.name} ({user.email})"
+        else:
+            label = user.name or user.email or user.pk
+        url = reverse("admin:codecov_auth_user_change", args=[user.pk])
+        return format_html('<a href="{}">{}</a>', url, label)
+
+    @admin.action(description="Place on hold (prevent deletion)")
+    def place_on_hold(self, request, queryset):
+        updated = queryset.update(on_hold=True)
+        log.info(
+            "Owners-to-be-deleted placed on hold via admin",
+            extra={
+                "owner_ids": list(queryset.values_list("owner_id", flat=True)),
+                "actor_user_id": _originator_user_id(request),
+            },
+        )
+        self.message_user(
+            request,
+            f"Placed {updated} row(s) on hold. These owners will be skipped by "
+            "the deletion cron until the hold is released.",
+            level=messages.SUCCESS,
+        )
+
+    @admin.action(description="Release hold (allow deletion in a future cycle)")
+    def release_from_hold(self, request, queryset):
+        updated = queryset.update(on_hold=False)
+        log.info(
+            "Owners-to-be-deleted released from hold via admin",
+            extra={
+                "owner_ids": list(queryset.values_list("owner_id", flat=True)),
+                "actor_user_id": _originator_user_id(request),
+            },
+        )
+        self.message_user(
+            request,
+            f"Released hold on {updated} row(s). These owners are now eligible "
+            "for deletion in a future cron cycle.",
+            level=messages.SUCCESS,
+        )
