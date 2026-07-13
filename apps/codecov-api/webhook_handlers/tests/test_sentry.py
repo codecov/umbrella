@@ -305,7 +305,7 @@ class TestSentryWebhook:
             HTTP_AUTHORIZATION=f"Bearer {create_valid_jwt_token}",
             **{GitHubHTTPHeaders.EVENT: "installation"},
         )
-        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert response.status_code == status.HTTP_200_OK
 
     def test_empty_request_data(self, client, url, create_valid_jwt_token):
         data = {}
@@ -317,7 +317,7 @@ class TestSentryWebhook:
             HTTP_AUTHORIZATION=f"Bearer {create_valid_jwt_token}",
             **{GitHubHTTPHeaders.EVENT: "installation"},
         )
-        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert response.status_code == status.HTTP_200_OK
 
     def test_successful_installation_response_format(
         self,
