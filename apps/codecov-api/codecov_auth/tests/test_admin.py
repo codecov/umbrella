@@ -29,7 +29,8 @@ from codecov_auth.models import (
     Tier,
     User,
 )
-from core.models import Pull
+from codecov_auth.services.owner_reconnect import reconnect_owner
+from core.models import Pull, Repository
 from shared.django_apps.codecov_auth.models import (
     Account,
     AccountsUsers,
@@ -1351,6 +1352,7 @@ class OwnerToBeDeletedAdminTest(TestCase):
 
         assert "place_on_hold" in admin_actions
         assert "release_from_hold" in admin_actions
+        assert "reconnect_owner" in admin_actions
         assert member_actions == {}
         assert viewer_actions == {}
 
@@ -1439,3 +1441,161 @@ class OwnerToBeDeletedAdminTest(TestCase):
         self.assertEqual(response.status_code, 403)
         record.refresh_from_db()
         assert record.on_hold is False
+
+    def test_reconnect_requires_on_hold(self):
+        self.client.force_login(user=self.superuser)
+        record = OwnerToBeDeleted.objects.create(
+            owner_id=OwnerFactory().ownerid, on_hold=False
+        )
+        response = self.client.post(
+            reverse("admin:codecov_auth_ownertobedeleted_changelist"),
+            {"action": "reconnect_owner", ACTION_CHECKBOX_NAME: [record.pk]},
+            follow=True,
+        )
+        messages = [str(m) for m in response.context["messages"]]
+        assert any("on hold" in m for m in messages)
+        assert OwnerToBeDeleted.objects.filter(pk=record.pk).exists()
+
+    def test_reconnect_select_interstitial_searches(self):
+        self.client.force_login(user=self.superuser)
+        original = OwnerFactory(service="to_be_deleted")
+        source = OwnerFactory(service="github", username="realuser", name="Real User")
+        record = OwnerToBeDeleted.objects.create(
+            owner_id=original.ownerid, on_hold=True
+        )
+        response = self.client.post(
+            reverse("admin:codecov_auth_ownertobedeleted_changelist"),
+            {
+                "action": "reconnect_owner",
+                ACTION_CHECKBOX_NAME: [record.pk],
+                "reconnect_step": "select",
+                "do_search": "Search",
+                "owner_search": "realuser",
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, str(source.ownerid))
+        # The obfuscated original must not be offered as a reconnect candidate.
+        self.assertNotContains(response, f'value="{original.ownerid}"')
+
+    def test_reconnect_confirm_interstitial_shows_data(self):
+        self.client.force_login(user=self.superuser)
+        original = OwnerFactory(service="to_be_deleted")
+        source = OwnerFactory(
+            service="github", username="realuser", email="real@example.com"
+        )
+        record = OwnerToBeDeleted.objects.create(
+            owner_id=original.ownerid, on_hold=True
+        )
+        response = self.client.post(
+            reverse("admin:codecov_auth_ownertobedeleted_changelist"),
+            {
+                "action": "reconnect_owner",
+                ACTION_CHECKBOX_NAME: [record.pk],
+                "reconnect_step": "select",
+                "do_continue": "Continue",
+                "source_ownerid": source.ownerid,
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "real@example.com")
+        self.assertContains(response, "github")
+
+    def test_reconnect_confirm_performs_merge(self):
+        self.client.force_login(user=self.superuser)
+        original = OwnerFactory(service="to_be_deleted", username="deleted_user_1")
+        source = OwnerFactory(
+            service="github",
+            service_id="55555",
+            username="realuser",
+            email="real@example.com",
+        )
+        source_session = SessionFactory(owner=source)
+        record = OwnerToBeDeleted.objects.create(
+            owner_id=original.ownerid, on_hold=True
+        )
+        response = self.client.post(
+            reverse("admin:codecov_auth_ownertobedeleted_changelist"),
+            {
+                "action": "reconnect_owner",
+                ACTION_CHECKBOX_NAME: [record.pk],
+                "reconnect_step": "confirm",
+                "do_confirm": "Confirm reconnect",
+                "source_ownerid": source.ownerid,
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+        original.refresh_from_db()
+        assert original.service == "github"
+        assert original.service_id == "55555"
+        assert original.username == "realuser"
+        # Source owner is merged away and the deletion request is gone.
+        assert not Owner.objects.filter(ownerid=source.ownerid).exists()
+        assert not OwnerToBeDeleted.objects.filter(pk=record.pk).exists()
+        # The source's session was repointed to the original.
+        source_session.refresh_from_db()
+        assert source_session.owner_id == original.ownerid
+
+
+class ReconnectOwnerServiceTest(TestCase):
+    def test_merge_restores_identity_and_repoints_references(self):
+        original = OwnerFactory(
+            service="to_be_deleted",
+            username="deleted_user_9",
+            name="[DELETED_USER_9]",
+            email="deleted_9@deleted.codecov.io",
+            oauth_token=None,
+        )
+        source = OwnerFactory(
+            service="github",
+            service_id="98765",
+            username="comeback",
+            name="Come Back",
+            email="comeback@example.com",
+        )
+        session = SessionFactory(owner=source)
+        record = OwnerToBeDeleted.objects.create(
+            owner_id=original.ownerid, on_hold=True
+        )
+
+        result = reconnect_owner(
+            original_ownerid=original.ownerid, source_ownerid=source.ownerid
+        )
+
+        assert result.ownerid == original.ownerid
+        assert result.service == "github"
+        assert result.service_id == "98765"
+        assert result.username == "comeback"
+        assert result.name == "Come Back"
+        assert result.email == "comeback@example.com"
+        assert not Owner.objects.filter(ownerid=source.ownerid).exists()
+        assert not OwnerToBeDeleted.objects.filter(pk=record.pk).exists()
+        session.refresh_from_db()
+        assert session.owner_id == original.ownerid
+
+    def test_merge_rejects_same_owner(self):
+        owner = OwnerFactory()
+        with pytest.raises(ValueError):
+            reconnect_owner(
+                original_ownerid=owner.ownerid, source_ownerid=owner.ownerid
+            )
+
+    def test_merge_drops_duplicate_repos_on_conflict(self):
+        original = OwnerFactory(service="to_be_deleted")
+        source = OwnerFactory(service="github", service_id="222")
+        # The original already owns "dup"; the returning owner re-synced "dup"
+        # (a collision on the unique (ownerid, name)) plus a new "unique" repo.
+        RepositoryFactory(author=original, name="dup")
+        RepositoryFactory(author=source, name="dup")
+        RepositoryFactory(author=source, name="unique")
+        OwnerToBeDeleted.objects.create(owner_id=original.ownerid, on_hold=True)
+
+        reconnect_owner(
+            original_ownerid=original.ownerid, source_ownerid=source.ownerid
+        )
+
+        names = set(
+            Repository.objects.filter(author=original).values_list("name", flat=True)
+        )
+        assert names == {"dup", "unique"}
+        assert not Owner.objects.filter(ownerid=source.ownerid).exists()
