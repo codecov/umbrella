@@ -210,16 +210,9 @@ interactions:
     uri: https://api.github.com/user/4?client_id=testiouu71gdynyqxzk4&client_secret=3b4ab5b18be7155fdbb739e7f1ae277222fb12db
   response:
     body:
-      string: !!binary |
-        H4sIAAAAAAAAA5VUXWvbMBT9K0HPaeQ4H+0EpX0YgzE2KMtG15cgy6qtTZaMJDu4pv99R7YbusAe
-        /GT56p5zT47vSU+0LZQhjJw6wYMnS6JywrZLYmwuj/FMvn582P98/KbF74db3POWB+6OjdO4K0Oo
-        PaN0LPpkVahQNlnjpRPWBGnCStiKNnR7195ugS7chB+oUbjgqdVEMeLA4+lZWhkqfTF4nDc0n9ue
-        rdb2BOSlyP+T0zMGksazMsVsPDA9taGU8AfSX+MPVj7METL09zQ+YH9k8LDbyXyGmAkBKScDFT11
-        srYDVZN54VQdlDVzRP2DA491BTfqhc/lAS6uWJQzZ/zQD5xssVBzgCOgp7VTLRddtMBJIVULO2eT
-        XSDBFbpaYot/4FNHc1WQR55XMU7PXHuJEPEqNvySZZPzxRceXtCHXa256VA/KJ3L5eKzESvUM0Rx
-        ihQS1Q2YP4DE5ca1tggovhtavnOz+OS4EcoLG32puIppHBNwX8TXCVUqJ3mmocI0WmOIsm/Husm0
-        EsfRXJamuyWZSsMOEna9W7+FAWEi7MN2f/0uHcPfhAB9gJs8YH6aJDdXyfpqnR6SHdvcsM3mCfKa
-        On/fkyaxJ00OacqSPUvXT+T1L90oNXiIBAAA
+      string: '{"login":"wycats","id":4,"node_id":"MDQ6VXNlcjQ=","avatar_url":"https://avatars0.githubusercontent.com/u/4?v=4","gravatar_id":"","url":"https://api.github.com/users/wycats","html_url":"https://github.com/wycats","followers_url":"https://api.github.com/users/wycats/followers","following_url":"https://api.github.com/users/wycats/following{/other_user}","gists_url":"https://api.github.com/users/wycats/gists{/gist_id}","starred_url":"https://api.github.com/users/wycats/starred{/owner}{/repo}","subscriptions_url":"https://api.github.com/users/wycats/subscriptions","organizations_url":"https://api.github.com/users/wycats/orgs","repos_url":"https://api.github.com/users/wycats/repos","events_url":"https://api.github.com/users/wycats/events{/privacy}","received_events_url":"https://api.github.com/users/wycats/received_events","type":"User","site_admin":false,"name":"Yehuda
+        Katz","company":"Tilde, Inc.","blog":"http://yehudakatz.com","location":"San
+        Francisco","email":"wycats@gmail.com","hireable":null,"bio":null,"public_repos":225,"public_gists":751,"followers":9467,"following":4,"created_at":"2008-01-12T05:38:33Z","updated_at":"2020-01-20T22:06:21Z"}'
     headers:
       Access-Control-Allow-Origin:
       - '*'
@@ -229,8 +222,6 @@ interactions:
         X-GitHub-Media-Type
       Cache-Control:
       - public, max-age=60, s-maxage=60
-      Content-Encoding:
-      - gzip
       Content-Security-Policy:
       - default-src 'none'
       Content-Type:
@@ -285,16 +276,8 @@ interactions:
     uri: https://api.github.com/user/2?client_id=testiouu71gdynyqxzk4&client_secret=3b4ab5b18be7155fdbb739e7f1ae277222fb12db
   response:
     body:
-      string: !!binary |
-        H4sIAAAAAAAAA5WTzW6cMBSFX6XyeiY2NJlJkKIu2k0XrVQp/VE2I2M84NbYyD+MpiiP0F33fcU+
-        Qo+Byc8sKrECzP3OPVzuGYi2tTKkIJXcR/MjkBVRFSnyFTG2krt0Tz68+7T58u2jFt/f3+I973ng
-        bhedxrsmhM4XlE6Hnl3UKjSxjF46YU2QJlwI29JI8zf97SXo2s38KI2DM51OzRITBx1Pn7w1odVn
-        naeGY/VT3d5qbQ9gz23+R54+QnA13StTLxcANFAbGokZwf5D+mjlwyIrIzDQdME/SBIeM3eyWmJn
-        RmDmYOBjoE52dtSKpRdOdUFZs8jWCxBC1tXcqJ98sRBADz4ZWmRgBADKHpu1iJyIgXZO9Vwc0xic
-        FFL1mOlytTMUYuHYSSz0Z/zxNGEV5I5XbYrWnmsvkSfepoK3jVP+1VdufHA8NKjF5nbcHElhotYr
-        UiKRc7CQK5HKD6fqccuBaCvGmZ8Y2XKFNE4CjXKSlxrNZkFloff3z6/fILtYaiV20xyLjG0fj8aV
-        Q/K3r0/bj/jgmV1fb57lAScZg2n0CBgdD9DOGduuM7bO2R27KvLLIru5R6/YVc9rspt1lq1Zdpdn
-        xdWmYOyePPwDTU2zRYAEAAA=
+      string: '{"login":"defunkt","id":2,"node_id":"MDQ6VXNlcjI=","avatar_url":"https://avatars0.githubusercontent.com/u/2?v=4","gravatar_id":"","url":"https://api.github.com/users/defunkt","html_url":"https://github.com/defunkt","followers_url":"https://api.github.com/users/defunkt/followers","following_url":"https://api.github.com/users/defunkt/following{/other_user}","gists_url":"https://api.github.com/users/defunkt/gists{/gist_id}","starred_url":"https://api.github.com/users/defunkt/starred{/owner}{/repo}","subscriptions_url":"https://api.github.com/users/defunkt/subscriptions","organizations_url":"https://api.github.com/users/defunkt/orgs","repos_url":"https://api.github.com/users/defunkt/repos","events_url":"https://api.github.com/users/defunkt/events{/privacy}","received_events_url":"https://api.github.com/users/defunkt/received_events","type":"User","site_admin":false,"name":"Chris
+        Wanstrath","company":null,"blog":"http://chriswanstrath.com/","location":null,"email":null,"hireable":null,"bio":"🍔","public_repos":107,"public_gists":273,"followers":20886,"following":210,"created_at":"2007-10-20T05:24:19Z","updated_at":"2019-11-01T21:56:00Z"}'
     headers:
       Access-Control-Allow-Origin:
       - '*'
@@ -304,8 +287,6 @@ interactions:
         X-GitHub-Media-Type
       Cache-Control:
       - public, max-age=60, s-maxage=60
-      Content-Encoding:
-      - gzip
       Content-Security-Policy:
       - default-src 'none'
       Content-Type:

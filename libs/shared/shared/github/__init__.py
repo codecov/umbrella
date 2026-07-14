@@ -105,7 +105,8 @@ def get_github_jwt_token(
         # NOTE: custom GitHub apps defined through the database explicitly set
         # app_id and pem_path so those get passed down no matter what, rather
         # than falling back to the default config value.
-        "iss": app_id,  # github app ID
+        # pyjwt>=2.10 rejects a non-string `iss`, so coerce the integer app ID.
+        "iss": str(app_id),  # github app ID
     }
 
     return jwt.encode(payload, get_pem(app_id, service, pem_path), algorithm="RS256")
