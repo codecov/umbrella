@@ -29,7 +29,8 @@ def get_relevant_uploads(repo_id: int, commit_id: str) -> QuerySet[ReportSession
 
 def fetch_current_flakes(repo_id: int) -> dict[bytes, Flake]:
     return {
-        bytes(flake.test_id): flake for flake in Flake.objects.filter(repoid=repo_id)
+        bytes(flake.test_id): flake
+        for flake in Flake.objects.filter(repoid=repo_id, end_date__isnull=True)
     }
 
 
