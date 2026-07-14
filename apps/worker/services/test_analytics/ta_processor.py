@@ -9,6 +9,8 @@ from typing import Any
 import orjson
 import sentry_sdk
 import test_results_parser
+from celery.exceptions import SoftTimeLimitExceeded
+from django.db import connections
 from test_results_parser import parse_raw_upload
 
 from rollouts import ALLOW_VITEST_EVALS
@@ -229,14 +231,26 @@ def insert_testruns_timeseries(
 ):
     flaky_test_set = get_flaky_tests_set(repoid)
 
-    for parsing_info in parsing_infos:
-        insert_testrun(
-            timestamp=upload.created_at,
-            repo_id=repoid,
-            commit_sha=commitid,
-            branch=branch,
-            upload_id=upload.id,
-            flags=upload.flag_names,
-            parsing_info=parsing_info,
-            flaky_test_ids=flaky_test_set,
+    try:
+        for parsing_info in parsing_infos:
+            insert_testrun(
+                timestamp=upload.created_at,
+                repo_id=repoid,
+                commit_sha=commitid,
+                branch=branch,
+                upload_id=upload.id,
+                flags=upload.flag_names,
+                parsing_info=parsing_info,
+                flaky_test_ids=flaky_test_set,
+            )
+    except SoftTimeLimitExceeded:
+        # The timeout signal may have fired inside a Django ORM commit on the
+        # ta_timeseries connection, leaving it in a broken state. Close all
+        # Django connections now so they are not reused by subsequent tasks.
+        log.warning(
+            "SoftTimeLimitExceeded raised during insert_testruns_timeseries; "
+            "closing Django DB connections to discard any broken state.",
+            exc_info=True,
         )
+        connections.close_all()
+        raise
