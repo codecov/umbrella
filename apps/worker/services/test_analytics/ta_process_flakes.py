@@ -100,7 +100,7 @@ def process_single_upload(
     curr_flakes: dict[bytes, Flake],
     repo_id: int,
     testruns: list[Testrun] | None = None,
-):
+) -> list[Testrun]:
     if testruns is None:
         testruns = list(get_testruns(upload))
 
@@ -117,7 +117,7 @@ def process_single_upload(
             case _:
                 continue
 
-    Testrun.objects.bulk_update(testruns, ["outcome"])
+    return testruns
 
 
 @sentry_sdk.trace
@@ -141,14 +141,18 @@ def process_flakes_for_commit(repo_id: int, commit_id: str):
 
     testruns_by_upload = get_testruns_for_uploads(uploads)
 
+    all_testruns: list[Testrun] = []
     for upload in uploads:
-        process_single_upload(
+        testruns = process_single_upload(
             upload, curr_flakes, repo_id, testruns=testruns_by_upload[upload.id]
         )
+        all_testruns.extend(testruns)
         log.info(
             "process_flakes_for_commit: processed upload",
             extra={"upload": upload.id},
         )
+
+    Testrun.objects.bulk_update(all_testruns, ["outcome"])
 
     log.info(
         "process_flakes_for_commit: bulk creating flakes",
