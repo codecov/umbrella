@@ -1,12 +1,20 @@
 # syntax=docker/dockerfile:1.4
 ARG REQUIREMENTS_IMAGE
 ARG BUILD_ENV=self-hosted
-ARG BERGLAS_VERSION=2.0.6
+ARG BERGLAS_VERSION=2.0.14
 
 ARG WORKDIR=/app
 ARG ENTRYPOINT
 
-FROM us-docker.pkg.dev/berglas/berglas/berglas:$BERGLAS_VERSION as berglas
+# Build berglas from source rather than copying the prebuilt vendor image: that
+# image lags on the Go stdlib and golang.org/x/crypto (SSH CVEs) even at the
+# latest tag, so a current toolchain plus patched modules is required.
+FROM golang:1.26-bookworm as berglas
+ARG BERGLAS_VERSION
+RUN git clone --depth 1 --branch v${BERGLAS_VERSION} https://github.com/GoogleCloudPlatform/berglas.git /src
+WORKDIR /src
+RUN go get golang.org/x/crypto@v0.54.0 golang.org/x/net@v0.57.0 && go mod tidy
+RUN CGO_ENABLED=0 go build -trimpath -o /bin/berglas .
 
 FROM $REQUIREMENTS_IMAGE as app
 
