@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import TypedDict
 
 import test_results_parser
@@ -187,33 +187,25 @@ def get_pr_comment_duration(
 def get_pr_comment_agg(
     repo_id: int, commit_sha: str, lower_bound_timestamp: datetime | None = None
 ) -> PRCommentAgg:
+    # Always provide a timestamp lower bound so TimescaleDB can eliminate
+    # irrelevant chunks. Fall back to 90 days ago if no timestamp is available,
+    # which matches the typical data retention window and avoids full table scans.
+    if lower_bound_timestamp is None:
+        lower_bound_timestamp = datetime.now(tz=timezone.utc) - timedelta(days=90)
+
     with connections["ta_timeseries"].cursor() as cursor:
-        if lower_bound_timestamp is not None:
-            query = """
-                SELECT outcome, count(*) FROM (
-                    SELECT
-                        test_id,
-                        LAST(outcome, timestamp) as outcome
-                    FROM ta_timeseries_testrun
-                    WHERE repo_id = %s AND commit_sha = %s AND timestamp >= %s
-                    GROUP BY test_id
-                ) AS t
-                GROUP BY outcome
-            """
-            params = [repo_id, commit_sha, lower_bound_timestamp]
-        else:
-            query = """
-                SELECT outcome, count(*) FROM (
-                    SELECT
-                        test_id,
-                        LAST(outcome, timestamp) as outcome
-                    FROM ta_timeseries_testrun
-                    WHERE repo_id = %s AND commit_sha = %s
-                    GROUP BY test_id
-                ) AS t
-                GROUP BY outcome
-            """
-            params = [repo_id, commit_sha]
+        query = """
+            SELECT outcome, count(*) FROM (
+                SELECT
+                    test_id,
+                    LAST(outcome, timestamp) as outcome
+                FROM ta_timeseries_testrun
+                WHERE repo_id = %s AND commit_sha = %s AND timestamp >= %s
+                GROUP BY test_id
+            ) AS t
+            GROUP BY outcome
+        """
+        params = [repo_id, commit_sha, lower_bound_timestamp]
 
         cursor.execute(query, params)
         outcome_dict = dict(cursor.fetchall())
