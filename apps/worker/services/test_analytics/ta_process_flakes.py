@@ -152,7 +152,9 @@ def process_flakes_for_commit(repo_id: int, commit_id: str):
             extra={"upload": upload.id},
         )
 
-    Testrun.objects.bulk_update(all_testruns, ["outcome"])
+    Testrun.objects.bulk_update(
+        sorted(all_testruns, key=lambda t: t.pk), ["outcome"]
+    )
 
     log.info(
         "process_flakes_for_commit: bulk creating flakes",
@@ -173,7 +175,7 @@ def process_flakes_for_repo(repo_id: int):
     lock_name = LOCK_NAME.format(repo_id)
     key_name = KEY_NAME.format(repo_id)
     try:
-        with redis_client.lock(lock_name, timeout=300, blocking_timeout=3):
+        with redis_client.lock(lock_name, timeout=900, blocking_timeout=3):
             while commit_ids := redis_client.lpop(key_name, 10):
                 for commit_id in commit_ids:
                     with process_flakes_summary.labels("new").time():
