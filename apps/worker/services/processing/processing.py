@@ -30,6 +30,7 @@ def process_upload(
     commit_sha: str,
     commit_yaml: UserYaml,
     arguments: UploadArguments,
+    deadline: float | None = None,
 ) -> ProcessingResult:
     upload_id = arguments["upload_id"]
 
@@ -57,7 +58,7 @@ def process_upload(
     try:
         report_info = RawReportInfo()
         processing_result = report_service.build_report_from_raw_content(
-            report_info, upload
+            report_info, upload, deadline=deadline
         )
 
         if error := processing_result.error:

@@ -1,6 +1,8 @@
 import logging
+import time
 
 import sentry_sdk
+from celery.exceptions import SoftTimeLimitExceeded
 
 from helpers.exceptions import ReportEmptyError, ReportExpiredException
 from services.path_fixer import PathFixer
@@ -18,6 +20,7 @@ def process_raw_upload(
     commit_yaml,
     raw_reports: ParsedRawReport,
     session: Session,
+    deadline: float | None = None,
 ) -> Report:
     # ----------------------
     # Extract `git ls-files`
@@ -58,6 +61,13 @@ def process_raw_upload(
 
     for report_file in uploaded_files:
         current_filename = report_file.filename
+        if deadline is not None and time.monotonic() >= deadline:
+            log.warning(
+                "Deadline reached before processing all report files; "
+                "raising SoftTimeLimitExceeded to allow graceful shutdown",
+                extra={"filename": current_filename},
+            )
+            raise SoftTimeLimitExceeded()
         if current_filename in skip_files:
             continue
         if not report_file.contents:

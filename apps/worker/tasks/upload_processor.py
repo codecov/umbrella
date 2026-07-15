@@ -1,4 +1,5 @@
 import logging
+import time
 
 import sentry_sdk
 from celery.exceptions import SoftTimeLimitExceeded
@@ -20,6 +21,9 @@ log = logging.getLogger(__name__)
 MAX_FILE_NOT_FOUND_RETRIES = 1
 # Base delay (seconds) for exponential backoff retry strategy
 FIRST_RETRY_DELAY = 20
+# How many seconds before the soft time limit the deadline check should fire.
+# This gives processing code time to log and clean up before the signal arrives.
+DEADLINE_BUFFER_SECONDS = 30
 
 
 def UPLOAD_PROCESSING_LOCK_NAME(repoid: int, commitid: str) -> str:
@@ -62,6 +66,16 @@ class UploadProcessorTask(BaseCodecovTask, name=upload_processor_task_name):
             "Received upload processor task",
             extra={"arguments": arguments, "commit_yaml": commit_yaml},
         )
+
+        # Compute a cooperative deadline so that process_raw_upload can bail out
+        # before the OS hard-kills the process.  Celery stores per-request time
+        # limits as (hard_limit, soft_limit) in self.request.timelimit; fall back
+        # to the global app config when the request doesn't carry them.
+        request_timelimit = self.request.timelimit or (None, None)
+        task_soft_limit = request_timelimit[1] or self.app.conf.task_soft_time_limit or get_config(
+            "setup", "tasks", "celery", "soft_timelimit", default=600
+        )
+        deadline = time.monotonic() + float(task_soft_limit) - DEADLINE_BUFFER_SECONDS
 
         self._call_upload_breadcrumb_task(
             commit_sha=commitid,
@@ -141,6 +155,7 @@ class UploadProcessorTask(BaseCodecovTask, name=upload_processor_task_name):
                 commitid,
                 UserYaml(commit_yaml),
                 arguments,
+                deadline=deadline,
             )
         except SoftTimeLimitExceeded as e:
             self._call_upload_breadcrumb_task(
