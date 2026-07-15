@@ -364,6 +364,32 @@ class BaseCeleryConfig:
     broker_transport_options = {
         "visibility_timeout": TASK_VISIBILITY_TIMEOUT_SECONDS,
     }
+
+    # Enable TCP keepalive on Redis broker connections so the OS detects and
+    # closes stale connections (dropped by Redis server or network devices)
+    # instead of silently hanging on reads.
+    # Can be overridden via: setup.tasks.celery.redis_socket_keepalive config
+    redis_socket_keepalive = bool(
+        get_config("setup", "tasks", "celery", "redis_socket_keepalive", default=True)
+    )
+
+    # Periodically ping Redis result-backend connections to detect stale sockets
+    # before they are handed to chord callbacks (e.g. on_chord_part_return).
+    # Long-running UploadProcessor tasks can exhaust the Redis server's idle
+    # connection timeout, leaving dead sockets in the pool; this health check
+    # catches them proactively.
+    # Value is in seconds. Set to 0 to disable.
+    # Can be overridden via: setup.tasks.celery.redis_backend_health_check_interval config
+    redis_backend_health_check_interval = int(
+        get_config(
+            "setup",
+            "tasks",
+            "celery",
+            "redis_backend_health_check_interval",
+            default=30,
+        )
+    )
+
     result_extended = True
     task_default_queue = get_config(
         "setup", "tasks", "celery", "default_queue", default="celery"
