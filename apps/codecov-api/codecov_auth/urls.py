@@ -9,6 +9,7 @@ from .views.gitlab import GitlabLoginView
 from .views.gitlab_enterprise import GitlabEnterpriseLoginView
 from .views.logout import logout_view
 from .views.okta import OktaLoginView
+from .views.okta_admin import OktaAdminLoginView
 from .views.okta_cloud import OktaCloudCallbackView, OktaCloudLoginView
 
 urlpatterns = [
@@ -49,6 +50,7 @@ urlpatterns = [
         OktaCloudCallbackView.as_view(),
         name="okta-cloud-callback",
     ),
+    path("login/okta-admin", OktaAdminLoginView.as_view(), name="okta-admin-login"),
 ]
 if settings.OKTA_ISS is not None:
     urlpatterns += [path("login/okta", OktaLoginView.as_view(), name="okta-login")]
