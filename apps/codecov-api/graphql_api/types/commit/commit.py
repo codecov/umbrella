@@ -55,6 +55,7 @@ commit_bundle_analysis_bindable = ObjectType("CommitBundleAnalysis")
 commit_bindable.set_alias("createdAt", "timestamp")
 commit_bindable.set_alias("pullId", "pullid")
 commit_bindable.set_alias("branchName", "branch")
+commit_bindable.set_alias("ci_passed", "ci_passed")
 
 log = logging.getLogger(__name__)
 
