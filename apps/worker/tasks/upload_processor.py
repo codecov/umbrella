@@ -142,7 +142,15 @@ class UploadProcessorTask(BaseCodecovTask, name=upload_processor_task_name):
                 UserYaml(commit_yaml),
                 arguments,
             )
-        except SoftTimeLimitExceeded as e:
+        except SoftTimeLimitExceeded:
+            log.warning(
+                "Upload processor task soft time limit exceeded",
+                extra={
+                    "repoid": repoid,
+                    "commitid": commitid,
+                    "upload_id": arguments["upload_id"],
+                },
+            )
             self._call_upload_breadcrumb_task(
                 commit_sha=commitid,
                 repo_id=repoid,
@@ -150,7 +158,19 @@ class UploadProcessorTask(BaseCodecovTask, name=upload_processor_task_name):
                 upload_ids=[arguments["upload_id"]],
                 error=Errors.TASK_TIMED_OUT,
             )
-            raise
+            # Return an error result instead of re-raising so the Celery chord
+            # receives a valid return value rather than a FAILURE task state.
+            # Re-raising causes the hard time limit (720s) to kill the worker
+            # process, which propagates as a ChordError to the chord callback.
+            return {
+                "upload_id": arguments["upload_id"],
+                "arguments": arguments,
+                "successful": False,
+                "error": {
+                    "code": UploadErrorCode.PROCESSING_TIMEOUT,
+                    "params": {},
+                },
+            }
         except Exception as e:
             self._call_upload_breadcrumb_task(
                 commit_sha=commitid,
