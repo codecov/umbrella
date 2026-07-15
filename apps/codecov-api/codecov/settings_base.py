@@ -435,6 +435,15 @@ OKTA_OAUTH_CLIENT_SECRET = get_config("setup", "okta", "oauth_client_secret")
 OKTA_OAUTH_REDIRECT_URL = get_config("setup", "okta", "oauth_redirect_url")
 OKTA_ISS = get_config("setup", "okta", "iss", default=None)
 
+OKTA_ADMIN_CLIENT_ID = get_config("setup", "okta", "admin_client_id")
+OKTA_ADMIN_CLIENT_SECRET = get_config("setup", "okta", "admin_client_secret")
+OKTA_ADMIN_REDIRECT_URL = get_config("setup", "okta", "admin_redirect_url")
+
+AUTHENTICATION_BACKENDS = [
+    "codecov_auth.backends.OktaAdminBackend",
+    "django.contrib.auth.backends.ModelBackend",
+]
+
 DISABLE_GIT_BASED_LOGIN = IS_ENTERPRISE and get_config(
     "setup", "disable_git_based_login", default=False
 )
