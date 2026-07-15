@@ -587,6 +587,7 @@ class ReportService(BaseReportService):
         self,
         raw_report_info: RawReportInfo,
         upload: Upload,
+        deadline: float | None = None,
     ) -> ProcessingResult:
         """
         Processes an upload on top of an existing report `master` and returns
@@ -650,7 +651,9 @@ class ReportService(BaseReportService):
 
         log.debug("Retrieved report for processing from url %s", archive_url)
         try:
-            result.report = process_raw_upload(self.current_yaml, raw_report, session)
+            result.report = process_raw_upload(
+                self.current_yaml, raw_report, session, deadline=deadline
+            )
 
             log.info(
                 "Successfully processed report",
