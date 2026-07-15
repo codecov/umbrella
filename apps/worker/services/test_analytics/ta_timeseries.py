@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import TypedDict
 
 import test_results_parser
@@ -191,7 +191,7 @@ def get_pr_comment_agg(
     # irrelevant chunks. Fall back to 90 days ago if no timestamp is available,
     # which matches the typical data retention window and avoids full table scans.
     if lower_bound_timestamp is None:
-        lower_bound_timestamp = datetime.now(tz=timezone.utc) - timedelta(days=90)
+        lower_bound_timestamp = datetime.now(tz=UTC) - timedelta(days=90)
 
     with connections["ta_timeseries"].cursor() as cursor:
         query = """

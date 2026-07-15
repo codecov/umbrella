@@ -2,8 +2,6 @@ import logging
 from contextlib import contextmanager
 from typing import cast
 
-from datetime import datetime, timezone
-
 from asgiref.sync import async_to_sync
 from celery.exceptions import MaxRetriesExceededError as CeleryMaxRetriesExceededError
 from redis import Redis
