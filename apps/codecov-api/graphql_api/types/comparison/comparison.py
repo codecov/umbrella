@@ -51,8 +51,10 @@ def resolve_impacted_files(
         ):
             return UnknownFlags()
 
+    files = command.fetch_impacted_files(comparison_report, comparison, filters)
     return {
-        "results": command.fetch_impacted_files(comparison_report, comparison, filters)
+        "results": files,
+        "nodes": files,
     }
 
 
