@@ -2,6 +2,7 @@ type PlanRepresentation {
   baseUnitPrice: Int!
   benefits: [String!]!
   billingRate: String
+  hasSeatsLeft: Boolean!
   isEnterprisePlan: Boolean!
   isFreePlan: Boolean!
   isProPlan: Boolean!
