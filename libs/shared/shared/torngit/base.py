@@ -84,6 +84,7 @@ class TorngitBaseAdapter:
                 else self.verify_ssl
             ),
             timeout=timeout,
+            transport=httpx.AsyncHTTPTransport(retries=1),
         )
 
     def get_token_by_type(self, token_type: TokenType):
