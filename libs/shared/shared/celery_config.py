@@ -434,7 +434,7 @@ class BaseCeleryConfig:
 
     notify_soft_time_limit = int(
         get_config(
-            "setup", "tasks", TaskConfigGroup.notify.value, "timeout", default=120
+            "setup", "tasks", TaskConfigGroup.notify.value, "timeout", default=600
         )
     )
     timeseries_soft_time_limit = get_config(
