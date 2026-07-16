@@ -346,7 +346,10 @@ class AsyncGraphqlView(GraphQLAsyncView):
         is_anonymous = user.is_anonymous if user else True
         # the only way to check for a malformed query
         is_bad_query = "Cannot query field" in error.formatted["message"]
-        if debug or (not is_anonymous and is_bad_query):
+        if debug or is_bad_query:
+            # bad query errors are client mistakes (schema validation failures),
+            # not server errors — return the formatted error for all users so
+            # they are never misclassified as internal server errors in Sentry.
             return format_error(error, debug)
         formatted = error.formatted
         formatted["message"] = "INTERNAL SERVER ERROR"
