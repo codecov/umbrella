@@ -488,6 +488,15 @@ def resolve_commit_bundle_analysis_report(commit: Commit, info) -> BundleAnalysi
     return bundle_analysis_report
 
 
+@commit_bindable.field("flagNames")
+@sync_to_async
+@sentry_sdk.trace
+def resolve_commit_flag_names(
+    commit: Commit, info: GraphQLResolveInfo
+) -> list[str]:
+    return commit.full_report.get_flag_names() if commit.full_report else []
+
+
 @commit_bindable.field("latestUploadError")
 async def resolve_latest_upload_error(commit, info):
     command = info.context["executor"].get_command("commit")
