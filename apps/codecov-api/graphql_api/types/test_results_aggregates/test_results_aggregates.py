@@ -66,3 +66,8 @@ def resolve_total_skips_percent_change(
     obj: TestResultsAggregates, _: GraphQLResolveInfo
 ) -> float | None:
     return obj.skips_percent_change
+
+
+@test_results_aggregates_bindable.field("flakyTests")
+def resolve_flaky_tests(obj: TestResultsAggregates, _: GraphQLResolveInfo) -> int:
+    return obj.flaky_tests
