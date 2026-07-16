@@ -2,7 +2,8 @@ type Commit {
   state: String
   message: String
   createdAt: DateTime!
-  commitid: String!
+  commitid: String! @deprecated(reason: "Use commitId instead")
+  commitId: String!
   author: Owner
   parent: Commit
   pullId: Int
