@@ -9,9 +9,10 @@ from graphql_api.helpers.mutation import (
 @wrap_error_handling_mutation
 async def resolve_create_user_token(_, info, input):
     command = info.context["executor"].get_command("owner")
+    token_type = input.get("token_type")
     user_token = await command.create_user_token(
         name=input.get("name"),
-        token_type=input.get("token_type"),
+        token_type=token_type.lower() if token_type else None,
     )
     return {
         "token": user_token,
