@@ -1,3 +1,13 @@
+"""
+Provides base, head, and patch coverage numbers for a file's line coverage.
+This type exists for compatibility with clients that query lineCoverage.
+"""
+type LineCoverage {
+  baseNumber: Float
+  headNumber: Float
+  headCoverage: Float
+}
+
 type ImpactedFile {
   fileName: String
   baseName: String
@@ -11,6 +21,7 @@ type ImpactedFile {
   changeCoverage: Float
   missesCount: Int!
   hashedPath: String!
+  lineCoverage: LineCoverage
   segments(filters: SegmentsFilters): SegmentsResult!
 }
 
