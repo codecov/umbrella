@@ -1,4 +1,5 @@
 type User {
+  ownerid: Int!
   username: String!
   name: String
   avatarUrl: String!
