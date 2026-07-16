@@ -14,6 +14,8 @@ from tasks.base import BaseCodecovTask
 
 log = logging.getLogger(__name__)
 
+REPO_LANGUAGES_UPDATE_BATCH_SIZE = 500
+
 
 class SyncRepoLanguagesGQLTask(BaseCodecovTask, name=sync_repo_languages_gql_task_name):
     def run_impl(
@@ -71,7 +73,14 @@ class SyncRepoLanguagesGQLTask(BaseCodecovTask, name=sync_repo_languages_gql_tas
                 }
                 updated_repos.append(updated_repo)
 
-        db_session.bulk_update_mappings(Repository, updated_repos)
+        for i in range(0, len(updated_repos), REPO_LANGUAGES_UPDATE_BATCH_SIZE):
+            chunk = updated_repos[i : i + REPO_LANGUAGES_UPDATE_BATCH_SIZE]
+            log.debug(
+                "Updating repo languages batch",
+                extra={"chunk_index": i, "chunk_size": len(chunk)},
+            )
+            db_session.bulk_update_mappings(Repository, chunk)
+            db_session.flush()
         db_session.commit()
 
         log.info(
