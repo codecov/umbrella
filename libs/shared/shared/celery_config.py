@@ -351,6 +351,15 @@ class BaseCeleryConfig:
     result_backend = get_config("services", "celery_broker") or get_config(
         "services", "redis_url"
     )
+
+    # Keep Redis result-backend connections alive during long-running tasks.
+    # Without keepalive, idle TCP connections can be dropped by the OS or
+    # network devices mid-task (e.g. during the Upload chord), causing
+    # "Connection to Redis lost: Retry (0/20) now." errors.
+    result_backend_transport_options = {
+        "socket_keepalive": True,
+        "health_check_interval": 30,  # seconds; ping Redis every 30s to keep connection alive
+    }
     worker_send_task_events = bool(
         get_config("setup", "tasks", "celery", "worker_send_task_events", default=False)
     )
@@ -461,6 +470,13 @@ class BaseCeleryConfig:
     )
 
     task_annotations = {
+        upload_task_name: {
+            # Give Upload tasks a generous soft limit and a wide gap before the hard
+            # limit so SoftTimeLimitExceeded handlers have time to clean up Redis
+            # connections gracefully before the worker process is killed.
+            "soft_time_limit": task_soft_time_limit,  # 600s default
+            "time_limit": task_soft_time_limit + 120,  # 120s gap for cleanup (vs default 720)
+        },
         delete_owner_task_name: {
             "soft_time_limit": 4 * task_soft_time_limit,
             "time_limit": 4 * task_time_limit,
