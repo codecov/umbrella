@@ -39,14 +39,28 @@ class BrollyStatsRollupTask(CodecovCronTask, name=brolly_stats_rollup_task_name)
         """
         return db_session.query(Constants).get("install_id").value
 
+    def _get_approx_table_count(self, db_session, table_name):
+        """
+        Return a fast approximate row count for the given table using PostgreSQL's
+        pg_class catalog (updated by autovacuum/ANALYZE). This avoids a full
+        sequential scan and is accurate enough for telemetry purposes.
+        """
+        result = db_session.execute(
+            "SELECT reltuples::bigint FROM pg_class WHERE relname = :table",
+            {"table": table_name},
+        )
+        row = result.fetchone()
+        # reltuples is -1 for tables that have never been ANALYZEd; treat as 0.
+        return max(row[0], 0) if row else 0
+
     def _get_users_count(self, db_session):
-        return db_session.query(User.id_).count()
+        return self._get_approx_table_count(db_session, "users")
 
     def _get_repos_count(self, db_session):
-        return db_session.query(Repository.repoid).count()
+        return self._get_approx_table_count(db_session, "repos")
 
     def _get_commits_count(self, db_session):
-        return db_session.query(Commit.id_).count()
+        return self._get_approx_table_count(db_session, "commits")
 
     def _get_uploads_count_last_24h(self, db_session):
         time_24h_ago = datetime.datetime.now() - datetime.timedelta(days=1)
