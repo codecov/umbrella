@@ -13,8 +13,9 @@ def resolve_id(component_comparison: ComponentComparison, info) -> str:
     return component_comparison.component_id
 
 
-@component_comparison_bindable.field("name")
-def resolve_name(component_comparison: ComponentComparison, info) -> str:
+def _resolve_component_name(
+    component_comparison: ComponentComparison, info
+) -> str:
     components: dict[str, Component] = info.context["components"]
     component = components.get(component_comparison.component_id)
     if component:
@@ -23,6 +24,16 @@ def resolve_name(component_comparison: ComponentComparison, info) -> str:
         # not sure when we would ever get here
         # (yaml components out-of-sync with database for some reason)
         return component_comparison.component_id
+
+
+@component_comparison_bindable.field("name")
+def resolve_name(component_comparison: ComponentComparison, info) -> str:
+    return _resolve_component_name(component_comparison, info)
+
+
+@component_comparison_bindable.field("headName")
+def resolve_head_name(component_comparison: ComponentComparison, info) -> str:
+    return _resolve_component_name(component_comparison, info)
 
 
 @component_comparison_bindable.field("baseTotals")
