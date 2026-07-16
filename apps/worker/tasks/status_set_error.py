@@ -1,6 +1,7 @@
 import logging
 
 from asgiref.sync import async_to_sync
+from celery.exceptions import MaxRetriesExceededError
 
 from app import celery_app
 from database.models import Commit
@@ -9,6 +10,7 @@ from services.yaml import get_current_yaml
 from services.yaml.reader import read_yaml_field
 from shared.celery_config import status_set_error_task_name
 from shared.helpers.yaml import default_if_true
+from shared.torngit.exceptions import TorngitServerUnreachableError
 from shared.utils.urls import make_url
 from tasks.base import BaseCodecovTask
 
@@ -41,7 +43,22 @@ class StatusSetErrorTask(BaseCodecovTask, name=status_set_error_task_name):
         status_set = False
 
         if settings and any(settings.values()):
-            statuses = async_to_sync(repo_service.get_commit_statuses)(commitid)
+            try:
+                statuses = async_to_sync(repo_service.get_commit_statuses)(commitid)
+            except TorngitServerUnreachableError:
+                countdown = 60 * 2 ** self.request.retries
+                log.warning(
+                    "Bitbucket unreachable when fetching commit statuses, retrying",
+                    extra={"repoid": repoid, "commitid": commitid, "countdown": countdown},
+                )
+                try:
+                    self.retry(max_retries=3, countdown=countdown)
+                except MaxRetriesExceededError:
+                    log.warning(
+                        "Max retries exceeded for SetError task, giving up",
+                        extra={"repoid": repoid, "commitid": commitid},
+                    )
+                return {"status_set": status_set}
             url = make_url(repo_service, "commit", commitid)
             for context in ("project", "patch", "changes"):
                 if settings.get(context):
@@ -59,9 +76,29 @@ class StatusSetErrorTask(BaseCodecovTask, name=status_set_error_task_name):
                             message or "Coverage not measured fully because CI failed"
                         )
                         if context in statuses:
-                            async_to_sync(repo_service.set_commit_status)(
-                                commitid, state, context, message, url
-                            )
+                            try:
+                                async_to_sync(repo_service.set_commit_status)(
+                                    commitid, state, context, message, url
+                                )
+                            except TorngitServerUnreachableError:
+                                countdown = 60 * 2 ** self.request.retries
+                                log.warning(
+                                    "Bitbucket unreachable when setting commit status, retrying",
+                                    extra={
+                                        "repoid": repoid,
+                                        "commitid": commitid,
+                                        "context": context,
+                                        "countdown": countdown,
+                                    },
+                                )
+                                try:
+                                    self.retry(max_retries=3, countdown=countdown)
+                                except MaxRetriesExceededError:
+                                    log.warning(
+                                        "Max retries exceeded for SetError task, giving up",
+                                        extra={"repoid": repoid, "commitid": commitid},
+                                    )
+                                return {"status_set": status_set}
                             status_set = True
                             log.info(
                                 "Status set",
