@@ -344,10 +344,19 @@ class AsyncGraphqlView(GraphQLAsyncView):
     def error_formatter(self, error: Any, debug: bool = False) -> dict[str, Any]:
         user = self.request.user
         is_anonymous = user.is_anonymous if user else True
-        # the only way to check for a malformed query
-        is_bad_query = "Cannot query field" in error.formatted["message"]
-        if debug or (not is_anonymous and is_bad_query):
+        # GraphQL validation errors raised by graphql-core have no original_error;
+        # they are always client-side mistakes (malformed queries, missing subfields,
+        # unknown fields, etc.) and should never be reported as server errors.
+        is_validation_error = error.original_error is None
+        if debug or (not is_anonymous and is_validation_error):
             return format_error(error, debug)
+        if is_validation_error:
+            # Anonymous users: hide the real message (same UX as before) but do NOT
+            # send to Sentry — these are client errors, not server errors.
+            formatted = error.formatted
+            formatted["message"] = "INTERNAL SERVER ERROR"
+            formatted["type"] = "ServerError"
+            return formatted
         formatted = error.formatted
         formatted["message"] = "INTERNAL SERVER ERROR"
         formatted["type"] = "ServerError"
