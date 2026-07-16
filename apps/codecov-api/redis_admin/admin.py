@@ -42,14 +42,12 @@ from core.models import Repository
 from . import conn as _conn
 from . import settings as redis_admin_settings
 from .families import FAMILIES, iter_families, iter_keys
-from .families import (
-    _resolve_celery_queue_names as _celery_queue_names,  # noqa: PLC2701 - reused for filter lookups
-)
 from .models import CeleryBrokerQueue, RedisLock, RedisQueue, RedisQueueItem
 from .queryset import (
     CeleryBrokerQueueQuerySet,
     RedisItemQuerySet,
     _build_redis_queue,
+    _resolve_summary_queue_names,  # noqa: PLC2701 - shared with summary changelist + sidebar pickers
     _stream_frequency_aggregate,
     resolve_payload_preview,
 )
@@ -446,20 +444,21 @@ class CeleryQueueFilter(admin.SimpleListFilter):
     otherwise have to either remember the exact key name or hand-type
     `family:celery_broker name:notify_celery` into the search bar.
 
-    This filter surfaces the same enumeration `families.celery_broker`
-    uses for its `fixed_keys`, so the picker is always in sync with the
-    queues the admin can actually inspect — adding a new queue to
-    `task_routes` automatically adds it to the filter on next request.
+    This filter surfaces the same union the summary changelist
+    materialises (`_resolve_summary_queue_names` =
+    `_resolve_celery_queue_names()` ∪ live `SCAN ... TYPE list` of
+    the broker), so the picker is always in sync with the queues
+    the admin can actually inspect: a new queue added to
+    `task_routes` shows up on the next request, and a per-tenant
+    `enterprise_*_dropbox` / `_mixpanel` / `_squareup` variant
+    surfaces the moment kombu materialises it on the broker —
+    even on deploys that never set
+    `setup.redis_admin.celery_queues`.
 
     Selecting a queue narrows the changelist to a single row
     (`family__exact=celery_broker AND name__exact=<queue>`); the
-    well-known queues are unique by name so this collapses cleanly to
-    "the row for that queue".
-
-    Dynamic `enterprise_*` queues aren't enumerable from configuration
-    and are intentionally excluded from the dropdown — operators who
-    need them can keep using the search bar (`family:celery_broker
-    enterprise_acme`) which already handles substring match.
+    queue names are unique by definition so this collapses cleanly
+    to "the row for that queue".
     """
 
     title = "celery queue"
@@ -467,10 +466,14 @@ class CeleryQueueFilter(admin.SimpleListFilter):
 
     def lookups(self, request, model_admin):
         # Re-resolved per request so a config change picks up without
-        # requiring a worker restart; `_celery_queue_names` itself
-        # falls back to `("celery", "healthcheck")` if the celery
-        # config import fails, so the dropdown is never empty.
-        return tuple((name, name) for name in _celery_queue_names())
+        # requiring a worker restart, and so a new `enterprise_*`
+        # queue that was just materialised on the broker appears in
+        # the dropdown immediately. The static fallback inside
+        # `_resolve_summary_queue_names` keeps the dropdown
+        # populated even when broker discovery fails.
+        broker = _conn.get_connection(kind="broker")
+        names = _resolve_summary_queue_names(broker, request=request)
+        return tuple((name, name) for name in names)
 
     def queryset(self, request, queryset):
         value = self.value()
