@@ -46,4 +46,5 @@ type Owner {
   aiEnabledRepos: [String]
   uploadTokenRequired: Boolean
   activatedUserCount: Int
+  isOnlyUsingSentryApp: Boolean!
 }

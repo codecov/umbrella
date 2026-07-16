@@ -472,3 +472,13 @@ def resolve_activated_user_count(owner: Owner, info: GraphQLResolveInfo) -> int:
 @require_part_of_org
 def resolve_billing(owner: Owner, info: GraphQLResolveInfo) -> dict | None:
     return owner
+
+
+@owner_bindable.field("isOnlyUsingSentryApp")
+@sync_to_async
+def resolve_is_only_using_sentry_app(owner: Owner, info: GraphQLResolveInfo) -> bool:
+    """
+    Returns True if the owner is connected exclusively via the Sentry GitHub App
+    (i.e., has a GitHub App installation but no OAuth token).
+    """
+    return owner.oauth_token is None and owner.integration_id is not None
