@@ -1,0 +1,105 @@
+"""Read-only queryset backing the public-bot usage admin changelist."""
+
+from __future__ import annotations
+
+from collections.abc import Iterator
+from datetime import UTC, datetime
+from typing import Any
+
+from shared.helpers.redis import get_redis_connection
+from shared.rate_limits.public_bot import RepoUsageRow, list_repo_usage
+
+
+def _ordering_key(obj: Any, attr: str) -> tuple:
+    value = getattr(obj, attr, None)
+    if value is None:
+        return (1, "")
+    if isinstance(value, int | float):
+        return (0, value)
+    return (0, str(value))
+
+
+class PublicBotUsageQuerySet:
+    def __init__(
+        self,
+        model: type,
+        *,
+        bot_filter: str | None = None,
+        repo_filter: str | None = None,
+    ) -> None:
+        self.model = model
+        self.bot_filter = bot_filter
+        self.repo_filter = repo_filter
+        self._ordering: tuple[str, ...] = ("-hits",)
+        self._result_cache: list[Any] | None = None
+
+    def _materialise(self) -> list[Any]:
+        redis = get_redis_connection()
+        rows = list_repo_usage(
+            redis,
+            bot_filter=self.bot_filter,
+            repo_filter=self.repo_filter,
+        )
+        return [self.model.from_row(row) for row in rows]
+
+    def _fetch_all(self) -> list[Any]:
+        if self._result_cache is None:
+            rows = self._materialise()
+            for field in reversed(self._ordering):
+                reverse = field.startswith("-")
+                attr = field.lstrip("-")
+                rows.sort(
+                    key=lambda obj, attr=attr: _ordering_key(obj, attr),
+                    reverse=reverse,
+                )
+            self._result_cache = rows
+        return self._result_cache
+
+    def order_by(self, *fields: str) -> PublicBotUsageQuerySet:
+        clone = PublicBotUsageQuerySet(
+            self.model,
+            bot_filter=self.bot_filter,
+            repo_filter=self.repo_filter,
+        )
+        clone._ordering = fields or self._ordering
+        return clone
+
+    def filter(self, **kwargs: Any) -> PublicBotUsageQuerySet:
+        bot_filter = kwargs.get("bot") or kwargs.get("bot__exact") or self.bot_filter
+        repo_filter = kwargs.get("repo__icontains") or self.repo_filter
+        clone = PublicBotUsageQuerySet(
+            self.model,
+            bot_filter=bot_filter,
+            repo_filter=repo_filter,
+        )
+        clone._ordering = self._ordering
+        return clone
+
+    def __iter__(self) -> Iterator:
+        return iter(self._fetch_all())
+
+    def __len__(self) -> int:
+        return len(self._fetch_all())
+
+    def count(self) -> int:
+        return len(self._fetch_all())
+
+    def __getitem__(self, item):
+        return self._fetch_all()[item]
+
+
+def format_reset_at(reset_at: int | None) -> str:
+    if reset_at is None:
+        return "—"
+    return datetime.fromtimestamp(reset_at, tz=UTC).strftime("%Y-%m-%d %H:%M:%S UTC")
+
+
+def row_to_context(row: RepoUsageRow) -> dict[str, Any]:
+    return {
+        "bot": row.bot,
+        "repo": row.repo,
+        "hits": row.hits,
+        "budget": row.budget,
+        "pct_budget": row.pct_budget,
+        "reset_at": format_reset_at(row.reset_at),
+    }

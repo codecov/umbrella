@@ -1,0 +1,32 @@
+{% extends "admin/change_list.html" %}
+
+{% block content %}
+  {% if top_repos %}
+    <div class="module" id="public-bot-top-repos">
+      <h2>Top 10 repositories by usage (all bots)</h2>
+      <table>
+        <thead>
+          <tr>
+            <th scope="col">Rank</th>
+            <th scope="col">Bot</th>
+            <th scope="col">Repo</th>
+            <th scope="col">Hits</th>
+            <th scope="col">% of GitHub budget</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in top_repos %}
+            <tr>
+              <td>{{ forloop.counter }}</td>
+              <td>{{ row.bot }}</td>
+              <td>{{ row.repo }}</td>
+              <td>{{ row.hits }}</td>
+              <td>{{ row.pct_budget|floatformat:2 }}%</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% endif %}
+  {{ block.super }}
+{% endblock %}

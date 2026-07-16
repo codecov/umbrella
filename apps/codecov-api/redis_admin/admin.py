@@ -38,6 +38,8 @@ from django.utils.html import format_html, format_html_join
 
 from codecov.admin import deny_viewers
 from core.models import Repository
+from shared.helpers.redis import get_redis_connection
+from shared.rate_limits.public_bot import PUBLIC_BOTS, top_repos_across_bots
 
 from . import conn as _conn
 from . import settings as redis_admin_settings
@@ -45,7 +47,13 @@ from .families import FAMILIES, iter_families, iter_keys
 from .families import (
     _resolve_celery_queue_names as _celery_queue_names,  # noqa: PLC2701 - reused for filter lookups
 )
-from .models import CeleryBrokerQueue, RedisLock, RedisQueue, RedisQueueItem
+from .models import (
+    CeleryBrokerQueue,
+    PublicBotUsage,
+    RedisLock,
+    RedisQueue,
+    RedisQueueItem,
+)
 from .queryset import (
     CeleryBrokerQueueQuerySet,
     RedisItemQuerySet,
@@ -2499,3 +2507,69 @@ class CeleryBrokerQueueAdmin(admin.ModelAdmin):
             query,
             depth,
         )
+
+
+class PublicBotUsageBotFilter(admin.SimpleListFilter):
+    title = "bot"
+    parameter_name = "bot"
+
+    def lookups(self, request, model_admin):
+        return [(bot, bot) for bot in sorted(PUBLIC_BOTS)]
+
+    def queryset(self, request, queryset):
+        if self.value():
+            return queryset.filter(bot=self.value())
+        return queryset
+
+
+@admin.register(PublicBotUsage)
+class PublicBotUsageAdmin(admin.ModelAdmin):
+    change_list_template = "admin/redis_admin/publicbotusage/change_list.html"
+    list_display = (
+        "bot",
+        "repo",
+        "hits",
+        "budget",
+        "pct_budget_display",
+        "reset_at_display",
+    )
+    list_filter = (PublicBotUsageBotFilter,)
+    search_fields = ("repo",)
+    search_help_text = "Filter by repository slug substring."
+    ordering = ("-hits",)
+    show_full_result_count = False
+    list_per_page = 50
+
+    @admin.display(description="% of GitHub budget", ordering="pct_budget")
+    def pct_budget_display(self, obj: PublicBotUsage) -> str:
+        return f"{obj.pct_budget:.2f}%"
+
+    def has_add_permission(self, request) -> bool:
+        return False
+
+    def has_change_permission(self, request, obj=None) -> bool:
+        return False
+
+    def has_delete_permission(self, request, obj=None) -> bool:
+        return False
+
+    def get_queryset(self, request):
+        deny_viewers(request)
+        return PublicBotUsage.objects.all()
+
+    def get_search_results(self, request, queryset, search_term):
+        if search_term:
+            queryset = queryset.filter(repo__icontains=search_term.strip())
+        return queryset, False
+
+    def changelist_view(self, request, extra_context=None):
+        extra_context = extra_context or {}
+        bot_filter = request.GET.get("bot")
+        repo_filter = request.GET.get("q", "").strip() or None
+        extra_context["top_repos"] = top_repos_across_bots(
+            get_redis_connection(),
+            limit=10,
+            bot_filter=bot_filter,
+            repo_filter=repo_filter,
+        )
+        return super().changelist_view(request, extra_context=extra_context)
