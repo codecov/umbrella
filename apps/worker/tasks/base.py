@@ -727,27 +727,36 @@ class BaseCodecovTask(celery_app.Task):
         """
         Queue a task to create an upload breadcrumb.
         """
-        try:
-            self.app.tasks[upload_breadcrumb_task_name].apply_async(
-                kwargs={
-                    "commit_sha": commit_sha,
-                    "repo_id": repo_id,
-                    "breadcrumb_data": BreadcrumbData(
-                        milestone=milestone, error=error, error_text=error_text
-                    ),
-                    "upload_ids": upload_ids,
-                    "sentry_trace_id": current_sentry_trace_id(),
-                }
-            )
-        except Exception:
-            log.exception(
-                "Failed to queue upload breadcrumb task",
-                extra={
-                    "commit_sha": commit_sha,
-                    "repo_id": repo_id,
-                    "milestone": milestone,
-                    "upload_ids": upload_ids,
-                    "error": error,
-                    "error_text": error_text,
-                },
-            )
+        max_attempts = 3
+        backoff_seconds = [0.5, 1.0]
+        last_exc: Exception | None = None
+        for attempt in range(max_attempts):
+            try:
+                self.app.tasks[upload_breadcrumb_task_name].apply_async(
+                    kwargs={
+                        "commit_sha": commit_sha,
+                        "repo_id": repo_id,
+                        "breadcrumb_data": BreadcrumbData(
+                            milestone=milestone, error=error, error_text=error_text
+                        ),
+                        "upload_ids": upload_ids,
+                        "sentry_trace_id": current_sentry_trace_id(),
+                    }
+                )
+                return
+            except Exception as exc:
+                last_exc = exc
+                if attempt < len(backoff_seconds):
+                    time.sleep(backoff_seconds[attempt])
+        log.warning(
+            "Failed to queue upload breadcrumb task after retries",
+            exc_info=last_exc,
+            extra={
+                "commit_sha": commit_sha,
+                "repo_id": repo_id,
+                "milestone": milestone,
+                "upload_ids": upload_ids,
+                "error": error,
+                "error_text": error_text,
+            },
+        )
