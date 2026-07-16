@@ -58,6 +58,16 @@ type Repository {
 
   "TestAnalytics are fields related to Codecov's Test Analytics product offering"
   testAnalytics: TestAnalytics
+
+  "Convenience shortcut to access test results directly on Repository without going through testAnalytics"
+  testResults(
+    filters: TestResultsFilters
+    ordering: TestResultsOrdering
+    first: Int
+    after: String
+    last: Int
+    before: String
+  ): TestResultConnection! @cost(complexity: 10, multipliers: ["first", "last"])
 }
 
 type PullConnection {
