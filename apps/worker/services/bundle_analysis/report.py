@@ -394,7 +394,6 @@ class BundleAnalysisReportService(BaseReportService):
             },
         )
         db_session.execute(command)
-        db_session.flush()
 
     @sentry_sdk.trace
     def save_measurements(
@@ -427,10 +426,31 @@ class BundleAnalysisReportService(BaseReportService):
                         bundle_report.total_size(),
                     )
 
-                # For individual javascript associated assets using UUID
-                if MeasurementName.bundle_analysis_asset_size.value in dataset_names:
+                # Collect per-asset and per-type totals in a single pass
+                save_asset_size = (
+                    MeasurementName.bundle_analysis_asset_size.value in dataset_names
+                )
+                asset_type_map = {
+                    MeasurementName.bundle_analysis_font_size: AssetType.FONT,
+                    MeasurementName.bundle_analysis_image_size: AssetType.IMAGE,
+                    MeasurementName.bundle_analysis_stylesheet_size: AssetType.STYLESHEET,
+                    MeasurementName.bundle_analysis_javascript_size: AssetType.JAVASCRIPT,
+                }
+                enabled_type_measurements = {
+                    measurement_name
+                    for measurement_name in asset_type_map
+                    if measurement_name.value in dataset_names
+                }
+
+                need_asset_iteration = save_asset_size or bool(enabled_type_measurements)
+
+                if need_asset_iteration:
+                    asset_type_totals = {k: 0 for k in asset_type_map}
+                    type_to_measurement = {v: k for k, v in asset_type_map.items()}
+
                     for asset in bundle_report.asset_reports():
-                        if asset.asset_type == AssetType.JAVASCRIPT:
+                        # Per individual JS asset
+                        if save_asset_size and asset.asset_type == AssetType.JAVASCRIPT:
                             self._save_to_timeseries(
                                 db_session,
                                 commit,
@@ -438,27 +458,23 @@ class BundleAnalysisReportService(BaseReportService):
                                 asset.uuid,
                                 asset.size,
                             )
+                        # Accumulate asset-type totals
+                        measurement_name = type_to_measurement.get(asset.asset_type)
+                        if measurement_name is not None:
+                            asset_type_totals[measurement_name] += asset.size
 
-                # For asset types sizes
-                asset_type_map = {
-                    MeasurementName.bundle_analysis_font_size: AssetType.FONT,
-                    MeasurementName.bundle_analysis_image_size: AssetType.IMAGE,
-                    MeasurementName.bundle_analysis_stylesheet_size: AssetType.STYLESHEET,
-                    MeasurementName.bundle_analysis_javascript_size: AssetType.JAVASCRIPT,
-                }
-                for measurement_name, asset_type in asset_type_map.items():
-                    if measurement_name.value in dataset_names:
-                        total_size = 0
-                        for asset in bundle_report.asset_reports():
-                            if asset.asset_type == asset_type:
-                                total_size += asset.size
+                    # Save per-type totals
+                    for measurement_name in enabled_type_measurements:
                         self._save_to_timeseries(
                             db_session,
                             commit,
                             measurement_name.value,
                             bundle_report.name,
-                            total_size,
+                            asset_type_totals[measurement_name],
                         )
+
+                # Flush all inserts in a single round-trip
+                db_session.flush()
 
             return ProcessingResult(
                 upload=upload,
