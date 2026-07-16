@@ -344,15 +344,25 @@ class AsyncGraphqlView(GraphQLAsyncView):
     def error_formatter(self, error: Any, debug: bool = False) -> dict[str, Any]:
         user = self.request.user
         is_anonymous = user.is_anonymous if user else True
+        error_message = error.formatted["message"]
         # the only way to check for a malformed query
-        is_bad_query = "Cannot query field" in error.formatted["message"]
+        is_bad_query = "Cannot query field" in error_message
+        # graphql-core variable validation errors are client mistakes, not server errors
+        is_invalid_variable = (
+            "is not defined by type" in error_message
+            or "got invalid value" in error_message
+        )
+        original_error = error.original_error
         if debug or (not is_anonymous and is_bad_query):
+            return format_error(error, debug)
+        # Pure graphql-core validation errors (original_error is None) that are
+        # caused by invalid client input should be returned as-is, not logged.
+        if is_invalid_variable and original_error is None:
             return format_error(error, debug)
         formatted = error.formatted
         formatted["message"] = "INTERNAL SERVER ERROR"
         formatted["type"] = "ServerError"
         # if this is one of our own command exception, we can tell a bit more
-        original_error = error.original_error
         if isinstance(original_error, BaseException) or isinstance(
             original_error, ServiceException
         ):
@@ -365,8 +375,9 @@ class AsyncGraphqlView(GraphQLAsyncView):
             formatted["type"] = type(original_error).__name__
         else:
             # otherwise it's not supposed to happen, so we log it
-            log.error("GraphQL internal server error", exc_info=original_error)
-            capture_exception(original_error)
+            if original_error is not None:
+                log.error("GraphQL internal server error", exc_info=original_error)
+                capture_exception(original_error)
         return formatted
 
     @sync_to_async
