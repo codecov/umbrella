@@ -315,15 +315,21 @@ def test_iter_keys_yields_celery_queues_via_fixed_keys(patched_redis):
 
 def test_celery_broker_family_routes_to_broker_connection_kind():
     """Pin the production routing decision: the `celery_broker` family
-    must declare it lives on the Celery broker Redis. Every other
-    family stays on the default cache Redis (the historical assumption
-    pre-PR).
+    (and the `unacked` HASH that lives next to it on the same broker
+    Redis — Kombu's bookkeeping is co-located with the queues
+    themselves) must declare they live on the broker connection.
+    Every other family stays on the default cache Redis (the
+    historical assumption pre-PR).
     """
 
+    broker_families = {"celery_broker", "unacked"}
     by_name = {f.name: f for f in FAMILIES}
-    assert by_name["celery_broker"].connection_kind == "broker"
+    for name in broker_families:
+        assert by_name[name].connection_kind == "broker", (
+            f"family {name!r} expected to ride on the broker Redis"
+        )
     for name, family in by_name.items():
-        if name == "celery_broker":
+        if name in broker_families:
             continue
         assert family.connection_kind == "default", (
             f"family {name!r} unexpectedly opted into a non-default "

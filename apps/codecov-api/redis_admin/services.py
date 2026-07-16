@@ -40,9 +40,21 @@ from django.db import close_old_connections
 
 from . import conn as _conn
 from . import settings as redis_admin_settings
-from .families import ConnectionKind, find_family, parse_celery_envelope
+from .families import (
+    CeleryEnvelopeMeta,
+    ConnectionKind,
+    find_family,
+    parse_celery_envelope,
+)
 from .families import _decode as _decode_value
-from .models import CeleryBrokerQueue, RedisLock, RedisQueue, RedisQueueItem
+from .models import (
+    CeleryBrokerQueue,
+    RedisLock,
+    RedisQueue,
+    RedisQueueItem,
+    UnackedQueueItem,
+)
+from .queryset import _UNACKED_INDEX_KEY, _UNACKED_KEY, _decode_unacked_value
 
 log = logging.getLogger(__name__)
 
@@ -1571,6 +1583,997 @@ def _run_celery_broker_clear_job_body(
     _record_audit(
         user=user,
         scope="celery_broker_clear",
+        count=count,
+        refused=(),
+        sample=sample,
+        families=families,
+        dry_run=dry_run,
+        extra=extra,
+    )
+
+
+# ---- Kombu unacked clear (HASH-based, paired HDEL+ZREM) -------------------
+#
+# The unacked clear has the same operator semantics as the celery
+# broker clear (filter by `(routing_key, task, repoid, commitid)`,
+# `keep_one`, `dry_run`, chunked background-job worker for long
+# clears) but its Redis side is materially simpler: HASH fields
+# don't shift on delete, so there is no LSET-tombstone /
+# verify-before-LSET problem to navigate. A match resolves to a
+# pair of `HDEL unacked <field>` + `ZREM unacked_index <field>`,
+# pipelined per chunk. Skipping the ZREM would leave a phantom
+# in `unacked_index` that points at a non-existent HASH field —
+# Kombu's restore loop would then attempt to re-enqueue an
+# already-cleared message and either error or silently do
+# nothing depending on the broker version, so the pairing is
+# enforced unconditionally even on dry-run previews (counts
+# only — no actual mutations on dry_run).
+#
+# Layout reference: `kombu.transport.redis.Channel.unacked_key`
+# / `unacked_index_key` (defaults: `"unacked"` and
+# `"unacked_index"`).
+
+
+def _substitute_filter_any_unacked(
+    routing_key: str | None,
+    task_name: str | None,
+    repoid: int | None,
+    commitid: str | None,
+) -> tuple:
+    """Substitute `_FILTER_ANY` for unset operator filter slots
+    on the 4-axis unacked filter shape.
+
+    The chunked unacked clear uses a 4-tuple
+    `(routing_key, task_name, repoid, commitid)` rather than the
+    celery-broker clear's 3-tuple. `routing_key` is the additional
+    axis because the unacked HASH spans every queue at once — an
+    operator who runs "clear all messages for repo X commit Y"
+    without scoping by routing_key would silently drain matches
+    from every queue, which is rarely what they want. We could
+    have funnelled `routing_key` through a separate exact-match
+    scope and reused the existing 3-tuple helper, but that would
+    have surfaced as a different code path on the matching side
+    and made `_FILTER_ANY` substitution rules drift between the
+    two helpers. The 4-tuple keeps the wildcard semantics
+    centralised and visible at a glance.
+
+    Truthiness vs `is None` rules match
+    `_substitute_filter_any`: integer-typed `repoid` uses
+    `is not None` to leave `0` valid; string-typed
+    `routing_key` / `task_name` / `commitid` treat `""` and
+    `None` both as "unset" because the admin form coerces
+    missing input to `""`.
+    """
+
+    return (
+        routing_key if routing_key else _FILTER_ANY,
+        task_name if task_name else _FILTER_ANY,
+        repoid if repoid is not None else _FILTER_ANY,
+        commitid if commitid else _FILTER_ANY,
+    )
+
+
+def _unacked_envelope_matches_any_filter(
+    routing_key: str | None,
+    meta,
+    filter_tuples: frozenset,
+) -> bool:
+    """Return True if the parsed envelope + routing_key matches any tuple.
+
+    Each filter tuple is
+    `(routing_key, task_name, repoid, commitid)` where any slot
+    may be the `_FILTER_ANY` sentinel ("wildcard / do not
+    constrain on this field"). `None` in a slot means "match only
+    envelopes whose corresponding parsed field is `None`".
+    Mirrors `_envelope_matches_any_filter` for the 4-axis shape.
+    """
+
+    for ft_rk, ft_task, ft_repoid, ft_commitid in filter_tuples:
+        if ft_rk is not _FILTER_ANY and ft_rk != routing_key:
+            continue
+        if ft_task is not _FILTER_ANY and ft_task != meta.task:
+            continue
+        if ft_repoid is not _FILTER_ANY and ft_repoid != meta.repoid:
+            continue
+        if ft_commitid is not _FILTER_ANY and ft_commitid != meta.commitid:
+            continue
+        return True
+    return False
+
+
+# HSCAN cursor batch size. Kept smaller than the celery_broker
+# LRANGE chunk because HSCAN's cursor batches are looser
+# (`count` is advisory) and we want sub-second progress and
+# cancel-landing on a multi-hundred-thousand-deep HASH. The
+# synchronous path uses the same value — there's no
+# verify-before-LSET asymmetry to optimise for.
+_UNACKED_CLEAR_CHUNK: int = 1_000
+
+# Hard cap on how many full HSCAN passes the streaming clear
+# attempts. HASH delete is much more deterministic than the
+# LSET-tombstone celery clear (no shift between snapshot and
+# delete), so one full pass typically drains the matches; we
+# keep a small buffer for racing producers (workers writing new
+# unacked entries during the clear). 3 is enough for a quiet
+# broker; the synchronous path almost always exits after pass 1
+# via the `matches_found == 0` early-exit.
+_UNACKED_MAX_PASSES: int = 3
+
+
+@dataclass(frozen=True)
+class _UnackedClearStats:
+    """Per-run stats from `_streaming_unacked_clear`.
+
+    Mirrors `_StreamingClearStats` but uses HASH-native counters:
+    `total_hdel` / `total_zrem` are the actual `HDEL` / `ZREM`
+    integer replies summed across all pipelines. `total_found`
+    is every match observed across passes (drives the dry-run
+    preview). `cancelled` is set when the optional progress
+    callback returned `True`.
+    """
+
+    total_hdel: int
+    total_zrem: int
+    total_found: int
+    first_match_field: str | None
+    passes_run: int
+    cancelled: bool = False
+
+
+@dataclass(frozen=True)
+class _UnackedChunkProgress:
+    pass_num: int  # 1-based pass index
+    chunk_index: int  # 0-based chunk index within the current pass
+    processed_delta: int  # fields walked in this chunk (HSCAN batch size)
+    matched_delta: int  # matches HDELed+ZREMmed in this chunk (live runs)
+    found_delta: int  # all matches observed in this chunk
+    total_hdel: int
+    total_zrem: int
+    total_found: int
+
+
+def _streaming_unacked_clear(
+    redis,
+    filter_tuples: frozenset,
+    *,
+    keep_one: bool = False,
+    dry_run: bool = False,
+    chunk_size: int | None = None,
+    progress_callback: Callable[[_UnackedChunkProgress], bool] | None = None,
+    unacked_key: str = _UNACKED_KEY,
+    unacked_index_key: str = _UNACKED_INDEX_KEY,
+) -> _UnackedClearStats:
+    """Streaming HSCAN+pipelined-HDEL/ZREM clear for the `unacked` HASH.
+
+    Walks `unacked` via `HSCAN` in `_UNACKED_CLEAR_CHUNK`-field
+    chunks, parses each value's
+    `[envelope, exchange, routing_key]` triple, decodes the
+    envelope with `parse_celery_envelope`, and matches against
+    `filter_tuples` via `_unacked_envelope_matches_any_filter`.
+
+    For each chunk's matches we issue a single
+    `pipeline(transaction=False)` of paired `HDEL unacked <fields...>`
+    + `ZREM unacked_index <fields...>` ops. Pairing is unconditional:
+    skipping the ZREM would leave a phantom in `unacked_index`
+    that points at a non-existent HASH field, and Kombu's restore
+    loop would then attempt to re-enqueue an already-cleared
+    message.
+
+    `keep_one=True` skips the *lowest-deadline* match across all
+    passes — i.e. the message most likely to be re-enqueued first
+    by Kombu's restore loop. The lowest-deadline match is
+    determined via `ZSCORE unacked_index <field>` for every match
+    seen during pass 1; pass 2+ honour the same keeper. Useful
+    for "I want to keep one example to inspect but clear the
+    rest" — the kept example is the one the operator's debug
+    tooling will actually catch when it gets re-enqueued.
+
+    `dry_run=True` walks the HASH once and accumulates
+    `total_found` without issuing any HDEL/ZREM.
+
+    Returns `_UnackedClearStats`. The caller uses
+    `total_found` for the dry-run preview and `total_hdel` for
+    the live-clear count.
+    """
+
+    chunk = chunk_size if chunk_size is not None else _UNACKED_CLEAR_CHUNK
+
+    total_hdel = 0
+    total_zrem = 0
+    total_found = 0
+    cancelled = False
+    first_match_field: str | None = None
+    passes_run = 0
+
+    # `keep_one` keeper field is determined off the pass-1 sweep
+    # (we need ZSCOREs across all matches to pick the lowest-
+    # deadline one). On pass 2+ we re-use the same keeper if it
+    # still exists; if a worker drained it between passes, the
+    # next pass's lowest-deadline match becomes the new keeper.
+    keeper_field: str | None = None
+
+    for pass_num in range(_UNACKED_MAX_PASSES):
+        passes_run = pass_num + 1
+        matches_found = 0
+        matches_hdel = 0
+        matches_zrem = 0
+        pass_matches: list[str] = []
+
+        if not redis.exists(unacked_key):
+            break
+
+        try:
+            depth = int(redis.hlen(unacked_key) or 0)
+        except Exception:  # pragma: no cover - defensive
+            depth = 0
+        log.info(
+            "redis_admin.unacked_clear: pass=%d depth=%d",
+            passes_run,
+            depth,
+        )
+
+        chunk_index = 0
+        chunk_buffer: list[tuple[str, str | None, Any]] = []
+
+        def _flush_chunk() -> None:
+            """Process one accumulated batch of HSCAN entries:
+            filter, optionally HDEL/ZREM, then drive progress.
+
+            Defined as a closure so the chunk-flush logic stays
+            readable in the streaming loop below — moving it out
+            would lift a dozen counter mutations into a separate
+            signature.
+            """
+
+            nonlocal matches_found, matches_hdel, matches_zrem
+            nonlocal first_match_field, chunk_index
+            if not chunk_buffer:
+                return
+
+            chunk_processed = len(chunk_buffer)
+            chunk_hdel_before = matches_hdel
+            chunk_zrem_before = matches_zrem
+            chunk_found_before = matches_found
+
+            chunk_targets: list[str] = []
+            for field_name, routing_key, meta in chunk_buffer:
+                if not _unacked_envelope_matches_any_filter(
+                    routing_key, meta, filter_tuples
+                ):
+                    continue
+                matches_found += 1
+                if first_match_field is None:
+                    first_match_field = field_name
+                # `keep_one`: skip the keeper across all passes.
+                # On pass 1 we don't yet know the lowest-deadline
+                # match (that's computed after the pass), so we
+                # collect every match into `chunk_targets` and
+                # filter the keeper out at end-of-pass1 below.
+                # On pass 2+ we already have `keeper_field`, so
+                # filter it out inline here.
+                if keep_one and pass_num > 0 and field_name == keeper_field:
+                    continue
+                if dry_run:
+                    continue
+                chunk_targets.append(field_name)
+                # `pass_matches` accumulates exactly once per
+                # match here. The post-pass-1 keep_one branch
+                # below intentionally does NOT extend it again:
+                # before the bugfix, every keep_one pass-1 match
+                # was stashed in `pass_matches` twice (once via
+                # this append, once via a now-removed
+                # `pass_matches.extend(chunk_targets)`). The
+                # post-pass HDEL+ZREM pipeline then issued
+                # duplicate commands per non-keeper. Idempotent
+                # on Redis (second HDEL/ZREM returns 0, leaving
+                # counters truthful) but doubled the round-trip
+                # volume on a long clear. Test
+                # `test_unacked_clear_keep_one_pass_one_does_not_double_pipeline`
+                # pins the no-duplicate-pipeline contract.
+                pass_matches.append(field_name)
+
+            if chunk_targets and pass_num == 0 and keep_one:
+                # On pass 1 we can't HDEL yet — the keeper is the
+                # lowest-deadline match across the *full pass*,
+                # determined post-pass via batched ZSCORE. The
+                # per-field `pass_matches.append(field_name)`
+                # above already stashed every chunk-level match
+                # exactly once; we deliberately don't extend
+                # `pass_matches` again here (see comment above).
+                # The post-pass HDEL+ZREM pipeline below runs one
+                # big batch against `pass_matches` minus the
+                # resolved keeper.
+                pass
+            elif chunk_targets:
+                pipe = redis.pipeline(transaction=False)
+                for field_name in chunk_targets:
+                    pipe.hdel(unacked_key, field_name)
+                for field_name in chunk_targets:
+                    pipe.zrem(unacked_index_key, field_name)
+                try:
+                    replies = pipe.execute(raise_on_error=False)
+                except TypeError:  # pragma: no cover - older clients
+                    try:
+                        replies = pipe.execute()
+                    except Exception:  # pragma: no cover - defensive
+                        replies = [0] * (2 * len(chunk_targets))
+                # First half: HDEL replies, second half: ZREM
+                # replies. Both are the integer count of fields
+                # actually removed (0 or 1 per call). We sum
+                # them so phantom-pair fix-ups (a ZREM landing on
+                # an index entry whose HASH field was already
+                # gone) still increment `total_zrem` — that's
+                # the signal that we cleaned up after a previous
+                # incomplete clear.
+                n = len(chunk_targets)
+                for reply in replies[:n]:
+                    if isinstance(reply, Exception):
+                        continue
+                    try:
+                        matches_hdel += int(reply or 0)
+                    except (TypeError, ValueError):
+                        pass
+                for reply in replies[n:]:
+                    if isinstance(reply, Exception):
+                        continue
+                    try:
+                        matches_zrem += int(reply or 0)
+                    except (TypeError, ValueError):
+                        pass
+
+            if progress_callback is not None:
+                snapshot = _UnackedChunkProgress(
+                    pass_num=passes_run,
+                    chunk_index=chunk_index,
+                    processed_delta=chunk_processed,
+                    matched_delta=matches_hdel - chunk_hdel_before,
+                    found_delta=matches_found - chunk_found_before,
+                    total_hdel=total_hdel + matches_hdel,
+                    total_zrem=total_zrem + matches_zrem,
+                    total_found=total_found + matches_found,
+                )
+                try:
+                    cancel_now = bool(progress_callback(snapshot))
+                except Exception:  # pragma: no cover - defensive
+                    log.exception(
+                        "redis_admin._streaming_unacked_clear: "
+                        "progress_callback raised; treating as no-cancel"
+                    )
+                    cancel_now = False
+                if cancel_now:
+                    raise _UnackedCancel()
+            chunk_index += 1
+            chunk_buffer.clear()
+
+        try:
+            for raw_field, raw_value in redis.hscan_iter(unacked_key, count=chunk):
+                field_name = _decode_value(raw_field)
+                decoded = _decode_value(raw_value)
+                envelope_str, _exchange, routing_key = _decode_unacked_value(decoded)
+                if envelope_str is None:
+                    # Use the canonical empty `CeleryEnvelopeMeta`
+                    # rather than an ad-hoc fake. The fake was
+                    # missing fields (e.g. `comparison_id`) that
+                    # any future filter expansion would touch and
+                    # raise `AttributeError` on (Bugbot review on
+                    # PR #911).
+                    meta = CeleryEnvelopeMeta()
+                else:
+                    meta = parse_celery_envelope(envelope_str)
+                chunk_buffer.append((field_name, routing_key, meta))
+                if len(chunk_buffer) >= chunk:
+                    _flush_chunk()
+            _flush_chunk()
+        except _UnackedCancel:
+            cancelled = True
+
+        # End of pass. On pass 1 with keep_one we now know the
+        # full match set, so pick the lowest-deadline keeper via
+        # ZSCORE and HDEL+ZREM the rest in one big pipeline.
+        if (
+            pass_num == 0
+            and keep_one
+            and pass_matches
+            and not dry_run
+            and not cancelled
+        ):
+            keeper_field = _pick_lowest_deadline_keeper(
+                redis, pass_matches, unacked_index_key=unacked_index_key
+            )
+            targets = [f for f in pass_matches if f != keeper_field]
+            if targets:
+                # Capture pre-drain counters so the post-pass
+                # progress callback below can report `matched_delta`
+                # and the cumulative `zrem_removed`. Without this,
+                # the operator's progress page permanently reports
+                # `matched=0` and `zrem_removed=0` for keep_one
+                # clears: the per-chunk callback runs while pass-1
+                # keep_one is still deferring all mutations to this
+                # post-pass pipeline (Bugbot review on PR #911).
+                pre_drain_hdel = matches_hdel
+                pipe = redis.pipeline(transaction=False)
+                for field_name in targets:
+                    pipe.hdel(unacked_key, field_name)
+                for field_name in targets:
+                    pipe.zrem(unacked_index_key, field_name)
+                try:
+                    replies = pipe.execute(raise_on_error=False)
+                except TypeError:  # pragma: no cover - older clients
+                    try:
+                        replies = pipe.execute()
+                    except Exception:  # pragma: no cover - defensive
+                        replies = [0] * (2 * len(targets))
+                n = len(targets)
+                for reply in replies[:n]:
+                    if isinstance(reply, Exception):
+                        continue
+                    try:
+                        matches_hdel += int(reply or 0)
+                    except (TypeError, ValueError):
+                        pass
+                for reply in replies[n:]:
+                    if isinstance(reply, Exception):
+                        continue
+                    try:
+                        matches_zrem += int(reply or 0)
+                    except (TypeError, ValueError):
+                        pass
+                # Notify the progress callback now that the deferred
+                # post-pass HDEL+ZREM have actually mutated the
+                # broker. Without this tick, the operator's progress
+                # page on a keep_one clear permanently shows
+                # `matched=0` / `zrem_removed=0` because every
+                # per-chunk tick during the pass-1 sweep reported
+                # zero deltas (mutations were all deferred to here).
+                if progress_callback is not None:
+                    snapshot = _UnackedChunkProgress(
+                        pass_num=passes_run,
+                        chunk_index=chunk_index,
+                        processed_delta=0,
+                        matched_delta=matches_hdel - pre_drain_hdel,
+                        found_delta=0,
+                        total_hdel=total_hdel + matches_hdel,
+                        total_zrem=total_zrem + matches_zrem,
+                        total_found=total_found + matches_found,
+                    )
+                    try:
+                        cancel_now = bool(progress_callback(snapshot))
+                    except Exception:  # pragma: no cover - defensive
+                        log.exception(
+                            "redis_admin._streaming_unacked_clear: "
+                            "post-pass keep_one progress_callback raised; "
+                            "treating as no-cancel"
+                        )
+                        cancel_now = False
+                    chunk_index += 1
+                    if cancel_now:
+                        cancelled = True
+
+        log.info(
+            "redis_admin.unacked_clear: pass=%d depth=%d "
+            "hdel_removed=%d zrem_removed=%d",
+            passes_run,
+            depth,
+            matches_hdel,
+            matches_zrem,
+        )
+
+        total_hdel += matches_hdel
+        total_zrem += matches_zrem
+        total_found += matches_found
+
+        if dry_run or cancelled:
+            break
+        if matches_found == 0:
+            break
+        if keep_one:
+            # `keep_one` has at most one keeper across all passes;
+            # if pass 1 cleared everything else we're done.
+            break
+
+    return _UnackedClearStats(
+        total_hdel=total_hdel,
+        total_zrem=total_zrem,
+        total_found=total_found,
+        first_match_field=first_match_field,
+        passes_run=passes_run,
+        cancelled=cancelled,
+    )
+
+
+class _UnackedCancel(Exception):
+    """Internal: control-flow signal used by `_streaming_unacked_clear`
+    to bail out of the HSCAN iterator on operator cancel without
+    threading a sentinel through the closure return values.
+    """
+
+
+def _pick_lowest_deadline_keeper(
+    redis,
+    fields: Iterable[str],
+    *,
+    unacked_index_key: str = _UNACKED_INDEX_KEY,
+) -> str | None:
+    """Return the `delivery_tag` with the smallest ZSCORE in
+    `unacked_index`, or the first field whose ZSCORE is missing.
+
+    The "smallest score = soonest visibility deadline" mapping
+    is Kombu's restore-loop semantic: lower score = earlier
+    deadline = sooner re-enqueued. So "keep the one most likely
+    to come back first" means keep the lowest-score match — the
+    one the operator's debug tooling is most likely to actually
+    catch in flight.
+
+    Fields with a missing ZSCORE (phantom HASH-without-ZSET
+    entries from a prior partial clear) sort *first* so we keep
+    them: they're never going to be re-enqueued by Kombu's
+    restore-loop on their own (no index entry), and clearing
+    them along with the rest of the matches would make the
+    keep_one semantic surprising on a half-cleared HASH.
+    """
+
+    fields_list = list(fields)
+    if not fields_list:
+        return None
+    best_field: str | None = None
+    best_score: float | None = None
+    for field_name in fields_list:
+        try:
+            score = redis.zscore(unacked_index_key, field_name)
+        except Exception:  # pragma: no cover - defensive
+            score = None
+        if score is None:
+            return field_name
+        score_f = float(score)
+        if best_score is None or score_f < best_score:
+            best_score = score_f
+            best_field = field_name
+    return best_field
+
+
+def unacked_clear(
+    targets: Iterable[UnackedQueueItem],
+    *,
+    user,
+    dry_run: bool = False,
+    keep_one: bool = False,
+) -> DeleteResult:
+    """Synchronously clear the given unacked messages.
+
+    Parallels `celery_broker_clear` but for the unacked HASH.
+    Targets must already be `UnackedQueueItem` rows materialised
+    from `UnackedQueueQuerySet`, which carry the `delivery_tag`
+    we need for HDEL+ZREM. Wraps in a sentry span and writes a
+    `LogEntry` audit row with `scope="unacked_clear"`.
+    """
+
+    span_name = "unacked_dry_run" if dry_run else "unacked_execute"
+    with sentry_sdk.start_span(op="redis.admin.delete", name=span_name) as span:
+        try:
+            span.set_tag("redis_admin.dry_run", dry_run)
+            span.set_tag("redis_admin.scope", "unacked_clear")
+        except AttributeError:  # pragma: no cover - older sdks
+            pass
+        return _unacked_clear(
+            targets, user=user, dry_run=dry_run, keep_one=keep_one, span=span
+        )
+
+
+def _unacked_clear(
+    targets: Iterable[UnackedQueueItem],
+    *,
+    user,
+    dry_run: bool,
+    keep_one: bool,
+    span,
+) -> DeleteResult:
+    # Gather the operator's per-message `(routing_key, task,
+    # repoid, commitid)` tuples and their delivery_tag samples
+    # for the audit log. Each materialised target carries an
+    # exact tuple — there are no wildcards on this path; the
+    # chunked job is the wildcard surface.
+    filter_set: set = set()
+    sample_source: list[str] = []
+    for target in targets:
+        if not isinstance(target, UnackedQueueItem):
+            log.warning(
+                "redis_admin.unacked_clear: ignoring non-unacked target %r",
+                type(target),
+            )
+            continue
+        if not target.delivery_tag:
+            continue
+        filter_set.add(
+            (
+                target.routing_key or None,
+                target.task_name or None,
+                target.repoid,
+                target.commitid or None,
+            )
+        )
+        sample_source.append(target.delivery_tag)
+
+    sample = tuple(sample_source[:_AUDIT_SAMPLE_SIZE])
+    families = ("unacked",) if filter_set else ()
+
+    if not filter_set:
+        result_count = 0
+        total_hdel = 0
+        total_zrem = 0
+        total_found = 0
+        passes_run = 0
+    else:
+        redis = _conn.get_connection(kind="broker")
+        stats = _streaming_unacked_clear(
+            redis,
+            frozenset(filter_set),
+            keep_one=keep_one,
+            dry_run=dry_run,
+        )
+        total_hdel = stats.total_hdel
+        total_zrem = stats.total_zrem
+        total_found = stats.total_found
+        passes_run = stats.passes_run
+        if dry_run:
+            # Mirror celery_broker_clear's keep_one preview:
+            # subtract one keeper if there are any matches at all
+            # (the unacked HASH is global, so there's exactly one
+            # keeper, not one per queue).
+            if keep_one and total_found > 0:
+                result_count = max(0, total_found - 1)
+            else:
+                result_count = total_found
+        else:
+            result_count = total_hdel
+
+    result = DeleteResult(
+        count=result_count,
+        sample=sample,
+        families=families,
+        dry_run=dry_run,
+        refused=(),
+    )
+
+    mode = (
+        "dry-run" if dry_run else ("all-but-first" if keep_one else "all-from-bucket")
+    )
+    _record_audit(
+        user=user,
+        scope="unacked_clear",
+        count=result.count,
+        refused=(),
+        sample=sample,
+        families=families,
+        dry_run=dry_run,
+        extra={
+            "mode": mode,
+            "passes_run": passes_run,
+            "total_hdel": total_hdel,
+            "total_zrem": total_zrem,
+            "total_found": total_found,
+        },
+    )
+    try:
+        span.set_data("redis_admin.count", result.count)
+        span.set_data("redis_admin.passes_run", passes_run)
+        span.set_data("redis_admin.total_hdel", total_hdel)
+        span.set_data("redis_admin.total_zrem", total_zrem)
+    except AttributeError:  # pragma: no cover - older sdks
+        pass
+    return result
+
+
+# ---- Chunked unacked clear jobs (background-thread variant) ---------------
+#
+# Same lifecycle pattern as the celery_broker chunked clear:
+# `start_unacked_clear_job` returns a `job_id` immediately, the
+# clear runs in a daemon thread, and the operator polls a status
+# hash for progress + drives cancellation through it. Job state
+# lives on the cache redis (NOT the broker) so a clear that
+# drains the unacked HASH doesn't accidentally evict its own
+# progress hash.
+_UNACKED_CLEAR_JOB_KEY_PREFIX: str = "redis_admin:unacked_clear_job"
+_UNACKED_CLEAR_JOB_TTL_SECONDS: int = 24 * 60 * 60
+_UNACKED_CLEAR_JOB_TERMINAL_STATES: frozenset[str] = frozenset(
+    {"completed", "cancelled", "failed"}
+)
+# Test-only thread handle. Same convention as
+# `_clear_job_threads`: production polls via the JSON status
+# endpoint; the dict is here so tests can `.join(timeout=...)`
+# deterministically.
+_unacked_clear_job_threads: dict[str, threading.Thread] = {}
+_unacked_clear_job_threads_lock = threading.Lock()
+
+
+def _unacked_job_key(job_id: str) -> str:
+    return f"{_UNACKED_CLEAR_JOB_KEY_PREFIX}:{job_id}"
+
+
+def start_unacked_clear_job(
+    *,
+    user,
+    routing_key: str | None = None,
+    task_name: str | None = None,
+    repoid: int | None = None,
+    commitid: str | None = None,
+    keep_one: bool = False,
+    dry_run: bool = False,
+) -> str:
+    """Spawn a background `unacked_clear` job; return its `job_id`.
+
+    Mirrors `start_celery_broker_clear_job` but takes a 4-axis
+    `(routing_key, task_name, repoid, commitid)` filter shape.
+    Initialises a hash at `redis_admin:unacked_clear_job:<job_id>`
+    on the cache redis with the operator's filter shape and the
+    snapshot `HLEN(unacked)` as `total_estimated`, then launches
+    a daemon thread that walks the HASH in chunks. The HTTP
+    request returns immediately so the gunicorn worker doesn't
+    sit on the actual clear; the operator polls the JSON status
+    view for progress.
+    """
+
+    job_id = str(uuid.uuid4())
+    cache = _conn.get_connection(kind="default")
+    try:
+        broker = _conn.get_connection(kind="broker")
+        total_estimated = int(broker.hlen(_UNACKED_KEY) or 0)
+    except Exception:  # pragma: no cover - broker outage path
+        total_estimated = 0
+
+    user_id = getattr(user, "id", None) or getattr(user, "pk", None) or 0
+    now = _utc_now_iso()
+    initial = {
+        "status": "pending",
+        "filter_routing_key": routing_key or "",
+        "filter_task": task_name or "",
+        "filter_repoid": "" if repoid is None else str(repoid),
+        "filter_commitid": commitid or "",
+        "dry_run": "1" if dry_run else "0",
+        "keep_one": "1" if keep_one else "0",
+        "user_id": str(user_id),
+        "started_at": now,
+        "updated_at": now,
+        "completed_at": "",
+        "total_estimated": str(total_estimated),
+        "processed": "0",
+        "matched": "0",
+        # `zrem_removed` is logged separately from `matched` so
+        # the operator's progress page can spot phantom-pair
+        # fix-ups (a ZREM landing on an index entry whose HASH
+        # field was already gone from a prior incomplete clear).
+        "zrem_removed": "0",
+        "passes_run": "0",
+        "error": "",
+        "cancel_requested": "0",
+    }
+    key = _unacked_job_key(job_id)
+    pipe = cache.pipeline(transaction=False)
+    pipe.hset(key, mapping=initial)
+    pipe.expire(key, _UNACKED_CLEAR_JOB_TTL_SECONDS)
+    pipe.execute()
+
+    thread = threading.Thread(
+        target=_run_unacked_clear_job,
+        kwargs={
+            "job_id": job_id,
+            "routing_key": routing_key,
+            "task_name": task_name,
+            "repoid": repoid,
+            "commitid": commitid,
+            "keep_one": keep_one,
+            "dry_run": dry_run,
+            "user": user,
+        },
+        name=f"redis_admin.unacked_clear_job.{job_id[:8]}",
+        daemon=True,
+    )
+    with _unacked_clear_job_threads_lock:
+        _unacked_clear_job_threads[job_id] = thread
+    thread.start()
+    return job_id
+
+
+def get_unacked_clear_job(job_id: str) -> dict[str, str] | None:
+    """Read the unacked job's state hash from cache redis.
+    Returns `None` when the hash is absent (unknown id, or the
+    24h TTL elapsed).
+    """
+
+    cache = _conn.get_connection(kind="default")
+    raw = cache.hgetall(_unacked_job_key(job_id))
+    if not raw:
+        return None
+    return _decode_job_hash(raw)
+
+
+def request_cancel_unacked_clear_job(job_id: str) -> bool:
+    """Set `cancel_requested=1` on the unacked job hash.
+    Idempotent: re-cancelling a cancelled or terminal job is a
+    no-op. Returns `True` when the hash existed, `False`
+    otherwise.
+    """
+
+    cache = _conn.get_connection(kind="default")
+    key = _unacked_job_key(job_id)
+    if not cache.exists(key):
+        return False
+    cache.hset(
+        key,
+        mapping={
+            "cancel_requested": "1",
+            "updated_at": _utc_now_iso(),
+        },
+    )
+    return True
+
+
+def _run_unacked_clear_job(
+    *,
+    job_id: str,
+    routing_key: str | None,
+    task_name: str | None,
+    repoid: int | None,
+    commitid: str | None,
+    keep_one: bool,
+    dry_run: bool,
+    user,
+) -> None:
+    """Daemon-thread worker for `start_unacked_clear_job`.
+
+    Mirrors `_run_celery_broker_clear_job` but uses the
+    HASH-native streaming clear. Owns the lifecycle: flips
+    `status` to `running`, calls `_streaming_unacked_clear` with
+    a callback that updates the progress hash and polls
+    `cancel_requested`, then writes the terminal `status` and
+    audit row.
+
+    Exceptions are swallowed and surfaced through the job hash's
+    `error` field instead of crashing the gunicorn worker.
+    """
+
+    try:
+        _run_unacked_clear_job_body(
+            job_id=job_id,
+            routing_key=routing_key,
+            task_name=task_name,
+            repoid=repoid,
+            commitid=commitid,
+            keep_one=keep_one,
+            dry_run=dry_run,
+            user=user,
+        )
+    finally:
+        with _unacked_clear_job_threads_lock:
+            _unacked_clear_job_threads.pop(job_id, None)
+        close_old_connections()
+
+
+def _run_unacked_clear_job_body(
+    *,
+    job_id: str,
+    routing_key: str | None,
+    task_name: str | None,
+    repoid: int | None,
+    commitid: str | None,
+    keep_one: bool,
+    dry_run: bool,
+    user,
+) -> None:
+    """Inner body of the worker, separated from
+    `_run_unacked_clear_job` so the wrapper can own the
+    test-handle cleanup in a `finally` block. Same split rationale
+    as `_run_celery_broker_clear_job_body`.
+    """
+
+    cache = _conn.get_connection(kind="default")
+    key = _unacked_job_key(job_id)
+    cache.hset(key, "status", "running")
+    cache.hset(key, "updated_at", _utc_now_iso())
+
+    filter_tuples = frozenset(
+        {_substitute_filter_any_unacked(routing_key, task_name, repoid, commitid)}
+    )
+
+    def _progress_callback(snapshot: _UnackedChunkProgress) -> bool:
+        try:
+            pipe = cache.pipeline(transaction=False)
+            if snapshot.processed_delta:
+                pipe.hincrby(key, "processed", snapshot.processed_delta)
+            if snapshot.matched_delta:
+                pipe.hincrby(key, "matched", snapshot.matched_delta)
+            # ZREM count is reported as a delta on the same
+            # cadence as HDEL; we recover it here by computing
+            # the cumulative-vs-stored difference. Avoids
+            # threading another delta through the snapshot
+            # type.
+            pipe.hset(key, "zrem_removed", str(snapshot.total_zrem))
+            pipe.hset(
+                key,
+                mapping={
+                    "passes_run": str(snapshot.pass_num),
+                    "updated_at": _utc_now_iso(),
+                },
+            )
+            pipe.execute()
+        except Exception:  # pragma: no cover - cache outage shouldn't kill clear
+            log.exception(
+                "redis_admin.unacked_clear_job(%s): failed to write progress",
+                job_id,
+            )
+        try:
+            cancel_raw = cache.hget(key, "cancel_requested")
+        except Exception:  # pragma: no cover - cache outage
+            return False
+        if cancel_raw is None:
+            return False
+        if isinstance(cancel_raw, bytes):
+            return cancel_raw == b"1"
+        return cancel_raw == "1"
+
+    error_str: str | None = None
+    stats: _UnackedClearStats | None = None
+    try:
+        broker = _conn.get_connection(kind="broker")
+        stats = _streaming_unacked_clear(
+            broker,
+            filter_tuples,
+            keep_one=keep_one,
+            dry_run=dry_run,
+            progress_callback=_progress_callback,
+        )
+    except Exception as exc:
+        log.exception("redis_admin.unacked_clear_job(%s): worker failed", job_id)
+        error_str = str(exc)
+
+    finalise: dict[str, str] = {
+        "completed_at": _utc_now_iso(),
+        "updated_at": _utc_now_iso(),
+    }
+    if error_str is not None:
+        finalise["status"] = "failed"
+        finalise["error"] = error_str
+    elif stats is not None and stats.cancelled:
+        finalise["status"] = "cancelled"
+    else:
+        finalise["status"] = "completed"
+    try:
+        cache.hset(key, mapping=finalise)
+    except Exception:  # pragma: no cover - cache outage at finalise
+        log.exception(
+            "redis_admin.unacked_clear_job(%s): failed to write terminal state",
+            job_id,
+        )
+
+    if dry_run:
+        mode = "chunked-dry-run"
+    elif keep_one:
+        mode = "chunked-all-but-first"
+    else:
+        mode = "chunked-all-from-bucket"
+    sample = (f"unacked#filter:{routing_key or '*'}",)
+    families = ("unacked",)
+    extra: dict[str, Any] = {
+        "mode": mode,
+        "job_id": job_id,
+        "cancelled": bool(stats and stats.cancelled),
+    }
+    if stats is not None:
+        extra.update(
+            {
+                "passes_run": stats.passes_run,
+                "total_hdel": stats.total_hdel,
+                "total_zrem": stats.total_zrem,
+                "total_found": stats.total_found,
+            }
+        )
+        count = stats.total_found if dry_run else stats.total_hdel
+    else:
+        count = 0
+    if error_str is not None:
+        extra["error"] = error_str
+    _record_audit(
+        user=user,
+        scope="unacked_clear",
         count=count,
         refused=(),
         sample=sample,

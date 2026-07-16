@@ -14,6 +14,7 @@ hood so the models need no real database table.
 
 from __future__ import annotations
 
+import datetime as _dt
 import json
 from collections import Counter
 from collections.abc import Iterator
@@ -1725,6 +1726,840 @@ class CeleryBrokerQueueQuerySet:
         if not self.queue_name or not redis.exists(self.queue_name):
             return []
         buckets, _total = _stream_frequency_aggregate(redis, self.queue_name, top=top)
+        return buckets
+
+    # ---- Admin compatibility shims ---------------------------------------
+
+    @property
+    def query(self):
+        ordering = self._ordering
+
+        class _Query:
+            order_by = ordering
+            select_related = False
+            distinct = False
+
+        return _Query()
+
+    @property
+    def ordered(self) -> bool:
+        return bool(self._ordering)
+
+    @property
+    def db(self) -> str:
+        return "default"
+
+
+# ---- Kombu unacked queue queryset (per-message drill-down) ----------------
+#
+# Backs `UnackedQueueItem`. The Kombu Redis transport stores
+# in-flight (BRPOPLPUSH'd) messages in two keys on the broker
+# Redis:
+#
+# * `unacked` (HASH) — field=`delivery_tag`, value=JSON-serialised
+#   `[message_dict, exchange_str, routing_key_str]` triple.
+# * `unacked_index` (ZSET) — score=visibility-timeout deadline,
+#   member=`delivery_tag`. Used by Kombu's restore-loop to
+#   re-enqueue messages whose worker died.
+#
+# Defaults verified against
+# `kombu.transport.redis.Channel.unacked_key` /
+# `unacked_index_key` (defaults: `"unacked"` and
+# `"unacked_index"`).
+#
+# Two-mode semantics mirror `CeleryBrokerQueueQuerySet`: with no
+# `routing_key__exact` filter the queryset returns one summary row
+# (`HLEN unacked`); with the filter set it returns per-message rows
+# scoped to that routing_key. Connection routes to `kind="broker"`
+# unconditionally — Kombu never lives on the cache Redis.
+
+# Kombu's default key names (`Channel.unacked_key` /
+# `Channel.unacked_index_key`). Pinned here as constants both for
+# documentation and so the test suite can override them via
+# the queryset constructor to exercise non-default deployments.
+_UNACKED_KEY: str = "unacked"
+_UNACKED_INDEX_KEY: str = "unacked_index"
+
+
+_UNACKED_FILTER_KEYS: dict[str, str] = {
+    "routing_key": "routing_key",
+    "routing_key__exact": "routing_key",
+    "exchange": "exchange_exact",
+    "exchange__exact": "exchange_exact",
+    "repoid": "repoid",
+    "repoid__exact": "repoid",
+    "commitid": "commitid_prefix",
+    "commitid__exact": "commitid_exact",
+    "commitid__startswith": "commitid_prefix",
+    "task_name": "task_name_exact",
+    "task_name__exact": "task_name_exact",
+    "task_name__icontains": "task_name_substring",
+    "task_id": "task_id_exact",
+    "task_id__exact": "task_id_exact",
+    "ownerid": "ownerid",
+    "ownerid__exact": "ownerid",
+    "pullid": "pullid",
+    "pullid__exact": "pullid",
+    "delivery_tag": "delivery_tag_exact",
+    "delivery_tag__exact": "delivery_tag_exact",
+    # Admin bulk-action `pk__in=[...]` shortcut. Each pk_token is
+    # `unacked#<delivery_tag>`, so we extract the suffixes and turn
+    # them into a delivery_tag set filter.
+    "pk__in": "pk_in",
+}
+
+
+@dataclass(frozen=True)
+class UnackedFrequencyBucket:
+    """One row of the unacked drill-down frequency chart.
+
+    Aggregates messages by `(routing_key, task_name, repoid,
+    commitid)` rather than the celery-broker chart's
+    `(task_name, repoid, commitid)` triple — `routing_key` is the
+    fourth axis here because the unacked HASH carries messages from
+    every queue at once. Without the routing_key column, "clear all
+    messages for repo X commit Y" would silently span queues that
+    share `(task, repoid, commitid)` but live under different
+    routing keys, which is rarely what an operator wants.
+
+    `pct` is the bucket's share of the sampled window (the same
+    `CELERY_BROKER_SCAN_LIMIT` we use for the celery_broker chart).
+    The HASH has no inherent ordering so HSCAN returns fields in
+    Redis-internal order; the chart's percentages are over the
+    sampled window, not necessarily over the whole HLEN.
+    """
+
+    routing_key: str | None
+    task_name: str | None
+    repoid: int | None
+    commitid: str | None
+    count: int
+    pct: float
+
+
+def _decode_unacked_value(decoded: str) -> tuple[str | None, str | None, str | None]:
+    """Pull `(envelope_str, exchange, routing_key)` from one unacked HASH value.
+
+    Kombu serialises each value as
+    `dumps([message_dict, exchange_str, routing_key_str])`. The
+    `message_dict` is the same kombu envelope shape (with `body`
+    base64) that `parse_celery_envelope` already understands —
+    re-emit it as a JSON string here so callers can hand it
+    directly to that parser without re-implementing the kombu
+    envelope shape locally.
+    """
+
+    try:
+        outer = json.loads(decoded)
+    except (ValueError, TypeError):
+        return None, None, None
+    if not isinstance(outer, list) or len(outer) < 1:
+        return None, None, None
+    envelope = outer[0]
+    exchange = outer[1] if len(outer) >= 2 and isinstance(outer[1], str) else None
+    routing_key = outer[2] if len(outer) >= 3 and isinstance(outer[2], str) else None
+    if isinstance(envelope, str):
+        envelope_str = envelope
+    elif isinstance(envelope, dict):
+        try:
+            envelope_str = json.dumps(envelope)
+        except (TypeError, ValueError):
+            envelope_str = None
+    else:
+        envelope_str = None
+    return envelope_str, exchange, routing_key
+
+
+def _stream_unacked_frequency_aggregate(
+    redis,
+    *,
+    top: int = _FREQUENCY_TOP_DEFAULT,
+    unacked_key: str = _UNACKED_KEY,
+) -> tuple[list[UnackedFrequencyBucket], int]:
+    """Streaming `(routing_key, task_name, repoid, commitid)` aggregator.
+
+    Walks `unacked` via `HSCAN` up to `CELERY_BROKER_SCAN_LIMIT`
+    fields. Each chunk is parsed and immediately discarded — the
+    only retained state is a rolling `Counter` keyed on the
+    4-tuple. Returns `(buckets, total_sampled)` where
+    `total_sampled` is the full sampled count (used as the `pct`
+    denominator) and `buckets` is the top-N list.
+
+    Mirrors `_stream_frequency_aggregate` for the celery_broker
+    chart, but iterates via HSCAN (HASH) instead of LRANGE (LIST)
+    and groups by an additional `routing_key` axis since the
+    unacked HASH spans every queue.
+    """
+
+    cap = redis_admin_settings.CELERY_BROKER_SCAN_LIMIT
+    counter: Counter[tuple[str | None, str | None, int | None, str | None]] = Counter()
+    total = 0
+
+    if not redis.exists(unacked_key):
+        return [], 0
+
+    scan_count = redis_admin_settings.SCAN_COUNT
+    for _raw_field, raw_value in redis.hscan_iter(unacked_key, count=scan_count):
+        if total >= cap:
+            break
+        decoded = _decode_value(raw_value)
+        envelope_str, _exchange, routing_key = _decode_unacked_value(decoded)
+        # Normalise empty-string routing_key to None so the
+        # all-axes-empty drop below catches both `routing_key=""`
+        # (Kombu writes the empty string when no exchange/queue
+        # is named) and `routing_key=None` (decoder fallback).
+        if not routing_key:
+            routing_key = None
+        if envelope_str is None:
+            if routing_key is None:
+                total += 1
+                continue
+            counter[(routing_key, None, None, None)] += 1
+            total += 1
+            continue
+        meta = parse_celery_envelope(envelope_str)
+        if (
+            routing_key is None
+            and meta.task is None
+            and meta.repoid is None
+            and meta.commitid is None
+        ):
+            total += 1
+            continue
+        counter[(routing_key, meta.task, meta.repoid, meta.commitid)] += 1
+        total += 1
+
+    if not counter or total == 0:
+        return [], 0
+
+    # Re-normalise `total` from the surviving counter so the
+    # rendered percentages sum to 100% across the chart's
+    # buckets. Without this, all-None unparseable envelopes
+    # (which `total += 1` but never land in `counter`) inflate
+    # the denominator and make percentages add up to less than
+    # 100% (Bugbot review on PR #911 — same shape as the
+    # cached path's `total = sum(counter.values())` re-norm
+    # in `frequency_by_routing_task_repo_commit`).
+    total = sum(counter.values())
+    if total == 0:
+        return [], 0
+
+    ordered = sorted(
+        counter.items(),
+        key=lambda kv: (
+            -kv[1],
+            _ordering_tuple_for_str(kv[0][0]),
+            _ordering_tuple_for_str(kv[0][1]),
+            _ordering_tuple_for_int(kv[0][2]),
+            _ordering_tuple_for_str(kv[0][3]),
+        ),
+    )
+    buckets: list[UnackedFrequencyBucket] = []
+    for (routing_key, task_name, repoid, commitid), count in ordered[:top]:
+        pct = (count / total) * 100.0 if total else 0.0
+        buckets.append(
+            UnackedFrequencyBucket(
+                routing_key=routing_key,
+                task_name=task_name,
+                repoid=repoid,
+                commitid=commitid,
+                count=count,
+                pct=pct,
+            )
+        )
+    return buckets, total
+
+
+class UnackedQueueQuerySet:
+    """Fake QuerySet over Kombu's unacked HASH.
+
+    Two-mode semantics: with no `routing_key__exact` filter,
+    materialises a single summary row whose `depth` is the live
+    `HLEN(unacked)`. With the filter set, materialises per-message
+    rows scoped to that routing_key.
+
+    Connection is hard-coded to `kind="broker"` since the unacked
+    bookkeeping lives on the Celery broker Redis (next to the
+    queue keys themselves), not on the cache Redis.
+    """
+
+    def __init__(
+        self,
+        model,
+        *,
+        routing_key: str | None = None,
+        view_all: bool = False,
+        ordering: tuple[str, ...] = (),
+        filters: dict[str, Any] | None = None,
+        request: Any = None,
+        unacked_key: str = _UNACKED_KEY,
+        unacked_index_key: str = _UNACKED_INDEX_KEY,
+    ) -> None:
+        self.model = model
+        self.routing_key = routing_key
+        # `view_all` lets the admin's "view N unacked message(s) →"
+        # link drop into per-message detail mode without picking a
+        # specific routing_key. Without this flag the queryset
+        # would still report `is_summary_mode()` and feed a single
+        # summary row to the admin's detail-column rendering — a
+        # row of dashes (Bugbot review on PR #911).
+        self.view_all = view_all
+        self._ordering = ordering
+        self._filters: dict[str, Any] = dict(filters or {})
+        self._result_cache: list | None = None
+        # The two key names ride on the queryset so callers can
+        # override them per-request (Kombu allows both via
+        # `transport_options`); production deployments leave the
+        # defaults in place.
+        self._unacked_key = unacked_key
+        self._unacked_index_key = unacked_index_key
+        # Optional `HttpRequest` reference. When set, the parsed
+        # HSCAN snapshot is stashed on the request so the
+        # changelist and the frequency-chart context builder reuse
+        # a single round-trip per page render. Mirrors
+        # `CeleryBrokerQueueQuerySet`'s per-request cache.
+        self._request = request
+
+    # ---- Cloning helpers --------------------------------------------------
+
+    def _clone(
+        self,
+        *,
+        routing_key: Any = _UNSET,
+        view_all: Any = _UNSET,
+        ordering: tuple[str, ...] | None = None,
+        filters: dict[str, Any] | None = None,
+    ) -> UnackedQueueQuerySet:
+        return UnackedQueueQuerySet(
+            self.model,
+            routing_key=self.routing_key if routing_key is _UNSET else routing_key,
+            view_all=self.view_all if view_all is _UNSET else view_all,
+            ordering=self._ordering if ordering is None else ordering,
+            filters=(
+                {**self._filters, **(filters or {})} if filters else dict(self._filters)
+            ),
+            request=self._request,
+            unacked_key=self._unacked_key,
+            unacked_index_key=self._unacked_index_key,
+        )
+
+    def all(self) -> UnackedQueueQuerySet:
+        return self._clone()
+
+    def none(self) -> UnackedQueueQuerySet:
+        empty = self._clone(routing_key=None)
+        empty._result_cache = []
+        return empty
+
+    def using(self, alias) -> UnackedQueueQuerySet:
+        return self
+
+    # ---- Compatibility shims for django.contrib.admin.utils ---------------
+
+    @property
+    def verbose_name(self):
+        return self.model._meta.verbose_name
+
+    @property
+    def verbose_name_plural(self):
+        return self.model._meta.verbose_name_plural
+
+    # ---- Filtering -------------------------------------------------------
+
+    def _interpret_filter_kwargs(
+        self, kwargs: dict[str, Any]
+    ) -> tuple[Any, dict[str, Any]]:
+        new_routing_key: Any = _UNSET
+        new_filters: dict[str, Any] = {}
+        for key, value in kwargs.items():
+            target = _UNACKED_FILTER_KEYS.get(key)
+            if target is None:
+                raise NotImplementedError(
+                    "UnackedQueueQuerySet.filter only supports "
+                    f"{sorted(_UNACKED_FILTER_KEYS)}; got {key!r}"
+                )
+            if target == "routing_key":
+                new_routing_key = None if value is None or value == "" else str(value)
+                continue
+            if value is None or value == "":
+                continue
+            if target in ("repoid", "ownerid", "pullid"):
+                try:
+                    new_filters[target] = int(value)
+                except (TypeError, ValueError):
+                    new_filters["__empty__"] = True
+            elif target in ("commitid_prefix", "commitid_exact"):
+                new_filters[target] = str(value)
+            elif target in (
+                "task_name_exact",
+                "task_id_exact",
+                "exchange_exact",
+                "delivery_tag_exact",
+            ):
+                new_filters[target] = str(value)
+            elif target == "task_name_substring":
+                new_filters[target] = str(value).lower()
+            elif target == "pk_in":
+                tags: set[str] = set()
+                bad = False
+                for raw in value or ():
+                    raw_str = str(raw)
+                    prefix, sep, tail = raw_str.rpartition("#")
+                    if not sep or not prefix or not tail:
+                        bad = True
+                        break
+                    if tail == "summary":
+                        # Summary pk_token has no message-shape; the
+                        # only bulk action we expose is message-shaped
+                        # clears. Force empty rather than over-match.
+                        bad = True
+                        break
+                    tags.add(tail)
+                if bad:
+                    new_filters["__empty__"] = True
+                else:
+                    new_filters["pk_in_tags"] = tags
+        return new_routing_key, new_filters
+
+    def filter(self, *args, **kwargs) -> UnackedQueueQuerySet:
+        if args:
+            raise NotImplementedError(
+                "UnackedQueueQuerySet.filter does not accept positional Q objects"
+            )
+        new_routing_key, new_filters = self._interpret_filter_kwargs(kwargs)
+        return self._clone(routing_key=new_routing_key, filters=new_filters)
+
+    def exclude(self, *args, **kwargs) -> UnackedQueueQuerySet:
+        if not args and not kwargs:
+            return self._clone()
+        raise NotImplementedError("UnackedQueueQuerySet.exclude is not implemented")
+
+    def order_by(self, *fields: str) -> UnackedQueueQuerySet:
+        return self._clone(ordering=tuple(fields))
+
+    def get(self, *args, **kwargs):
+        """Resolve a single row by `pk_token = 'unacked#<delivery_tag>'`.
+
+        `unacked#summary` resolves to the summary row.
+        """
+
+        if args:
+            raise self.model.DoesNotExist(
+                f"{self.model.__name__} positional get() is not supported"
+            )
+        pk = (
+            kwargs.pop("pk", None)
+            or kwargs.pop("pk__exact", None)
+            or kwargs.pop("pk_token", None)
+            or kwargs.pop("pk_token__exact", None)
+        )
+        if kwargs:
+            raise NotImplementedError(
+                "UnackedQueueQuerySet.get only supports pk/pk_token; "
+                f"got extra {list(kwargs)!r}"
+            )
+        if pk is None:
+            raise self.model.DoesNotExist(
+                f"{self.model.__name__} matching no kwargs does not exist"
+            )
+        pk_str = str(pk)
+        prefix, sep, tail = pk_str.rpartition("#")
+        if not sep or not prefix or not tail:
+            raise self.model.DoesNotExist(
+                f"pk_token must look like 'unacked#<delivery_tag>'; got {pk_str!r}"
+            )
+        if tail == "summary":
+            redis = self._connection()
+            depth = int(redis.hlen(self._unacked_key) or 0)
+            return self._build_summary_row(depth)
+        # Direct HGET path skips the per-message materialisation
+        # (which is bounded by `CELERY_BROKER_DISPLAY_LIMIT`) so a
+        # delivery_tag past that cap still resolves cleanly when
+        # the operator clicks through.
+        redis = self._connection()
+        raw = redis.hget(self._unacked_key, tail)
+        if raw is None:
+            raise self.model.DoesNotExist(
+                f"unacked HASH does not contain field {tail!r}"
+            )
+        decoded = _decode_value(raw)
+        envelope_str, exchange, routing_key = _decode_unacked_value(decoded)
+        meta: CeleryEnvelopeMeta
+        if envelope_str is None:
+            meta = CeleryEnvelopeMeta()
+        else:
+            meta = parse_celery_envelope(envelope_str)
+        deadline = self._read_deadline(redis, tail)
+        row = self._build_row(
+            delivery_tag=tail,
+            routing_key=routing_key or "",
+            exchange=exchange or "",
+            deadline=deadline,
+            meta=meta,
+        )
+        # Eagerly resolve the preview here so the change_form
+        # readonly field surface (which reads `obj.payload_preview`
+        # directly) shows the body kwargs. Singleton call — cost
+        # is one envelope's render, not the full HASH's.
+        resolve_payload_preview(row)
+        return row
+
+    # ---- Materialisation -------------------------------------------------
+
+    def _connection(self) -> Any:
+        # Unacked bookkeeping always lives on the broker Redis;
+        # the cache Redis never sees these keys.
+        return _conn.get_connection(kind="broker")
+
+    def _read_deadline(self, redis, delivery_tag: str) -> _dt.datetime | None:
+        """`ZSCORE unacked_index <tag>` rendered as a UTC datetime.
+
+        Kombu's restore-loop uses these scores (visibility-timeout
+        deadlines, unix timestamps) to re-enqueue messages whose
+        worker died. Surfacing them here lets the operator see
+        "this message will be restored at 12:34:56" without
+        shelling into Redis.
+        """
+
+        try:
+            score = redis.zscore(self._unacked_index_key, delivery_tag)
+        except Exception:  # pragma: no cover - defensive
+            return None
+        if score is None:
+            return None
+        try:
+            return _dt.datetime.fromtimestamp(float(score), tz=_dt.UTC)
+        except (TypeError, ValueError, OverflowError):  # pragma: no cover
+            return None
+
+    def _build_row(
+        self,
+        *,
+        delivery_tag: str,
+        routing_key: str,
+        exchange: str,
+        deadline: _dt.datetime | None,
+        meta: CeleryEnvelopeMeta,
+    ) -> Any:
+        # Mirrors `CeleryBrokerQueueQuerySet._build_row`: defer
+        # the `_summarise_kwargs_for_preview` cost to first display
+        # so a 2k-row materialisation isn't spending JSON-render
+        # cycles on rows the changelist will paginate past.
+        row = self.model(
+            pk_token=f"unacked#{delivery_tag}",
+            delivery_tag=delivery_tag,
+            routing_key=routing_key,
+            exchange=exchange,
+            visibility_deadline=deadline,
+            task_name=meta.task or "",
+            task_id=meta.task_id or "",
+            repoid=meta.repoid,
+            commitid=meta.commitid or "",
+            ownerid=meta.ownerid,
+            pullid=meta.pullid,
+            payload_preview="",
+            depth=None,
+        )
+        row._kwargs_for_preview = meta.kwargs
+        return row
+
+    def _build_summary_row(self, depth: int) -> Any:
+        return self.model(
+            pk_token="unacked#summary",
+            delivery_tag="",
+            routing_key="",
+            exchange="",
+            visibility_deadline=None,
+            task_name="",
+            task_id="",
+            repoid=None,
+            commitid="",
+            ownerid=None,
+            pullid=None,
+            payload_preview="",
+            depth=depth,
+        )
+
+    def is_summary_mode(self) -> bool:
+        """No `routing_key__exact` filter and no `view_all` flag
+        → render the single summary row (one per HASH, since
+        there's only one `unacked` HASH per broker).
+
+        `view_all` lets the admin land on detail-mode without
+        scoping to a single routing_key (the summary drill-in
+        link's behaviour); the materialiser then surfaces every
+        reserved message and the operator narrows via the
+        sidebar `routing_key` filter.
+        """
+
+        return self.routing_key is None and not self.view_all
+
+    @sentry_sdk.trace
+    def _materialise_summary(self) -> list:
+        """Single summary row carrying `HLEN(unacked)`.
+
+        Mirrors `CeleryBrokerQueueQuerySet._materialise_summary`
+        but emits exactly one row instead of one per known queue —
+        the unacked HASH is global across queues, and the
+        routing_key dimension lives inside the values, not in the
+        HASH name.
+        """
+
+        redis = self._connection()
+        try:
+            depth = int(redis.hlen(self._unacked_key) or 0)
+        except Exception:  # pragma: no cover - defensive
+            depth = 0
+        return [self._build_summary_row(depth)]
+
+    @sentry_sdk.trace
+    def _materialise(self) -> list:
+        if self.is_summary_mode():
+            return self._materialise_summary()
+        cached = self._read_request_cache()
+        if cached is not None:
+            return cached
+        redis = self._connection()
+        if not redis.exists(self._unacked_key):
+            return []
+        cap = redis_admin_settings.CELERY_BROKER_DISPLAY_LIMIT
+        scan_count = redis_admin_settings.SCAN_COUNT
+        rows: list = []
+        # Walk via HSCAN — bounded by `CELERY_BROKER_DISPLAY_LIMIT`
+        # so a 100k-deep unacked HASH doesn't materialise every row
+        # into Python on a single page render.
+        for raw_field, raw_value in redis.hscan_iter(
+            self._unacked_key, count=scan_count
+        ):
+            if len(rows) >= cap:
+                break
+            tag = _decode_value(raw_field)
+            decoded = _decode_value(raw_value)
+            envelope_str, exchange, routing_key = _decode_unacked_value(decoded)
+            if envelope_str is None:
+                meta = CeleryEnvelopeMeta()
+            else:
+                meta = parse_celery_envelope(envelope_str)
+            # ZSCORE per row within the bounded display window. The
+            # chart aggregator skips this entirely (it doesn't need
+            # deadlines), so the cost only lands on the changelist
+            # render where the operator wants the value visible.
+            deadline = self._read_deadline(redis, tag)
+            rows.append(
+                self._build_row(
+                    delivery_tag=tag,
+                    routing_key=routing_key or "",
+                    exchange=exchange or "",
+                    deadline=deadline,
+                    meta=meta,
+                )
+            )
+        self._write_request_cache(rows)
+        return rows
+
+    # ---- Per-request HSCAN cache ----------------------------------------
+
+    _REQUEST_CACHE_ATTR: str = "_unacked_hscan_cache"
+
+    def _request_cache_key(self) -> tuple[str, bool, int]:
+        # `view_all` rides on the cache key so a routing_key-scoped
+        # render and a `view_all=1` render don't share a snapshot:
+        # the routing_key path narrows in `_matches_filters` after
+        # caching, while `view_all=1` keeps every row.
+        return (
+            self.routing_key or "",
+            self.view_all,
+            redis_admin_settings.CELERY_BROKER_DISPLAY_LIMIT,
+        )
+
+    def _read_request_cache(self) -> list | None:
+        if self._request is None or self.is_summary_mode():
+            return None
+        cache = getattr(self._request, self._REQUEST_CACHE_ATTR, None)
+        if cache is None:
+            return None
+        return cache.get(self._request_cache_key())
+
+    def _write_request_cache(self, rows: list) -> None:
+        if self._request is None or self.is_summary_mode():
+            return
+        cache = getattr(self._request, self._REQUEST_CACHE_ATTR, None)
+        if cache is None:
+            cache = {}
+            setattr(self._request, self._REQUEST_CACHE_ATTR, cache)
+        cache[self._request_cache_key()] = rows
+
+    def _matches_filters(self, row: Any) -> bool:
+        f = self._filters
+        if f.get("__empty__"):
+            return False
+        # Summary rows skip the message filters — same shape as the
+        # celery broker queryset where `depth is not None` flags a
+        # summary row.
+        if row.depth is not None:
+            return True
+        # `routing_key` is the primary scope for unacked messages;
+        # enforce it post-materialisation so a chained filter (e.g.
+        # changelist's sidebar `routing_key` lookup) narrows
+        # correctly.
+        if self.routing_key is not None and (row.routing_key or "") != self.routing_key:
+            return False
+        repoid = f.get("repoid")
+        if repoid is not None and row.repoid != repoid:
+            return False
+        ownerid = f.get("ownerid")
+        if ownerid is not None and row.ownerid != ownerid:
+            return False
+        pullid = f.get("pullid")
+        if pullid is not None and row.pullid != pullid:
+            return False
+        commit_exact = f.get("commitid_exact")
+        if commit_exact and (row.commitid or "") != commit_exact:
+            return False
+        commit_prefix = f.get("commitid_prefix")
+        if commit_prefix and not (row.commitid or "").startswith(commit_prefix):
+            return False
+        task_exact = f.get("task_name_exact")
+        if task_exact and (row.task_name or "") != task_exact:
+            return False
+        task_substring = f.get("task_name_substring")
+        if task_substring and task_substring not in (row.task_name or "").lower():
+            return False
+        task_id_exact = f.get("task_id_exact")
+        if task_id_exact and (row.task_id or "") != task_id_exact:
+            return False
+        exchange_exact = f.get("exchange_exact")
+        if exchange_exact and (row.exchange or "") != exchange_exact:
+            return False
+        delivery_tag_exact = f.get("delivery_tag_exact")
+        if delivery_tag_exact and (row.delivery_tag or "") != delivery_tag_exact:
+            return False
+        pk_in_tags = f.get("pk_in_tags")
+        if pk_in_tags is not None and row.delivery_tag not in pk_in_tags:
+            return False
+        return True
+
+    def _fetch_all(self) -> list:
+        if self._result_cache is not None:
+            return self._result_cache
+        if self._filters.get("__empty__"):
+            self._result_cache = []
+            return []
+        rows = self._materialise()
+        rows = [r for r in rows if self._matches_filters(r)]
+        for field in reversed(self._ordering):
+            reverse = field.startswith("-")
+            attr = field.lstrip("-")
+            rows.sort(
+                key=lambda obj, attr=attr: _ordering_key(obj, attr), reverse=reverse
+            )
+        self._result_cache = rows
+        return rows
+
+    def __iter__(self) -> Iterator:
+        return iter(self._fetch_all())
+
+    def iterator(self, chunk_size: int | None = None) -> Iterator:
+        return iter(self._fetch_all())
+
+    def __len__(self) -> int:
+        return len(self._fetch_all())
+
+    def count(self) -> int:
+        return len(self._fetch_all())
+
+    def __getitem__(self, item):
+        return self._fetch_all()[item]
+
+    def __bool__(self) -> bool:
+        return bool(self._fetch_all())
+
+    def delete(self):
+        # Real deletion goes through `services.unacked_clear` so
+        # the paired HDEL+ZREM contract is honoured.
+        raise NotImplementedError(
+            "UnackedQueueQuerySet.delete is not supported; use "
+            "redis_admin.services.unacked_clear"
+        )
+
+    # ---- Frequency aggregation ------------------------------------------
+
+    def frequency_by_routing_task_repo_commit(
+        self, *, top: int = _FREQUENCY_TOP_DEFAULT
+    ) -> list[UnackedFrequencyBucket]:
+        """Top `(routing_key, task_name, repoid, commitid)` quadruples.
+
+        Drives the unacked drill-down's frequency chart. Two paths
+        identical in shape to `frequency_by_task_repo_commit` on
+        the celery_broker queryset:
+
+        1. Cached path: if the per-request HSCAN snapshot is
+           already populated, aggregate over those rows. Bounded
+           by `CELERY_BROKER_DISPLAY_LIMIT`.
+        2. Streaming path: streams the full HASH via
+           `_stream_unacked_frequency_aggregate` (bounded by
+           `CELERY_BROKER_SCAN_LIMIT`).
+
+        Buckets where every axis is `None` are dropped so the
+        chart's row click can't produce an empty-scope clear.
+        """
+
+        if self.is_summary_mode():
+            return []
+
+        cached = self._result_cache
+        if cached is not None:
+            rows = cached
+            total = len(rows)
+            if total == 0:
+                return []
+            counter: Counter[tuple[str | None, str | None, int | None, str | None]] = (
+                Counter()
+            )
+            for row in rows:
+                rk = row.routing_key or None
+                tn = row.task_name or None
+                cm = row.commitid or None
+                if rk is None and tn is None and row.repoid is None and cm is None:
+                    continue
+                counter[(rk, tn, row.repoid, cm)] += 1
+            # Re-normalise the running total to drop fully-empty
+            # rows from the pct denominator so the chart's
+            # percentages reflect the rendered buckets.
+            total = sum(counter.values())
+            if not counter:
+                return []
+            ordered = sorted(
+                counter.items(),
+                key=lambda kv: (
+                    -kv[1],
+                    _ordering_tuple_for_str(kv[0][0]),
+                    _ordering_tuple_for_str(kv[0][1]),
+                    _ordering_tuple_for_int(kv[0][2]),
+                    _ordering_tuple_for_str(kv[0][3]),
+                ),
+            )
+            buckets: list[UnackedFrequencyBucket] = []
+            for (routing_key, task_name, repoid, commitid), count in ordered[:top]:
+                pct = (count / total) * 100.0 if total else 0.0
+                buckets.append(
+                    UnackedFrequencyBucket(
+                        routing_key=routing_key,
+                        task_name=task_name,
+                        repoid=repoid,
+                        commitid=commitid,
+                        count=count,
+                        pct=pct,
+                    )
+                )
+            return buckets
+
+        redis = self._connection()
+        if not redis.exists(self._unacked_key):
+            return []
+        buckets, _total = _stream_unacked_frequency_aggregate(
+            redis, top=top, unacked_key=self._unacked_key
+        )
         return buckets
 
     # ---- Admin compatibility shims ---------------------------------------
