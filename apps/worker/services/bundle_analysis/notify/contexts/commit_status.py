@@ -1,3 +1,4 @@
+from functools import cached_property
 from typing import Self
 
 import sentry_sdk
@@ -47,7 +48,7 @@ class CommitStatusNotificationContext(BaseBundleAnalysisNotificationContext):
     cache_ttl = NotificationContextField[int]()
     should_use_upgrade_comment = NotificationContextField[bool]()
 
-    @property
+    @cached_property
     def base_commit(self) -> Commit:
         if self.pull:
             return self.pull.database_pull.get_comparedto_commit()
