@@ -241,6 +241,11 @@ def resolve_is_current_user_an_admin(owner: Owner, info: GraphQLResolveInfo) -> 
     return command.get_is_current_user_an_admin(owner, current_owner)
 
 
+@owner_bindable.field("externalId")
+def resolve_external_id(owner: Owner, info: GraphQLResolveInfo) -> str | None:
+    return str(owner.service_id) if owner.service_id else None
+
+
 @owner_bindable.field("isOnlyUsingSentryApp")
 @require_part_of_org
 async def resolve_is_only_using_sentry_app(
