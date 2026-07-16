@@ -78,7 +78,7 @@ if [[ -n "${STATSD_HOST:-}" ]]; then
   statsd="--statsd-host ${STATSD_HOST:?}:${STATSD_PORT:?}"
 fi
 
-if [[ "${CODECOV_SKIP_MIGRATIONS:-}" != "true" && ("${RUN_ENV:-}" = "ENTERPRISE" || "${RUN_ENV:-}" = "DEV") ]]; then
+if [[ "${CODECOV_SKIP_MIGRATIONS:-}" != "true" ]]; then
   echo "Running migrations"
   $pre_migrate $berglas python manage.py migrate $post_migrate
   $pre_migrate $berglas python migrate_timeseries.py $post_migrate
