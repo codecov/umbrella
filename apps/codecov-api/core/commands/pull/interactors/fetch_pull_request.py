@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime, timedelta
 
 from asgiref.sync import sync_to_async
@@ -5,6 +6,8 @@ from asgiref.sync import sync_to_async
 from codecov.commands.base import BaseInteractor
 from services.task.task import TaskService
 from shared.django_apps.core.models import Pull, Repository
+
+log = logging.getLogger(__name__)
 
 
 class FetchPullRequestInteractor(BaseInteractor):
@@ -20,6 +23,13 @@ class FetchPullRequestInteractor(BaseInteractor):
     def execute(self, repository: Repository, id: int) -> Pull:
         pull = repository.pull_requests.filter(pullid=id).first()
         if self._should_sync_pull(pull):
-            TaskService().pulls_sync(repository.repoid, id)
+            try:
+                TaskService().pulls_sync(repository.repoid, id)
+            except Exception:
+                log.warning(
+                    "Failed to dispatch pulls_sync task",
+                    extra={"repoid": repository.repoid, "pullid": id},
+                    exc_info=True,
+                )
 
         return pull
