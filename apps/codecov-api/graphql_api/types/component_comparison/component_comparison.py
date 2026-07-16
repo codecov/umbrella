@@ -25,6 +25,12 @@ def resolve_name(component_comparison: ComponentComparison, info) -> str:
         return component_comparison.component_id
 
 
+@component_comparison_bindable.field("baseName")
+def resolve_base_name(component_comparison: ComponentComparison, info) -> str:
+    # Deprecated alias for 'name' - kept for backward compatibility
+    return resolve_name(component_comparison, info)
+
+
 @component_comparison_bindable.field("baseTotals")
 def resolve_base_totals(
     component_comparison: ComponentComparison, info
