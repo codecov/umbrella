@@ -10,5 +10,6 @@ type PlanRepresentation {
   isTrialPlan: Boolean!
   marketingName: String!
   monthlyUploadLimit: Int
+  tierName: String!
   value: String!
 }
