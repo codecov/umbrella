@@ -128,3 +128,16 @@ class PublicBotUsageAdminSmokeTest(TestCase):
         body = response.content.decode("utf-8", errors="replace")
         assert "org/a" in body
         assert "org/b" not in body
+
+    def test_rate_limited_repo_is_marked(self):
+        record_pool_state(self.redis, "commit", 7500, 15000, self.reset_ts)
+        cap = int(15000 * 0.05)
+        for _ in range(cap + 1):
+            record_repo_request(self.redis, "commit", "org/hot", reset_ts=self.reset_ts)
+
+        response = self.client.get("/admin/redis_admin/publicbotusage/")
+
+        assert response.status_code == 200
+        body = response.content.decode("utf-8", errors="replace")
+        assert "org/hot" in body
+        assert "Rate limited" in body

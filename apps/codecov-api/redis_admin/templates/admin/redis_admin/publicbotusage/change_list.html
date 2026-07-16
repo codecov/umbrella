@@ -11,17 +11,21 @@
             <th scope="col">Bot</th>
             <th scope="col">Repo</th>
             <th scope="col">Hits</th>
+            <th scope="col">Cap (5%)</th>
             <th scope="col">% of GitHub budget</th>
+            <th scope="col">Rate limited</th>
           </tr>
         </thead>
         <tbody>
           {% for row in top_repos %}
-            <tr>
+            <tr{% if row.over_cap %} class="row-over-cap"{% endif %}>
               <td>{{ forloop.counter }}</td>
               <td>{{ row.bot }}</td>
               <td>{{ row.repo }}</td>
               <td>{{ row.hits }}</td>
+              <td>{{ row.cap }}</td>
               <td>{{ row.pct_budget|floatformat:2 }}%</td>
+              <td>{% if row.over_cap %}Yes{% else %}No{% endif %}</td>
             </tr>
           {% endfor %}
         </tbody>

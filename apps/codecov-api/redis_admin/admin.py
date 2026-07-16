@@ -2529,8 +2529,10 @@ class PublicBotUsageAdmin(admin.ModelAdmin):
         "bot",
         "repo",
         "hits",
+        "cap",
         "budget",
         "pct_budget_display",
+        "rate_limited_display",
         "reset_at_display",
     )
     list_filter = (PublicBotUsageBotFilter,)
@@ -2543,6 +2545,10 @@ class PublicBotUsageAdmin(admin.ModelAdmin):
     @admin.display(description="% of GitHub budget", ordering="pct_budget")
     def pct_budget_display(self, obj: PublicBotUsage) -> str:
         return f"{obj.pct_budget:.2f}%"
+
+    @admin.display(description="Rate limited", boolean=True, ordering="rate_limited")
+    def rate_limited_display(self, obj: PublicBotUsage) -> bool:
+        return obj.rate_limited
 
     def has_add_permission(self, request) -> bool:
         return False
