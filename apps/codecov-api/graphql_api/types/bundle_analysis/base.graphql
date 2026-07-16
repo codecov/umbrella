@@ -73,6 +73,7 @@ type BundleReport {
   moduleCount: Int!
   assets: [BundleAsset]!
   asset(name: String!): BundleAsset
+  size: BundleSize!
   bundleData: BundleData!
   bundleDataFiltered(filters: BundleReportFilters): BundleData!
   measurements(
