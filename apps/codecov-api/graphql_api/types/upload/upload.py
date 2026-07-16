@@ -46,12 +46,29 @@ def resolve_errors(report_session: ReportSession, info: GraphQLResolveInfo, **kw
     return queryset_to_connection_sync(list(report_session.errors.all()))
 
 
+_ERROR_CODE_MESSAGES = {
+    "file_not_in_storage": "The upload file could not be found in storage.",
+    "report_expired": "The upload has expired and is no longer available.",
+    "report_empty": "The uploaded report is empty.",
+    "processing_timeout": "The upload timed out during processing.",
+    "unsupported_file_format": "The uploaded file format is not supported.",
+    "unknown_processing": "An unknown error occurred during processing.",
+    "unknown_storage": "An unknown storage error occurred.",
+    "unknown_error_code": "An unknown error occurred.",
+}
+
+
 @upload_error_bindable.field("errorCode")
 def resolve_error_code(error, info: GraphQLResolveInfo) -> UploadErrorEnum:
     try:
         return UploadErrorEnum(error.error_code)
     except ValueError:
         return UploadErrorEnum.UNKNOWN_ERROR_CODE
+
+
+@upload_error_bindable.field("errorMessage")
+def resolve_error_message(error, info: GraphQLResolveInfo) -> str:
+    return _ERROR_CODE_MESSAGES.get(error.error_code, error.error_code)
 
 
 @upload_bindable.field("ciUrl")
