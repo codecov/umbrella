@@ -40,6 +40,9 @@ COMMIT_TOKEN = {
 class TestMakeHttpCallPublicBotCollection:
     @pytest.mark.asyncio
     async def test_public_bot_records_usage(self, public_bot_handler, mocker):
+        mocker.patch("shared.torngit.github.get_pool_reset", return_value=4_000_000_000)
+        mocker.patch("shared.torngit.github.get_repo_usage", return_value=0)
+        mocker.patch("shared.torngit.github.get_pool_budget", return_value=15000)
         record_pool = mocker.patch("shared.torngit.github.record_pool_state")
         record_repo = mocker.patch("shared.torngit.github.record_repo_request")
         inc = mocker.patch("shared.torngit.github.inc_counter")
