@@ -36,6 +36,7 @@ from services.test_results import (
 )
 from shared.celery_config import test_analytics_notifier_task_name
 from shared.django_apps.core.models import Commit, Repository
+from shared.django_apps.reports.models import ReportSession
 from shared.helpers.redis import get_redis_connection
 from shared.reports.types import UploadType
 from shared.typings.torngit import AdditionalData
@@ -318,6 +319,21 @@ class TestAnalyticsNotifierTask(
             commitid=upload_context["commit_sha"],
         ).first()
         commit_timestamp = commit.timestamp if commit else None
+
+        # If the commit timestamp is unavailable, fall back to the earliest
+        # upload created_at for this commit. This still provides a lower bound
+        # that enables TimescaleDB chunk elimination, avoiding a full table scan.
+        if commit_timestamp is None:
+            earliest_upload = (
+                ReportSession.objects.filter(
+                    report__commit__commitid=upload_context["commit_sha"],
+                    report__commit__repository_id=repo_id,
+                )
+                .order_by("created_at")
+                .values_list("created_at", flat=True)
+                .first()
+            )
+            commit_timestamp = earliest_upload
 
         # TODO: Add upload errors in a compliant way
 
