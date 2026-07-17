@@ -1018,6 +1018,16 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
                     hook_result = async_to_sync(create_webhook_on_provider)(
                         repository_service, webhook_secret=webhook_secret
                     )
+                    if hook_result is None:
+                        log.warning(
+                            "Failed to create webhook: provider returned no data",
+                            extra={
+                                "repoid": commit.repoid,
+                                "commit": commit.commitid,
+                                "action": "SET",
+                            },
+                        )
+                        return False
                     hookid = hook_result["id"]
                     log.info(
                         "Registered hook",
