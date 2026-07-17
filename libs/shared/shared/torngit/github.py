@@ -10,13 +10,19 @@ from urllib.parse import parse_qs, urlencode
 import httpx
 import sentry_sdk
 from httpx import Response
+from redis import RedisError
 
 from shared.config import get_config
 from shared.github import get_github_integration_token, get_github_jwt_token
 from shared.helpers.cache import cache
 from shared.helpers.redis import get_redis_connection
-from shared.metrics import Counter
+from shared.metrics import Counter, inc_counter
 from shared.rate_limits import set_entity_to_rate_limited
+from shared.rate_limits.public_bot import (
+    is_public_bot,
+    record_pool_state,
+    record_repo_request,
+)
 from shared.torngit.base import TokenType, TorngitBaseAdapter
 from shared.torngit.enums import Endpoints
 from shared.torngit.exceptions import (
@@ -53,6 +59,12 @@ GITHUB_E_API_CALL_COUNTER = Counter(
     "git_provider_api_calls_github_enterprise",
     "Number of times github enterprise called this endpoint",
     ["endpoint"],
+)
+
+PUBLIC_BOT_REQUESTS_COUNTER = Counter(
+    "git_provider_public_bot_requests",
+    "Number of requests sent via a shared public bot",
+    ["bot"],
 )
 
 
@@ -820,6 +832,34 @@ class Github(TorngitBaseAdapter):
                         **log_dict,
                     ),
                 )
+                entity_name = token_to_use.get("entity_name") if token_to_use else None
+                if is_public_bot(entity_name) and self.slug:
+                    try:
+                        remaining = res.headers.get("X-RateLimit-Remaining")
+                        limit = res.headers.get("X-RateLimit-Limit")
+                        reset = res.headers.get("X-RateLimit-Reset")
+                        reset_ts = int(reset) if reset is not None else None
+                        if (
+                            remaining is not None
+                            and limit is not None
+                            and reset is not None
+                        ):
+                            record_pool_state(
+                                self._redis_connection,
+                                entity_name,
+                                remaining,
+                                limit,
+                                reset,
+                            )
+                        record_repo_request(
+                            self._redis_connection,
+                            entity_name,
+                            self.slug,
+                            reset_ts=reset_ts,
+                        )
+                        inc_counter(PUBLIC_BOT_REQUESTS_COUNTER, {"bot": entity_name})
+                    except RedisError:
+                        log.warning("Failed to record public bot usage")
             except (httpx.TimeoutException, httpx.NetworkError):
                 if current_retry < max_number_retries:
                     log.warning(
