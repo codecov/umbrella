@@ -5,7 +5,7 @@ import sentry_sdk
 from lxml.etree import Element
 from timestring import Date
 
-from helpers.exceptions import ReportExpiredException
+from helpers.exceptions import CorruptRawReportError, ReportExpiredException
 from services.report.languages.base import BaseLanguageProcessor, normalize_timestamp
 from services.report.report_builder import CoverageType, ReportBuilderSession
 from shared.utils.merge import LineType, branch_type
@@ -88,8 +88,13 @@ def from_xml(xml: Element, report_builder_session: ReportBuilderSession) -> None
                     if ln > 0:
                         for counter in method.iter("counter"):
                             if counter.attrib["type"] == "COMPLEXITY":
-                                m = int(counter.attrib["missed"])
-                                c = int(counter.attrib["covered"])
+                                try:
+                                    m = int(counter.attrib["missed"])
+                                    c = int(counter.attrib["covered"])
+                                except ValueError as e:
+                                    raise CorruptRawReportError(
+                                        "jacoco", str(e)
+                                    ) from e
                                 method_complixity[ln] = (c, m + c)
                                 break
 
@@ -112,17 +117,22 @@ def from_xml(xml: Element, report_builder_session: ReportBuilderSession) -> None
             for line in source.iter("line"):
                 attr = line.attrib
                 cov: int | str
-                if attr["mb"] != "0":
-                    cov = "{}/{}".format(attr["cb"], int(attr["mb"]) + int(attr["cb"]))
-                    coverage_type = CoverageType.branch
+                try:
+                    if attr["mb"] != "0":
+                        cov = "{}/{}".format(
+                            attr["cb"], int(attr["mb"]) + int(attr["cb"])
+                        )
+                        coverage_type = CoverageType.branch
 
-                elif attr["cb"] != "0":
-                    cov = "{}/{}".format(attr["cb"], attr["cb"])
-                    coverage_type = CoverageType.branch
+                    elif attr["cb"] != "0":
+                        cov = "{}/{}".format(attr["cb"], attr["cb"])
+                        coverage_type = CoverageType.branch
 
-                else:
-                    cov = int(attr["ci"])
-                    coverage_type = CoverageType.line
+                    else:
+                        cov = int(attr["ci"])
+                        coverage_type = CoverageType.line
+                except ValueError as e:
+                    raise CorruptRawReportError("jacoco", str(e)) from e
 
                 if (
                     coverage_type == CoverageType.branch
@@ -131,7 +141,10 @@ def from_xml(xml: Element, report_builder_session: ReportBuilderSession) -> None
                 ):
                     cov = 1
 
-                ln = int(attr["nr"])
+                try:
+                    ln = int(attr["nr"])
+                except ValueError as e:
+                    raise CorruptRawReportError("jacoco", str(e)) from e
                 if ln > 0:
                     complexity = method_complixity.get(ln)
                     if complexity:
