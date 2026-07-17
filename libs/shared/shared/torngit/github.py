@@ -1133,6 +1133,12 @@ class Github(TorngitBaseAdapter):
                 slug=self.slug, branch_name=branch_name
             )
             res = await self.api(client, "get", url)
+            if res is None:
+                raise TorngitClientGeneralError(
+                    404,
+                    response_data=None,
+                    message=f"Branch {branch_name} not found or returned empty response",
+                )
             return {"name": res["name"], "sha": res["commit"]["sha"]}
 
     async def get_authenticated_user(self, code):
