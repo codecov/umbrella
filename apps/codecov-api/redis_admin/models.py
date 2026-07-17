@@ -9,6 +9,9 @@ Redis SCAN results and are never saved.
 
 from django.db import models
 
+from shared.rate_limits.public_bot import RepoUsageRow
+
+from .public_bot_usage_queryset import PublicBotUsageQuerySet, format_reset_at
 from .queryset import (
     CeleryBrokerQueueQuerySet,
     RedisItemQuerySet,
@@ -218,3 +221,48 @@ class RedisQueueItem(models.Model):
 
     def delete(self, *args, **kwargs):  # pragma: no cover - milestone 5
         raise NotImplementedError("RedisQueueItem.delete arrives in milestone 5.")
+
+
+class PublicBotUsageManager(models.Manager):
+    def get_queryset(self):  # type: ignore[override]
+        return PublicBotUsageQuerySet(self.model)
+
+
+class PublicBotUsage(models.Model):
+    """Aggregated public-bot usage for one `(bot, repo)` pair in Redis."""
+
+    pk_token = models.CharField(primary_key=True, max_length=600)
+    bot = models.CharField(max_length=64)
+    repo = models.CharField(max_length=512)
+    hits = models.PositiveIntegerField(default=0)
+    budget = models.PositiveIntegerField(default=0)
+    pct_budget = models.FloatField(default=0.0)
+    reset_at_display = models.CharField(max_length=64, blank=True)
+
+    objects = PublicBotUsageManager()
+
+    class Meta:
+        managed = False
+        app_label = "redis_admin"
+        verbose_name = "Public bot usage"
+        verbose_name_plural = "Public bot usage"
+        default_permissions = ("view",)
+
+    @classmethod
+    def from_row(cls, row):
+        assert isinstance(row, RepoUsageRow)
+        return cls(
+            pk_token=f"{row.bot}:{row.repo}",
+            bot=row.bot,
+            repo=row.repo,
+            hits=row.hits,
+            budget=row.budget,
+            pct_budget=row.pct_budget,
+            reset_at_display=format_reset_at(row.reset_at),
+        )
+
+    def __str__(self) -> str:
+        return f"{self.bot} / {self.repo}"
+
+    def save(self, *args, **kwargs):  # pragma: no cover - safety net
+        raise RuntimeError("PublicBotUsage is read-only; saves are not supported.")
