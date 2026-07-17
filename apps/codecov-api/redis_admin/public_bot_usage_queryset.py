@@ -20,18 +20,54 @@ def _ordering_key(obj: Any, attr: str) -> tuple:
 
 
 class PublicBotUsageQuerySet:
+    """Quacks like a Django QuerySet for the public-bot usage admin changelist."""
+
     def __init__(
         self,
         model: type,
         *,
         bot_filter: str | None = None,
         repo_filter: str | None = None,
+        ordering: tuple[str, ...] = ("-hits",),
     ) -> None:
         self.model = model
         self.bot_filter = bot_filter
         self.repo_filter = repo_filter
-        self._ordering: tuple[str, ...] = ("-hits",)
+        self._ordering = ordering
         self._result_cache: list[Any] | None = None
+
+    def _clone(
+        self,
+        *,
+        bot_filter: str | None = None,
+        repo_filter: str | None = None,
+        ordering: tuple[str, ...] | None = None,
+    ) -> PublicBotUsageQuerySet:
+        return PublicBotUsageQuerySet(
+            self.model,
+            bot_filter=self.bot_filter if bot_filter is None else bot_filter,
+            repo_filter=self.repo_filter if repo_filter is None else repo_filter,
+            ordering=self._ordering if ordering is None else ordering,
+        )
+
+    def all(self) -> PublicBotUsageQuerySet:
+        return self._clone()
+
+    def none(self) -> PublicBotUsageQuerySet:
+        empty = self._clone()
+        empty._result_cache = []
+        return empty
+
+    def using(self, alias) -> PublicBotUsageQuerySet:
+        return self
+
+    @property
+    def verbose_name(self):
+        return self.model._meta.verbose_name
+
+    @property
+    def verbose_name_plural(self):
+        return self.model._meta.verbose_name_plural
 
     def _materialise(self) -> list[Any]:
         redis = get_redis_connection()
@@ -56,26 +92,17 @@ class PublicBotUsageQuerySet:
         return self._result_cache
 
     def order_by(self, *fields: str) -> PublicBotUsageQuerySet:
-        clone = PublicBotUsageQuerySet(
-            self.model,
-            bot_filter=self.bot_filter,
-            repo_filter=self.repo_filter,
-        )
-        clone._ordering = fields or self._ordering
-        return clone
+        return self._clone(ordering=fields or self._ordering)
 
     def filter(self, **kwargs: Any) -> PublicBotUsageQuerySet:
         bot_filter = kwargs.get("bot") or kwargs.get("bot__exact") or self.bot_filter
         repo_filter = kwargs.get("repo__icontains") or self.repo_filter
-        clone = PublicBotUsageQuerySet(
-            self.model,
-            bot_filter=bot_filter,
-            repo_filter=repo_filter,
-        )
-        clone._ordering = self._ordering
-        return clone
+        return self._clone(bot_filter=bot_filter, repo_filter=repo_filter)
 
     def __iter__(self) -> Iterator:
+        return iter(self._fetch_all())
+
+    def iterator(self, chunk_size: int | None = None) -> Iterator:
         return iter(self._fetch_all())
 
     def __len__(self) -> int:
@@ -86,6 +113,26 @@ class PublicBotUsageQuerySet:
 
     def __getitem__(self, item):
         return self._fetch_all()[item]
+
+    def __bool__(self) -> bool:
+        return bool(self._fetch_all())
+
+    @property
+    def query(self):
+        class _Query:
+            order_by = self._ordering
+            select_related = False
+            distinct = False
+
+        return _Query()
+
+    @property
+    def ordered(self) -> bool:
+        return bool(self._ordering)
+
+    @property
+    def db(self) -> str:
+        return "default"
 
 
 def format_reset_at(reset_at: int | None) -> str:

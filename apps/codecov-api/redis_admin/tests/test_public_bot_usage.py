@@ -5,12 +5,59 @@ from __future__ import annotations
 import time
 
 import fakeredis
+import pytest
 from django.test import TestCase
 
 import shared.helpers.redis as shared_redis
+from redis_admin.models import PublicBotUsage
 from shared.django_apps.codecov_auth.tests.factories import UserFactory
 from shared.rate_limits.public_bot import record_pool_state, record_repo_request
 from utils.test_utils import Client
+
+
+@pytest.fixture
+def patched_redis(monkeypatch) -> fakeredis.FakeStrictRedis:
+    server = fakeredis.FakeStrictRedis()
+    monkeypatch.setattr(shared_redis, "get_redis_connection", lambda: server)
+    return server
+
+
+def test_queryset_admin_compat_shims():
+    qs = PublicBotUsage.objects.all()
+    assert qs.query.order_by == ("-hits",)
+    assert qs.ordered is True
+    assert qs.db == "default"
+    assert qs.verbose_name == "Public bot usage"
+    assert qs.verbose_name_plural == "Public bot usage"
+
+
+def test_queryset_none_is_empty():
+    assert list(PublicBotUsage.objects.all().none()) == []
+    assert PublicBotUsage.objects.all().none().count() == 0
+
+
+def test_queryset_filter_and_order_by_clone(patched_redis):
+    record_pool_state(patched_redis, "commit", 7500, 15000, int(time.time()) + 3600)
+    record_repo_request(
+        patched_redis, "commit", "org/a", reset_ts=int(time.time()) + 3600
+    )
+    record_repo_request(
+        patched_redis, "pull", "org/b", reset_ts=int(time.time()) + 3600
+    )
+
+    rows = list(PublicBotUsage.objects.all().filter(bot="commit").order_by("repo"))
+    assert len(rows) == 1
+    assert rows[0].repo == "org/a"
+
+
+def test_queryset_iterator_matches_list(patched_redis):
+    record_pool_state(patched_redis, "commit", 7500, 15000, int(time.time()) + 3600)
+    record_repo_request(
+        patched_redis, "commit", "org/a", reset_ts=int(time.time()) + 3600
+    )
+
+    qs = PublicBotUsage.objects.all()
+    assert list(qs.iterator()) == list(qs)
 
 
 class PublicBotUsageAdminSmokeTest(TestCase):
