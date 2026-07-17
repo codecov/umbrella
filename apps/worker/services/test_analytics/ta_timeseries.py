@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import logging
+import time
 from datetime import datetime
 from typing import TypedDict
 
 import test_results_parser
-from django.db import connections
+from django.db import OperationalError, connections
 from django.db.models import Q
 
 from services.test_results import FlakeInfo
@@ -13,6 +15,8 @@ from shared.django_apps.ta_timeseries.models import (
     calc_test_id,
 )
 from shared.django_apps.test_analytics.models import Flake
+
+log = logging.getLogger(__name__)
 
 
 def get_flaky_tests_set(repo_id: int) -> set[bytes]:
@@ -76,7 +80,36 @@ def insert_testrun(
                 upload_id=upload_id,
             )
         )
-    Testrun.objects.bulk_create(testruns_to_create)
+    _bulk_create_with_retry(testruns_to_create)
+
+
+_TA_TIMESERIES_DB = "ta_timeseries"
+_BULK_CREATE_BATCH_SIZE = 500
+_MAX_RETRIES = 3
+_RETRY_BACKOFF_SECONDS = [1, 2, 4]
+
+
+def _bulk_create_with_retry(testruns: list) -> None:
+    """Bulk-create Testrun rows with retry+backoff to handle transient
+    pgbouncer connection saturation (client_login_timeout)."""
+    for attempt in range(_MAX_RETRIES):
+        try:
+            Testrun.objects.bulk_create(testruns, batch_size=_BULK_CREATE_BATCH_SIZE)
+            return
+        except OperationalError:
+            if attempt == _MAX_RETRIES - 1:
+                raise
+            wait = _RETRY_BACKOFF_SECONDS[attempt]
+            log.warning(
+                "ta_timeseries bulk_create failed with OperationalError "
+                "(attempt %d/%d), retrying in %ds",
+                attempt + 1,
+                _MAX_RETRIES,
+                wait,
+            )
+            # Close the stale connection so the next attempt gets a fresh one
+            connections[_TA_TIMESERIES_DB].close()
+            time.sleep(wait)
 
 
 class FailedTestInstance(TypedDict):
