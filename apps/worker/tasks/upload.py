@@ -43,6 +43,7 @@ from shared.django_apps.upload_breadcrumbs.models import Errors, Milestones
 from shared.django_apps.user_measurements.models import UserMeasurement
 from shared.helpers.redis import get_redis_connection
 from shared.metrics import Counter, Histogram, inc_counter
+from shared.torngit.base import TokenType
 from shared.torngit.exceptions import TorngitClientError, TorngitRepoNotFoundError
 from shared.upload.types import UploaderType
 from shared.upload.utils import bulk_insert_coverage_measurements
@@ -982,11 +983,17 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
         )
         should_post_legacy = not repository.using_integration
 
+        # Webhook registration requires admin access. Skip if the service is only
+        # using a tokenless/public bot token that won't have repo admin permissions.
+        admin_token = repository_service.get_token_by_type(TokenType.admin)
+        has_admin_token = "tokenless" not in (admin_token.get("entity_name") or "")
+
         should_post_webhook = (
             should_post_legacy
             and should_post_ghapp
             and not repository.hookid
             and hasattr(repository_service, "post_webhook")
+            and has_admin_token
         )
 
         needs_webhook_secret_backfill = (
@@ -995,6 +1002,15 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
             and not repository.webhook_secret
             and hasattr(repository_service, "edit_webhook")
         )
+
+        if not has_admin_token and not needs_webhook_secret_backfill:
+            log.info(
+                "Skipping webhook setup: no admin-capable token available (tokenless access)",
+                extra={
+                    "repoid": repository.repoid,
+                    "commit": commit.commitid,
+                },
+            )
 
         # try to add webhook
         if should_post_webhook or needs_webhook_secret_backfill:
@@ -1050,6 +1066,15 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
                         },
                     )
                     return False  # was_setup
+            except TorngitRepoNotFoundError:
+                log.warning(
+                    "Failed to create or update project webhook: repository not found or insufficient permissions (404)",
+                    extra={
+                        "repoid": repository.repoid,
+                        "commit": commit.commitid,
+                        "action": "SET" if should_post_webhook else "EDIT",
+                    },
+                )
             except TorngitClientError:
                 log.warning(
                     "Failed to create or update project webhook",
