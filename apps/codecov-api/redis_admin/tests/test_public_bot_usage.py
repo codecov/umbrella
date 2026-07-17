@@ -3,11 +3,9 @@
 from __future__ import annotations
 
 import time
-from io import StringIO
 
 import fakeredis
 import pytest
-from django.core.management import call_command
 from django.test import TestCase
 
 import redis_admin.admin as redis_admin_module
@@ -17,7 +15,6 @@ from redis_admin.models import PublicBotUsage
 from redis_admin.public_bot_usage_queryset import format_reset_at
 from shared.django_apps.codecov_auth.tests.factories import UserFactory
 from shared.rate_limits.public_bot import (
-    list_repo_usage,
     record_pool_state,
     record_repo_request,
 )
@@ -33,10 +30,6 @@ def patched_redis(monkeypatch) -> fakeredis.FakeStrictRedis:
 
     monkeypatch.setattr(shared_redis, "get_redis_connection", _connection)
     monkeypatch.setattr(public_bot_queryset, "get_redis_connection", _connection)
-    monkeypatch.setattr(
-        "redis_admin.management.commands.seed_public_bot_usage.get_redis_connection",
-        _connection,
-    )
     return server
 
 
@@ -80,31 +73,6 @@ def test_queryset_iterator_matches_list(patched_redis):
 
 def test_format_reset_at_none():
     assert format_reset_at(None) == "—"
-
-
-def test_seed_public_bot_usage_writes_rows(patched_redis):
-    out = StringIO()
-    call_command("seed_public_bot_usage", "--clear", stdout=out)
-
-    output = out.getvalue()
-    assert "Seeded" in output
-    assert "publicbotusage" in output
-
-    rows = list_repo_usage(patched_redis)
-    assert len(rows) >= 10
-    assert any(row.repo == "mongodb/mongo-python-driver" for row in rows)
-
-
-def test_seed_public_bot_usage_clear_removes_existing_keys(patched_redis):
-    record_pool_state(patched_redis, "commit", 7500, 15000, int(time.time()) + 3600)
-    record_repo_request(
-        patched_redis, "commit", "org/old", reset_ts=int(time.time()) + 3600
-    )
-
-    call_command("seed_public_bot_usage", "--clear", stdout=StringIO())
-
-    rows = list_repo_usage(patched_redis, repo_filter="org/old")
-    assert rows == []
 
 
 class PublicBotUsageAdminSmokeTest(TestCase):
