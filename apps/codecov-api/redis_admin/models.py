@@ -237,6 +237,8 @@ class PublicBotUsage(models.Model):
     hits = models.PositiveIntegerField(default=0)
     budget = models.PositiveIntegerField(default=0)
     pct_budget = models.FloatField(default=0.0)
+    cap = models.PositiveIntegerField(default=0)
+    rate_limited = models.BooleanField(default=False)
     reset_at_display = models.CharField(max_length=64, blank=True)
 
     objects = PublicBotUsageManager()
@@ -258,6 +260,8 @@ class PublicBotUsage(models.Model):
             hits=row.hits,
             budget=row.budget,
             pct_budget=row.pct_budget,
+            cap=row.cap or 0,
+            rate_limited=row.over_cap,
             reset_at_display=format_reset_at(row.reset_at),
         )
 

@@ -19,9 +19,14 @@ from shared.helpers.redis import get_redis_connection
 from shared.metrics import Counter, inc_counter
 from shared.rate_limits import set_entity_to_rate_limited
 from shared.rate_limits.public_bot import (
+    get_pool_budget,
+    get_pool_reset,
+    get_repo_usage,
+    is_over_cap,
     is_public_bot,
     record_pool_state,
     record_repo_request,
+    repo_cap,
 )
 from shared.torngit.base import TokenType, TorngitBaseAdapter
 from shared.torngit.enums import Endpoints
@@ -65,6 +70,12 @@ PUBLIC_BOT_REQUESTS_COUNTER = Counter(
     "git_provider_public_bot_requests",
     "Number of requests sent via a shared public bot",
     ["bot"],
+)
+
+PUBLIC_BOT_OVER_CAP_COUNTER = Counter(
+    "git_provider_public_bot_over_cap",
+    "Number of requests where a repo exceeded its per-repo cap on a shared public bot",
+    ["bot", "repo_slug"],
 )
 
 
@@ -792,6 +803,38 @@ class Github(TorngitBaseAdapter):
                 "loggable_token": self.loggable_token(token_to_use),
             }
             url = self.api_url + url
+
+            entity_name = token_to_use.get("entity_name") if token_to_use else None
+            if is_public_bot(entity_name) and self.slug:
+                try:
+                    reset_ts = get_pool_reset(self._redis_connection, entity_name)
+                    usage = get_repo_usage(
+                        self._redis_connection,
+                        entity_name,
+                        self.slug,
+                        reset_ts=reset_ts,
+                    )
+                    budget = get_pool_budget(self._redis_connection, entity_name)
+                    if is_over_cap(usage, budget):
+                        inc_counter(
+                            PUBLIC_BOT_OVER_CAP_COUNTER,
+                            {"bot": entity_name, "repo_slug": self.slug},
+                        )
+                        log.warning(
+                            "Repo exceeded per-repo cap on shared public bot",
+                            extra=dict(
+                                public_bot=entity_name,
+                                repo_usage=usage,
+                                repo_cap=repo_cap(budget),
+                                **log_dict,
+                            ),
+                        )
+                        return Response(
+                            status_code=204,
+                            headers={"X-Codecov-Public-Bot-Dropped": "true"},
+                        )
+                except RedisError:
+                    log.warning("Public bot rate limit check failed; allowing request")
 
         url = url_concat(url, args).replace(" ", "%20")
 
