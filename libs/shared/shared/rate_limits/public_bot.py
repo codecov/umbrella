@@ -13,15 +13,20 @@ from dataclasses import dataclass
 
 from redis import Redis
 
-from shared.torngit.base import TokenType
-
-# ---------------------------------------------------------------------------
-# Shared bots and limits
-# ---------------------------------------------------------------------------
-
+# entity_name values for shared install-level bots (see shared/bots/helpers.py).
+# Defined here explicitly to avoid importing torngit, which would circular-import
+# through github.py.
 PUBLIC_BOTS = frozenset(
-    member.value for member in TokenType if member is not TokenType.admin
-) | {"tokenless_bot"}
+    {
+        "read",
+        "tokenless",
+        "commit",
+        "pull",
+        "comment",
+        "status",
+        "tokenless_bot",
+    }
+)
 
 REPO_USAGE_KEY_PREFIX = "pbrl"
 POOL_BUDGET_KEY_PREFIX = "public_bot_budget"
