@@ -93,7 +93,7 @@ class GitHubWindow:
         return GITHUB_WINDOW_SECONDS + 60
 
     def contains_minute(self, minute_bucket: int) -> bool:
-        return minute_bucket * 60 >= self.start_epoch
+        return self.start_epoch // 60 <= minute_bucket <= int(time.time() // 60)
 
 
 # ---------------------------------------------------------------------------

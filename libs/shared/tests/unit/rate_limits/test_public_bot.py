@@ -9,6 +9,7 @@ from shared.rate_limits.public_bot import (
     POOL_RESET_KEY_PREFIX,
     PUBLIC_BOTS,
     REPO_USAGE_KEY_PREFIX,
+    GitHubWindow,
     get_pool_budget,
     get_pool_reset,
     get_repo_usage,
@@ -88,8 +89,20 @@ def test_repo_cap_and_over_cap():
     assert is_over_cap(cap, budget)
 
 
+def test_contains_minute_matches_minute_buckets_when_not_aligned(monkeypatch):
+    fixed_now = 3_600_001
+    monkeypatch.setattr("shared.rate_limits.public_bot.time.time", lambda: fixed_now)
+
+    reset_ts = fixed_now + 1800
+    window = GitHubWindow(reset_ts)
+    minute_bucket = fixed_now // 60
+
+    assert minute_bucket in window.minute_buckets()
+    assert window.contains_minute(minute_bucket)
+
+
 def test_list_repo_usage_aggregates_scan_results(monkeypatch):
-    fixed_now = 3_600_000
+    fixed_now = 3_600_001
     monkeypatch.setattr("shared.rate_limits.public_bot.time.time", lambda: fixed_now)
     reset_ts = fixed_now + 1800
     minute_bucket = fixed_now // 60

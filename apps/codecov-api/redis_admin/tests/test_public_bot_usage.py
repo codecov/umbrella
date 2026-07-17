@@ -10,6 +10,8 @@ import pytest
 from django.core.management import call_command
 from django.test import TestCase
 
+import redis_admin.admin as redis_admin_module
+import redis_admin.public_bot_usage_queryset as public_bot_queryset
 import shared.helpers.redis as shared_redis
 from redis_admin.models import PublicBotUsage
 from redis_admin.public_bot_usage_queryset import format_reset_at
@@ -25,7 +27,16 @@ from utils.test_utils import Client
 @pytest.fixture
 def patched_redis(monkeypatch) -> fakeredis.FakeStrictRedis:
     server = fakeredis.FakeStrictRedis()
-    monkeypatch.setattr(shared_redis, "get_redis_connection", lambda: server)
+
+    def _connection():
+        return server
+
+    monkeypatch.setattr(shared_redis, "get_redis_connection", _connection)
+    monkeypatch.setattr(public_bot_queryset, "get_redis_connection", _connection)
+    monkeypatch.setattr(
+        "redis_admin.management.commands.seed_public_bot_usage.get_redis_connection",
+        _connection,
+    )
     return server
 
 
@@ -99,8 +110,12 @@ def test_seed_public_bot_usage_clear_removes_existing_keys(patched_redis):
 class PublicBotUsageAdminSmokeTest(TestCase):
     def setUp(self):
         self.redis = fakeredis.FakeStrictRedis()
-        self._orig_get_redis = shared_redis.get_redis_connection
+        self._orig_shared = shared_redis.get_redis_connection
+        self._orig_queryset = public_bot_queryset.get_redis_connection
+        self._orig_admin = redis_admin_module.get_redis_connection
         shared_redis.get_redis_connection = lambda: self.redis  # type: ignore[assignment]
+        public_bot_queryset.get_redis_connection = lambda: self.redis  # type: ignore[assignment]
+        redis_admin_module.get_redis_connection = lambda: self.redis  # type: ignore[assignment]
 
         self.user = UserFactory(is_staff=True)
         self.client = Client()
@@ -108,7 +123,9 @@ class PublicBotUsageAdminSmokeTest(TestCase):
         self.reset_ts = int(time.time()) + 3600
 
     def tearDown(self):
-        shared_redis.get_redis_connection = self._orig_get_redis  # type: ignore[assignment]
+        shared_redis.get_redis_connection = self._orig_shared  # type: ignore[assignment]
+        public_bot_queryset.get_redis_connection = self._orig_queryset  # type: ignore[assignment]
+        redis_admin_module.get_redis_connection = self._orig_admin  # type: ignore[assignment]
 
     def test_changelist_renders_usage_and_top_ten(self):
         record_pool_state(self.redis, "commit", 7500, 15000, self.reset_ts)
