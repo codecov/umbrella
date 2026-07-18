@@ -63,11 +63,16 @@ class UploadProcessorTask(BaseCodecovTask, name=upload_processor_task_name):
             extra={"arguments": arguments, "commit_yaml": commit_yaml},
         )
 
+        bc_kwargs = {
+            "commit_sha": commitid,
+            "repo_id": repoid,
+            "upload_ids": [arguments["upload_id"]],
+            "task_name": self.name,
+            "parent_task_id": self.request.parent_id,
+        }
+
         self._call_upload_breadcrumb_task(
-            commit_sha=commitid,
-            repo_id=repoid,
-            milestone=Milestones.PROCESSING_UPLOAD,
-            upload_ids=[arguments["upload_id"]],
+            milestone=Milestones.PROCESSING_UPLOAD, **bc_kwargs
         )
 
         def on_processing_error(error: ProcessingError):
@@ -90,12 +95,10 @@ class UploadProcessorTask(BaseCodecovTask, name=upload_processor_task_name):
                     ub_error = Errors.UNKNOWN
 
             self._call_upload_breadcrumb_task(
-                commit_sha=commitid,
-                repo_id=repoid,
                 milestone=Milestones.PROCESSING_UPLOAD,
-                upload_ids=[arguments["upload_id"]],
                 error=ub_error,
                 error_text=error.error_text,
+                **bc_kwargs,
             )
 
             # Retry with exponential backoff if error is retryable and under max retries
@@ -111,11 +114,7 @@ class UploadProcessorTask(BaseCodecovTask, name=upload_processor_task_name):
                     },
                 )
                 self._call_upload_breadcrumb_task(
-                    commit_sha=commitid,
-                    repo_id=repoid,
-                    milestone=Milestones.PROCESSING_UPLOAD,
-                    upload_ids=[arguments["upload_id"]],
-                    error=Errors.INTERNAL_RETRYING,
+                    error=Errors.INTERNAL_RETRYING, **bc_kwargs
                 )
                 self.retry(max_retries=error.max_retries, countdown=countdown)
             elif error.is_retryable and self.request.retries >= error.max_retries:
@@ -142,23 +141,12 @@ class UploadProcessorTask(BaseCodecovTask, name=upload_processor_task_name):
                 UserYaml(commit_yaml),
                 arguments,
             )
-        except SoftTimeLimitExceeded as e:
-            self._call_upload_breadcrumb_task(
-                commit_sha=commitid,
-                repo_id=repoid,
-                milestone=Milestones.PROCESSING_UPLOAD,
-                upload_ids=[arguments["upload_id"]],
-                error=Errors.TASK_TIMED_OUT,
-            )
+        except SoftTimeLimitExceeded:
+            self._call_upload_breadcrumb_task(error=Errors.TASK_TIMED_OUT, **bc_kwargs)
             raise
         except Exception as e:
             self._call_upload_breadcrumb_task(
-                commit_sha=commitid,
-                repo_id=repoid,
-                milestone=Milestones.PROCESSING_UPLOAD,
-                upload_ids=[arguments["upload_id"]],
-                error=Errors.UNKNOWN,
-                error_text=repr(e),
+                error=Errors.UNKNOWN, error_text=repr(e), **bc_kwargs
             )
             raise
 
