@@ -48,10 +48,9 @@ def test_repository_queryset_viewable_repos(
     all_queryset = Repository.objects.all()
     assert all_queryset.count() == 3
 
-    # filters out the unviewable repo, which is the repo that has neither permissions nor
-    # authorship related to the user.
+    # filters out repos that are not public and not in the user's permission list.
     viewable_repos = all_queryset.viewable_repos(user_owner)
-    assert viewable_repos.count() == 2
+    assert viewable_repos.count() == 1
 
 
 @pytest.mark.django_db

@@ -280,7 +280,6 @@ class ArianeTestCase(GraphQLTestHelper, TestCase):
             == [
                 "1",  # public repo in org of user
                 "2",  # private repo in org of user and in user permission
-                "6",  # personal private repo
                 "7",  # personal public repo
                 "okta_enforced_repo_authed",  # private repo in org with Okta Enforced permissions
             ]
@@ -295,7 +294,6 @@ class ArianeTestCase(GraphQLTestHelper, TestCase):
             == [
                 "1",  # public repo in org of user
                 "2",  # private repo in org of user and in user permission
-                "6",  # personal private repo
                 "7",  # personal public repo
                 "okta_enforced_repo_authed",  # Okta repo should show up for impersonated users
                 "okta_enforced_repo_unauthed",  # Okta repo should show up for impersonated users

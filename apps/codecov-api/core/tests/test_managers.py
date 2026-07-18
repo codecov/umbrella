@@ -92,11 +92,11 @@ class RepositoryQuerySetTests(TestCase):
             owned_repo = RepositoryFactory(author=owner)
 
             repos = Repository.objects.viewable_repos(owner)
-            assert repos.count() == 3
+            assert repos.count() == 2
 
             repoids = repos.values_list("repoid", flat=True)
             assert public_repo.repoid in repoids
-            assert owned_repo.repoid in repoids
+            assert owned_repo.repoid not in repoids
             assert private_repo.repoid in repoids
             assert deleted_repo.repoid not in repoids
 
