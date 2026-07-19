@@ -21,7 +21,7 @@ from django.http import (
     HttpResponseNotAllowed,
     JsonResponse,
 )
-from graphql import DocumentNode
+from graphql import DocumentNode, GraphQLSyntaxError
 from rest_framework.exceptions import APIException
 from sentry_sdk import capture_exception
 
@@ -346,7 +346,8 @@ class AsyncGraphqlView(GraphQLAsyncView):
         is_anonymous = user.is_anonymous if user else True
         # the only way to check for a malformed query
         is_bad_query = "Cannot query field" in error.formatted["message"]
-        if debug or (not is_anonymous and is_bad_query):
+        is_syntax_error = isinstance(error.original_error, GraphQLSyntaxError)
+        if debug or (not is_anonymous and is_bad_query) or is_syntax_error:
             return format_error(error, debug)
         formatted = error.formatted
         formatted["message"] = "INTERNAL SERVER ERROR"
