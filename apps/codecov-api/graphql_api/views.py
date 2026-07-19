@@ -21,7 +21,7 @@ from django.http import (
     HttpResponseNotAllowed,
     JsonResponse,
 )
-from graphql import DocumentNode
+from graphql import DocumentNode, GraphQLSyntaxError
 from rest_framework.exceptions import APIException
 from sentry_sdk import capture_exception
 
@@ -305,6 +305,14 @@ class AsyncGraphqlView(GraphQLAsyncView):
                     GQL_ERROR_TYPE_COUNTER,
                     labels={"error_type": "all", "path": req_path},
                 )
+                if data["errors"][0].get("type") == "SyntaxError":
+                    return JsonResponse(
+                        data={
+                            "status": 400,
+                            "detail": data["errors"][0].get("message", "GraphQL syntax error"),
+                        },
+                        status=400,
+                    )
                 try:
                     if data["errors"][0]["extensions"]["cost"]:
                         costs = data["errors"][0]["extensions"]["cost"]
@@ -363,6 +371,11 @@ class AsyncGraphqlView(GraphQLAsyncView):
             # (e.g., unauthorized, forbidden) that shouldn't be sent to Sentry
             formatted["message"] = str(original_error.detail)
             formatted["type"] = type(original_error).__name__
+        elif isinstance(original_error, GraphQLSyntaxError):
+            # Malformed query from the client (e.g. unescaped shell variables) -
+            # treat as a client error and do not capture in Sentry.
+            formatted["message"] = str(original_error.message)
+            formatted["type"] = "SyntaxError"
         else:
             # otherwise it's not supposed to happen, so we log it
             log.error("GraphQL internal server error", exc_info=original_error)
