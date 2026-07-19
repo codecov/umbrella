@@ -14,7 +14,7 @@ async def resolve_activate_measurements(_, info, input):
     command: RepositoryCommands = info.context["executor"].get_command("repository")
     await command.activate_measurements(
         owner_name=input.get("owner"),
-        repo_name=input.get("repo_name"),
+        repo_name=input.get("repo_name") or input.get("repo"),
         measurement_type=input.get("measurement_type"),
     )
     return None
