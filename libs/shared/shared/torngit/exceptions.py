@@ -73,7 +73,7 @@ class TorngitServer5xxCodeError(TorngitServerFailureError):
     pass
 
 
-class TorngitRefreshTokenFailedError(TorngitError):
+class TorngitRefreshTokenFailedError(TorngitClientError):
     def __init__(self, message) -> None:
         self._code = 555
         self._response_data = None
