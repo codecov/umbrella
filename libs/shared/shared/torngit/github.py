@@ -904,8 +904,8 @@ class Github(TorngitBaseAdapter):
                     except RedisError:
                         log.warning("Failed to record public bot usage")
             except (
-                httpx.TimeoutException, 
-                httpx.NetworkError, 
+                httpx.TimeoutException,
+                httpx.NetworkError,
                 httpx.RemoteProtocolError,
             ):
                 if current_retry < max_number_retries:
