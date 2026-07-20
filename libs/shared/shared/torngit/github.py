@@ -903,7 +903,11 @@ class Github(TorngitBaseAdapter):
                         inc_counter(PUBLIC_BOT_REQUESTS_COUNTER, {"bot": entity_name})
                     except RedisError:
                         log.warning("Failed to record public bot usage")
-            except (httpx.TimeoutException, httpx.NetworkError, httpx.RemoteProtocolError):
+            except (
+                httpx.TimeoutException, 
+                httpx.NetworkError, 
+                httpx.RemoteProtocolError
+            ):
                 if current_retry < max_number_retries:
                     log.warning(
                         "GitHub was not able to be reached, retrying",
