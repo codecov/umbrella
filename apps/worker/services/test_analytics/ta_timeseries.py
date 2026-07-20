@@ -187,6 +187,12 @@ def get_pr_comment_duration(
 def get_pr_comment_agg(
     repo_id: int, commit_sha: str, lower_bound_timestamp: datetime | None = None
 ) -> PRCommentAgg:
+    import logging
+
+    from django.db import OperationalError
+
+    log = logging.getLogger(__name__)
+
     with connections["ta_timeseries"].cursor() as cursor:
         if lower_bound_timestamp is not None:
             query = """
@@ -215,8 +221,18 @@ def get_pr_comment_agg(
             """
             params = [repo_id, commit_sha]
 
-        cursor.execute(query, params)
-        outcome_dict = dict(cursor.fetchall())
+        try:
+            # Set a statement timeout well under Celery's soft time limit (120s)
+            # to prevent this query from blocking the entire Notify task.
+            cursor.execute("SET LOCAL statement_timeout = '30s'")
+            cursor.execute(query, params)
+            outcome_dict = dict(cursor.fetchall())
+        except OperationalError:
+            log.warning(
+                "get_pr_comment_agg query timed out; returning empty result",
+                extra={"repo_id": repo_id, "commit_sha": commit_sha},
+            )
+            return {"passed": 0, "failed": 0, "skipped": 0}
 
         return {
             "passed": outcome_dict.get("pass", 0),
