@@ -906,7 +906,7 @@ class Github(TorngitBaseAdapter):
             except (
                 httpx.TimeoutException, 
                 httpx.NetworkError, 
-                httpx.RemoteProtocolError
+                httpx.RemoteProtocolError,
             ):
                 if current_retry < max_number_retries:
                     log.warning(
