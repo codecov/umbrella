@@ -400,10 +400,21 @@ class GithubWebhookHandler(APIView):
         ],
         **kwargs,
     ):
-        service_id = request.data["installation"]["account"]["id"]
-        username = request.data["installation"]["account"]["login"]
-        app_id = request.data["installation"]["app_id"]
-        installation_id = request.data["installation"]["id"]
+        installation = request.data.get("installation")
+        if installation is None:
+            log.warning(
+                "Received installation event with missing installation data",
+                extra={
+                    "github_webhook_event": self.event,
+                    "action": request.data.get("action"),
+                },
+            )
+            return Response(data="Installation data missing")
+
+        service_id = installation["account"]["id"]
+        username = installation["account"]["login"]
+        app_id = installation["app_id"]
+        installation_id = installation["id"]
         action = request.data.get("action")
 
         log.info(
