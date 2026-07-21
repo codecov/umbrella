@@ -127,6 +127,7 @@ def process_flakes_for_repo(repo_id: int, upload_ids: list[int]):
 
 
 class DetectFlakes(BaseCodecovTask, name=detect_flakes_task_name):
+    rate_limit = '10/m'  # Max 10 concurrent flake detection tasks per minute
     """
     this task takes a redis lock to avoid stalling tasks due to DB lock contention
     we basically allow one task to do all the work by having it scan for any work it
