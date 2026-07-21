@@ -148,6 +148,8 @@ class DetectFlakes(BaseCodecovTask, name=detect_flakes_task_name):
     to guard against this, the task that just released the lock must check again
     """
 
+    rate_limit = "10/m"  # Max 10 concurrent flake detection tasks per minute
+
     def run_impl(
         self,
         _db_session,
