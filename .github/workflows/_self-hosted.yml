@@ -121,8 +121,14 @@ jobs:
             ${{ inputs.output_directory }}/self-hosted.tar
           key: ${{ runner.os }}-${{ env.cache-name }}-${{ github.run_id }}
       - name: Load built image
+        if: ${{ steps.cache-self-hosted.outputs.cache-hit == 'true' }}
         run: |
           make ${{ inputs.make_target_prefix }}load.self-hosted
+      - name: Fail on cache miss
+        if: ${{ steps.cache-self-hosted.outputs.cache-hit != 'true' }}
+        run: |
+          echo "::error::Self hosted image cache miss for key ${{ runner.os }}-${{ env.cache-name }}-${{ github.run_id }}; the build-self-hosted job should have populated this cache in the same run."
+          exit 1
       - name: Log in to Docker Hub
         uses: docker/login-action@v3.1.0
         with:
@@ -155,8 +161,14 @@ jobs:
             ${{ inputs.output_directory }}/self-hosted.tar
           key: ${{ runner.os }}-${{ env.cache-name }}-${{ github.run_id }}
       - name: Load built image
+        if: ${{ steps.cache-self-hosted.outputs.cache-hit == 'true' }}
         run: |
           make ${{ inputs.make_target_prefix }}load.self-hosted
+      - name: Fail on cache miss
+        if: ${{ steps.cache-self-hosted.outputs.cache-hit != 'true' }}
+        run: |
+          echo "::error::Self hosted image cache miss for key ${{ runner.os }}-${{ env.cache-name }}-${{ github.run_id }}; the build-self-hosted job should have populated this cache in the same run."
+          exit 1
       - name: Log in to Docker Hub
         uses: docker/login-action@v3.1.0
         with:
