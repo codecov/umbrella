@@ -53,6 +53,7 @@ from shared.reports.resources import Report
 from shared.timeseries.helpers import is_timeseries_enabled
 from shared.torngit.exceptions import TorngitError
 from shared.yaml import UserYaml
+from shared.yaml.user_yaml import OwnerContext
 from tasks.base import BaseCodecovTask
 
 log = logging.getLogger(__name__)
@@ -251,7 +252,6 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
         }
         self.app.tasks[upload_finisher_task_name].apply_async(
             kwargs={
-                "commit_yaml": commit_yaml.to_dict(),
                 "commitid": commitid,
                 "repoid": repoid,
                 "trigger": followup_type.value,
@@ -266,7 +266,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
         *args,
         repoid: int,
         commitid: str,
-        commit_yaml,
+        commit_yaml=None,
         **kwargs,
     ):
         try:
@@ -284,7 +284,6 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
         )
 
         repoid = int(repoid)
-        commit_yaml = UserYaml(commit_yaml)
 
         log.info("run_impl: Getting commit")
 
@@ -294,6 +293,24 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
             .first()
         )
         assert commit, "Commit not found in database."
+
+        if commit_yaml is None:
+            # Fetch commit yaml from DB to avoid passing large payloads as task arguments
+            repository = commit.repository
+            context = OwnerContext(
+                owner_onboarding_date=repository.author.createstamp,
+                owner_plan=repository.author.plan,
+                ownerid=repository.ownerid,
+            )
+            commit_yaml = UserYaml.get_final_yaml(
+                owner_yaml=repository.author.yaml,
+                repo_yaml=repository.yaml,
+                commit_yaml=None,
+                owner_context=context,
+            )
+        else:
+            # Backward compatibility: commit_yaml passed directly as task argument
+            commit_yaml = UserYaml(commit_yaml)
 
         log.info("run_impl: Got commit")
 
