@@ -59,6 +59,10 @@ class UploadBreadcrumbTask(BaseCodecovTask, name=upload_breadcrumb_task_name):
         sentry_trace_id: str | None = None,
         **kwargs,
     ):
+
+        ## Disabling breadcrumb creation due to 2026-07-22 incident
+        return {"successful": True}
+
         if breadcrumb_data.endpoint:
             inc_counter(
                 UPLOAD_BREADCRUMB_ENDPOINT_COUNTER,
