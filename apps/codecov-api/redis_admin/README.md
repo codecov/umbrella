@@ -387,12 +387,18 @@ not a partial graveyard.
 **Restart safety.** The clear runs on a daemon thread on the
 api pod's gunicorn worker. If the worker is killed mid-job
 (rolling deploy, OOM, `terminationGracePeriodSeconds` exceeded),
-the in-flight tombstones (`__redis_admin_celery_tombstone__:<uuid>`)
-stay parked in the queue. Operator can either re-run the clear
-(the new pass walks the full queue and skips them — they're
-recognised as garbage at task-decode time and at LRANGE-snapshot
-time both) or `LREM 0 __redis_admin_celery_tombstone__:*` by
-hand. The job hash flips to `failed` only on raised exceptions,
+the in-flight tombstones (JSON envelopes marked with
+`__redis_admin_celery_tombstone__`) stay parked in the queue.
+These are valid Celery envelopes for an unregistered task, so a
+consumer that pops one discards it safely ("Received unregistered
+task") — it does **not** crash the worker the way the old raw
+`__redis_admin_celery_tombstone__:<uuid>` sentinel did (kombu's
+transport-level `json.loads` blew up on the non-JSON string,
+taking the whole worker pool down in a crash loop). Operator can
+either re-run the clear (the new pass walks the full queue and
+skips them at both LRANGE-snapshot time and, if popped, at
+task-decode time) or sweep with `scripts/diagnose_celery_broker.py
+--fix-tombstones`. The job hash flips to `failed` only on raised exceptions,
 not on worker death — a killed worker leaves the hash in
 `running` until the 24h TTL elapses.
 
@@ -436,7 +442,9 @@ won't round-trip back to `LREM` (which matches on exact bytes).
 tombstone idiom:
 
 1. For each selected message, `LSET <queue> <idx> <sentinel>`
-   (sentinel = `__redis_admin_celery_tombstone__:<uuid>`).
+   (sentinel = a valid Celery v2 JSON envelope whose first key is
+   `__redis_admin_celery_tombstone__` and whose task is the
+   unregistered `redis_admin.internal.tombstone`).
 2. Once all sentinels are written, one `LREM <queue> 0 <sentinel>`
    sweeps them all out of the list.
 

@@ -24,6 +24,7 @@ single chokepoint for:
 
 from __future__ import annotations
 
+import base64
 import datetime as _dt
 import json
 import logging
@@ -442,9 +443,10 @@ def _redis_delete(
 # unique sentinel value, then LREM the sentinel in one pass. Race-safe
 # under concurrent celery consumers since the sentinel only matches
 # the slot we replaced — even if a worker BLPOPs from the head between
-# our LSET and LREM, the popped (sentinel) message is recognised at
-# task-decode time as garbage and we still end up with a consistent
-# delete count.
+# our LSET and LREM, the popped sentinel is a valid Celery envelope for
+# an unregistered task, so the consumer discards it cleanly (it does
+# NOT crash on a non-JSON payload) and we still end up with a
+# consistent delete count.
 #
 # Streaming clear (PR #899):
 #
@@ -467,11 +469,51 @@ def _redis_delete(
 # repeat-until-stable loop (max 3 passes) to catch messages that
 # drifted into our filter window between passes.
 
-# Tombstone prefix is intentionally distinctive so a stray LREM
+# Tombstone marker is intentionally distinctive so a stray LREM
 # attempt on the wrong queue couldn't accidentally match a real
-# message. Each call appends a fresh UUID so simultaneous clears
+# message. Each call embeds a fresh UUID so simultaneous clears
 # don't step on each other.
+#
+# CRITICAL: the tombstone MUST be valid JSON. kombu's Redis transport
+# reads a message off the queue with `json.loads(bytes_to_str(item))`
+# in `_brpop_read` *before* any task-level handling. A non-JSON
+# sentinel there raises `JSONDecodeError` straight out of the consumer
+# event loop, which Celery treats as an "Unrecoverable error" and the
+# whole worker process exits — a crash loop that takes down the entire
+# pool if a consumer BRPOPs a tombstone before our LREM sweeps it (or
+# an orphaned tombstone left by a clear job killed mid-run). Prior to
+# this the sentinel was a raw `__redis_admin_celery_tombstone__:<uuid>`
+# string and did exactly that. We now emit a well-formed Celery v2
+# envelope for an unregistered task, so if a consumer does pop one it
+# decodes cleanly and Celery discards it ("Received unregistered task")
+# instead of dying.
 _CELERY_TOMBSTONE_PREFIX = "__redis_admin_celery_tombstone__"
+
+# The envelope carries the marker as its first key, so the serialised
+# JSON begins with `{"__redis_admin_celery_tombstone__"` and we can
+# still recognise (and skip / clean) tombstones from a `LRANGE` scan
+# by a cheap prefix check.
+_CELERY_TOMBSTONE_JSON_PREFIX = '{"' + _CELERY_TOMBSTONE_PREFIX + '"'
+
+# Task name for the tombstone envelope. Deliberately not a registered
+# task: a consumer that pops one logs "Received unregistered task" and
+# rejects it (removed, not requeued) rather than executing anything.
+_CELERY_TOMBSTONE_TASK = "redis_admin.internal.tombstone"
+
+
+def _looks_like_tombstone(raw: bytes) -> bool:
+    """Recognise both the current JSON-envelope tombstone and the legacy
+    raw `__redis_admin_celery_tombstone__:<uuid>` sentinel.
+
+    Legacy detection is kept so a clear running after this change still
+    skips (and its LREM still sweeps) any pre-existing raw tombstones
+    orphaned in a production queue by an older build.
+    """
+
+    return raw.startswith(_CELERY_TOMBSTONE_JSON_PREFIX.encode()) or raw.startswith(
+        _CELERY_TOMBSTONE_PREFIX.encode()
+    )
+
 
 # Chunk size for streaming LRANGE during clear.
 _CELERY_CLEAR_CHUNK: int = 10_000
@@ -491,7 +533,55 @@ _CELERY_MAX_PASSES: int = 10
 
 
 def _celery_clear_tombstone() -> str:
-    return f"{_CELERY_TOMBSTONE_PREFIX}:{uuid.uuid4().hex}"
+    """Build a unique, JSON-decodable tombstone value.
+
+    Returns a compact Celery v2 message envelope (valid JSON) whose
+    first key is the tombstone marker (so `_looks_like_tombstone` can
+    prefix-match it) and whose task header names an unregistered task.
+    A consumer that pops it therefore decodes it without error and
+    Celery discards it, instead of crashing the worker on a non-JSON
+    payload. The marker's UUID keeps concurrent clears from matching
+    each other's sentinels on LREM.
+    """
+
+    marker = uuid.uuid4().hex
+    task_id = str(uuid.uuid4())
+    # Celery v2 body: (args, kwargs, embed). Empty args/kwargs so the
+    # payload is inert even in the (unreachable) case it were routed.
+    body = base64.b64encode(
+        json.dumps(
+            [
+                [],
+                {},
+                {"callbacks": None, "errbacks": None, "chain": None, "chord": None},
+            ]
+        ).encode()
+    ).decode()
+    envelope = {
+        # Marker MUST stay first so the serialised string starts with
+        # `_CELERY_TOMBSTONE_JSON_PREFIX`.
+        _CELERY_TOMBSTONE_PREFIX: marker,
+        "body": body,
+        "content-encoding": "utf-8",
+        "content-type": "application/json",
+        "headers": {
+            "lang": "py",
+            "task": _CELERY_TOMBSTONE_TASK,
+            "id": task_id,
+            "root_id": task_id,
+            "parent_id": None,
+            "group": None,
+        },
+        "properties": {
+            "correlation_id": task_id,
+            "delivery_tag": str(uuid.uuid4()),
+            "delivery_mode": 2,
+            "delivery_info": {"exchange": "", "routing_key": "redis_admin_tombstone"},
+            "priority": 0,
+            "body_encoding": "base64",
+        },
+    }
+    return json.dumps(envelope, separators=(",", ":"))
 
 
 class _FilterWildcard:
@@ -803,10 +893,8 @@ def _streaming_celery_clear(
             chunk_lset_targets: list[int] = []
             for offset, raw in enumerate(raw_chunk):
                 # Skip already-tombstoned slots from this or a
-                # concurrent clear.
-                if isinstance(raw, bytes) and raw.startswith(
-                    _CELERY_TOMBSTONE_PREFIX.encode()
-                ):
+                # concurrent clear (JSON-envelope or legacy raw sentinel).
+                if isinstance(raw, bytes) and _looks_like_tombstone(raw):
                     continue
                 idx = chunk_start + offset
                 decoded = _decode_value(raw)
@@ -1177,9 +1265,11 @@ def _celery_broker_clear(
 # the lifecycle is "as long as gunicorn keeps the worker alive".
 # That's a documented restart-safety trade-off (see README): a
 # gunicorn worker killed mid-job leaves any in-flight tombstones
-# (`__redis_admin_celery_tombstone__:<uuid>`) parked in the queue.
-# Operator can re-run the clear (the new pass skips them) or sweep
-# manually.
+# (JSON envelopes marked with `__redis_admin_celery_tombstone__`)
+# parked in the queue. These are now valid Celery envelopes for an
+# unregistered task, so a consumer that pops one discards it safely
+# rather than crashing. Operator can also re-run the clear (the new
+# pass skips and sweeps them) or sweep manually.
 
 # Job state lives in the cache redis (`_conn.get_connection(kind=
 # "default")`), NOT the broker — keeping the operator's job

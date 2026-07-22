@@ -51,6 +51,7 @@ from redis_admin.services import (
     _CELERY_MAX_PASSES,
     _CELERY_TOMBSTONE_PREFIX,
     _FILTER_ANY,
+    _looks_like_tombstone,
     _streaming_celery_clear,
     _substitute_filter_any,
     celery_broker_clear,
@@ -782,7 +783,12 @@ def test_celery_broker_clear_uses_unique_tombstone_per_call(patched_broker):
     # what matters is that the two calls used distinct tombstone strings so
     # they don't trample each other's LSETs.
     assert len(set(tombstones)) == 2
-    assert all(t.startswith(_CELERY_TOMBSTONE_PREFIX) for t in tombstones)
+    assert all(_looks_like_tombstone(t.encode()) for t in tombstones)
+    # Regression guard for the worker crash-loop: tombstones MUST be valid
+    # JSON so kombu's transport-level json.loads() can't take a worker down.
+    for t in tombstones:
+        envelope = json.loads(t)
+        assert envelope[_CELERY_TOMBSTONE_PREFIX]  # marker present
 
 
 @pytest.mark.django_db
