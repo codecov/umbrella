@@ -258,7 +258,17 @@ def get_repo_with_github_actions_oidc_token(token: str) -> Repository:
             raise ValidationError("GitHub Enterprise URL configuration is not set")
         # remove trailing slashes if present
         github_enterprise_url = re.sub(r"/+$", "", github_enterprise_url)
-        jwks_url = f"{github_enterprise_url}/_services/token/.well-known/jwks"
+        gh_enterprise_host = urlparse(github_enterprise_url).hostname
+        if parsed_url.hostname == f"token.actions.{gh_enterprise_host}":
+            # GitHub Enterprise Cloud with data residency (*.ghe.com) issues
+            # Actions OIDC tokens from token.actions.<subdomain>.ghe.com, which
+            # serves its JWKS at the issuer's standard well-known path rather
+            # than the GitHub Enterprise Server /_services/token path. Only the
+            # configured enterprise's token host is trusted here.
+            jwks_url = f"{token_issuer}/.well-known/jwks"
+        else:
+            # GitHub Enterprise Server appliance.
+            jwks_url = f"{github_enterprise_url}/_services/token/.well-known/jwks"
     jwks_client = PyJWKClient(jwks_url)
     signing_key = jwks_client.get_signing_key_from_jwt(token)
     data = jwt.decode(
