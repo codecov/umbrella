@@ -4,6 +4,7 @@ import logging.config
 from celery import Celery, signals
 from pydantic import BaseModel
 
+from helpers.broker_resilience import install_broker_resilience
 from helpers.logging_config import get_logging_config_dict
 from helpers.sentry import initialize_sentry, is_sentry_enabled
 from shared.utils.pydantic_serializer import PydanticModelDump, register_preserializer
@@ -14,6 +15,12 @@ _config_dict = get_logging_config_dict()
 logging.config.dictConfig(_config_dict)
 
 register_preserializer(PydanticModelDump)(BaseModel)
+
+# Prevent a single undecodable broker message (e.g. a redis_admin clear
+# tombstone or corrupted payload) from crash-looping the whole worker.
+# Must run before the worker connects to the broker.
+install_broker_resilience()
+
 celery_app = Celery("tasks")
 celery_app.config_from_object("celery_config:CeleryWorkerConfig")
 
