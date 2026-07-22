@@ -12,6 +12,7 @@ from sqlalchemy.exc import (
     DataError,
     IntegrityError,
     InvalidRequestError,
+    OperationalError,
     SQLAlchemyError,
 )
 
@@ -226,9 +227,25 @@ class BaseCodecovTask(celery_app.Task):
 
     @sentry_sdk.trace
     def apply_async(self, args=None, kwargs=None, **options):
+        # Discard any stale/broken DB connection before querying (e.g., if a
+        # SoftTimeLimitExceeded interrupted a previous DB operation in this
+        # worker process, the pooled connection may be in an error state).
+        get_db_session.remove()
         db_session = get_db_session()
-        user_plan = _get_user_plan_from_task(db_session, self.name, kwargs)
-        ownerid = _get_ownerid_from_task(db_session, self.name, kwargs)
+        try:
+            user_plan = _get_user_plan_from_task(db_session, self.name, kwargs)
+            ownerid = _get_ownerid_from_task(db_session, self.name, kwargs)
+        except OperationalError:
+            log.warning(
+                "apply_async: DB connection unavailable for plan/owner lookup, "
+                "falling back to defaults",
+                extra={"task_name": self.name},
+                exc_info=True,
+            )
+            from shared.plan.constants import DEFAULT_FREE_PLAN
+
+            user_plan = DEFAULT_FREE_PLAN
+            ownerid = None
         route_with_extra_config = route_tasks_based_on_user_plan(
             self.name, user_plan, ownerid
         )
