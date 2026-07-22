@@ -354,10 +354,17 @@ class TaskService:
         ).apply_async()
 
     def update_commit(self, commitid, repoid):
-        self._create_signature(
-            celery_config.commit_update_task_name,
-            kwargs={"commitid": commitid, "repoid": repoid},
-        ).apply_async()
+        try:
+            self._create_signature(
+                celery_config.commit_update_task_name,
+                kwargs={"commitid": commitid, "repoid": repoid},
+            ).apply_async()
+        except Exception:
+            log.warning(
+                "Failed to dispatch update_commit task due to broker error",
+                extra={"commitid": commitid, "repoid": repoid},
+                exc_info=True,
+            )
 
     def http_request(self, url, method="POST", headers=None, data=None, timeout=None):
         self._create_signature(
