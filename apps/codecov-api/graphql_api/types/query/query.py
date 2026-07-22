@@ -8,6 +8,8 @@ from sentry_sdk import Scope
 
 from codecov.commands.exceptions import UnauthorizedGuestAccess
 from codecov_auth.models import Owner
+from codecov_auth.views.okta_cloud import OKTA_SIGNED_IN_ACCOUNTS_SESSION_KEY
+from core.models import Pull
 from graphql_api.actions.owner import get_owner
 from graphql_api.helpers.ariadne import ariadne_load_local_graphql
 
@@ -77,3 +79,50 @@ def resolve_config(_: Any, info: GraphQLResolveInfo) -> object:
 
     # we have to return something here just to allow access to the child resolvers
     return object()
+
+
+@query_bindable.field("pull")
+async def resolve_pull_root(
+    _: Any,
+    info: GraphQLResolveInfo,
+    provider: str,
+    owner: str,
+    repo: str,
+    pullId: int,
+) -> Pull | None:
+    configure_sentry_scope(query_name(info))
+
+    service = info.context["service"]
+    if not service:
+        return None
+
+    request = info.context["request"]
+    user = request.current_owner or request.user
+
+    if settings.IS_ENTERPRISE and settings.GUEST_ACCESS is False:
+        if not user or not user.is_authenticated:
+            raise UnauthorizedGuestAccess()
+
+    owner_obj = await get_owner(service, owner)
+    if owner_obj is None:
+        return None
+
+    okta_authenticated_accounts: list[int] = request.session.get(
+        OKTA_SIGNED_IN_ACCOUNTS_SESSION_KEY, []
+    )
+    is_impersonation = request.impersonation
+
+    repository_command = info.context["executor"].get_command("repository")
+    repository = await repository_command.fetch_repository(
+        owner_obj,
+        repo,
+        okta_authenticated_accounts,
+        exclude_okta_enforced_repos=not is_impersonation,
+        needs_coverage=False,
+        needs_commits=False,
+    )
+    if repository is None:
+        return None
+
+    pull_command = info.context["executor"].get_command("pull")
+    return await pull_command.fetch_pull_request(repository, pullId)
