@@ -23,10 +23,12 @@ class RegenerateOrgUploadTokenInteractor(BaseInteractor):
 
         self.validate(owner_obj)
 
-        upload_token, created = OrganizationLevelToken.objects.get_or_create(
+        upload_token = OrganizationLevelToken.objects.filter(
             owner=owner_obj
-        )
-        if not created:
+        ).first()
+        if upload_token is None:
+            upload_token = OrganizationLevelToken.objects.create(owner=owner_obj)
+        else:
             upload_token.token = uuid.uuid4()
             upload_token.save()
 
