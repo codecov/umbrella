@@ -73,6 +73,8 @@ class UploadProcessorTask(BaseCodecovTask, name=upload_processor_task_name):
         def on_processing_error(error: ProcessingError):
             """Handle processing errors by logging breadcrumbs and retrying if applicable."""
             match error.code:
+                case UploadErrorCode.COMMIT_NOT_FOUND:
+                    ub_error = Errors.UNKNOWN
                 case UploadErrorCode.FILE_NOT_IN_STORAGE:
                     ub_error = Errors.FILE_NOT_IN_STORAGE
                 case UploadErrorCode.REPORT_EXPIRED:
