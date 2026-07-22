@@ -4,6 +4,8 @@ from contextlib import suppress
 from hashlib import sha1, sha256
 from typing import Literal
 
+from kombu.exceptions import OperationalError as KombuOperationalError
+
 import sentry_sdk
 from django.db.models import Q
 from django.utils import timezone
@@ -567,14 +569,24 @@ class GithubWebhookHandler(APIView):
                 (obj["id"], obj["node_id"]) for obj in repos_affected
             }
 
-            TaskService().refresh(
-                ownerid=owner.ownerid,
-                username=username,
-                sync_teams=False,
-                sync_repos=True,
-                using_integration=True,
-                repos_affected=list(repos_affected_clean),
-            )
+            try:
+                TaskService().refresh(
+                    ownerid=owner.ownerid,
+                    username=username,
+                    sync_teams=False,
+                    sync_repos=True,
+                    using_integration=True,
+                    repos_affected=list(repos_affected_clean),
+                )
+            except KombuOperationalError:
+                log.error(
+                    "Failed to enqueue refresh task due to broker connection error",
+                    extra={
+                        "ownerid": owner.ownerid,
+                        "github_webhook_event": self.event,
+                    },
+                    exc_info=True,
+                )
 
         return Response(data="Integration webhook received")
 
