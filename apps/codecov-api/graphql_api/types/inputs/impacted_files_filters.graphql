@@ -1,6 +1,8 @@
 input ImpactedFilesFilters {
   ordering: ImpactedFilesOrdering
   hasUnintendedChanges: Boolean
+  # Deprecated: use hasUnintendedChanges instead
+  hasIndirectChanges: Boolean
   flags: [String!]
   components: [String!]
 }
