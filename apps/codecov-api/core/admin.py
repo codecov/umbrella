@@ -175,12 +175,7 @@ PENDING_SESSION_FILTER = (
 
 def _commit_count_subquery(model, *, filters=None):
     qs = model.objects.filter(commit_id=OuterRef("pk"), **(filters or {}))
-    return (
-        qs.order_by()
-        .values("commit_id")
-        .annotate(count=Count("pk"))
-        .values("count")
-    )
+    return qs.order_by().values("commit_id").annotate(count=Count("pk")).values("count")
 
 
 def _session_count_subquery(*, filters=None):
