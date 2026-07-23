@@ -273,6 +273,8 @@ def line_type(line) -> LineType | None:
     if line is True:
         return LineType.partial
     if isinstance(line, str):
+        if line == "ignored":
+            return None
         return branch_type(line)
     if line == -1:
         return LineType.skipped
