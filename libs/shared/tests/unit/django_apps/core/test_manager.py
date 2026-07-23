@@ -54,6 +54,18 @@ def test_repository_queryset_viewable_repos(
 
 
 @pytest.mark.django_db
+def test_repository_queryset_viewable_repos_with_null_permission(
+    viewable_repo_by_authorship: Repository,
+):
+    owner = viewable_repo_by_authorship.author
+    owner.permission = None
+    owner.save()
+
+    viewable_repos = Repository.objects.viewable_repos(owner)
+    assert viewable_repos.filter(repoid=viewable_repo_by_authorship.repoid).exists()
+
+
+@pytest.mark.django_db
 def test_repository_queryset_exclude_accounts_enforced_okta(user_owner: Owner):
     account = AccountFactory()
     org_owner = OwnerFactory(account=account)

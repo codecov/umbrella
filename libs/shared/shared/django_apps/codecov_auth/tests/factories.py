@@ -56,7 +56,7 @@ class OwnerFactory(DjangoModelFactory):
     updatestamp = factory.LazyFunction(timezone.now)
     plan_activated_users = []
     admins = []
-    permission = []
+    permission = None
     free = 0
     onboarding_completed = False
     unencrypted_oauth_token = factory.LazyFunction(lambda: uuid4().hex)

@@ -100,6 +100,20 @@ class RepositoryQuerySetTests(TestCase):
             assert private_repo.repoid in repoids
             assert deleted_repo.repoid not in repoids
 
+        with self.subTest(
+            "when owner permission is empty, hides authored private repos"
+        ):
+            owner = OwnerFactory(permission=[])
+            owned_repo = RepositoryFactory(author=owner)
+
+            repos = Repository.objects.viewable_repos(owner)
+            assert repos.count() == 1
+
+            repoids = repos.values_list("repoid", flat=True)
+            assert public_repo.repoid in repoids
+            assert owned_repo.repoid not in repoids
+            assert deleted_repo.repoid not in repoids
+
         with self.subTest("when user not authed, returns only public"):
             repos = Repository.objects.viewable_repos(None)
             assert repos.count() == 1
