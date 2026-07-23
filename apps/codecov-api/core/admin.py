@@ -564,10 +564,10 @@ class CommitAdmin(AdminMixin, admin.ModelAdmin):
         repo = obj.repository
         if repo is None:
             return "-"
-        author = repo.author
-        if author is None:
+        if repo.author_id is None:
             label = repo.name
         else:
+            author = repo.author
             label = f"{author.service}:{author.username}/{repo.name}"
         url = reverse("admin:core_repository_change", args=[repo.repoid])
         return format_html('<a href="{}">{}</a>', url, label)

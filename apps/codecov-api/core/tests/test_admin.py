@@ -240,7 +240,7 @@ class CommitAdminTests(TestCase):
 
     def test_repository_link_without_author(self):
         commit = CommitFactory(repository=self.repo)
-        commit.repository.author = None
+        commit.repository.author_id = None
         result = self.commit_admin.repository_link(commit)
         self.assertIn(self.repo.name, result)
         self.assertIn(
@@ -312,7 +312,14 @@ class CommitAdminTests(TestCase):
 
     def test_notification_count_display(self):
         commit = CommitFactory(repository=self.repo)
-        CommitNotificationFactory.create_batch(2, commit=commit)
+        CommitNotificationFactory(
+            commit=commit,
+            notification_type=CommitNotification.NotificationTypes.COMMENT,
+        )
+        CommitNotificationFactory(
+            commit=commit,
+            notification_type=CommitNotification.NotificationTypes.SLACK,
+        )
         annotated = self._get_annotated_commit(commit)
         self.assertEqual(self.commit_admin.notification_count_display(annotated), 2)
 
@@ -500,19 +507,19 @@ class CommitNotificationInlineTests(TestCase):
         self.assertFalse(inline.has_delete_permission(request, self.commit))
 
     def test_commit_change_page_shows_notifications(self):
-        CommitNotificationFactory(
+        notification = CommitNotificationFactory(
             commit=self.commit,
-            notification_type="comment",
-            decoration_type="standard",
-            state="success",
+            notification_type=CommitNotification.NotificationTypes.COMMENT,
+            decoration_type=CommitNotification.DecorationTypes.STANDARD,
+            state=CommitNotification.States.SUCCESS,
         )
         url = reverse("admin:core_commit_change", args=[self.commit.pk])
         response = self.client.get(url)
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Commit notifications")
-        self.assertContains(response, "comment")
-        self.assertContains(response, "standard")
-        self.assertContains(response, "success")
+        self.assertContains(response, notification.get_notification_type_display())
+        self.assertContains(response, notification.get_decoration_type_display())
+        self.assertContains(response, notification.get_state_display())
 
     def test_failure_reason_delivery_failed(self):
         notification = CommitNotificationFactory(
@@ -528,7 +535,10 @@ class CommitNotificationInlineTests(TestCase):
             state=CommitNotification.States.ERROR,
             decoration_type=CommitNotification.DecorationTypes.UPLOAD_LIMIT,
         )
-        self.assertEqual(notification_failure_reason(notification), "Upload limit")
+        self.assertEqual(
+            notification_failure_reason(notification),
+            notification.get_decoration_type_display(),
+        )
 
     def test_failure_reason_none_for_success(self):
         notification = CommitNotificationFactory(
@@ -538,9 +548,9 @@ class CommitNotificationInlineTests(TestCase):
         self.assertIsNone(notification_failure_reason(notification))
 
     def test_commit_change_page_shows_notification_failure_reason(self):
-        CommitNotificationFactory(
+        notification = CommitNotificationFactory(
             commit=self.commit,
-            notification_type="checks_project",
+            notification_type=CommitNotification.NotificationTypes.CHECKS_PROJECT,
             decoration_type=CommitNotification.DecorationTypes.UPLOAD_LIMIT,
             state=CommitNotification.States.ERROR,
         )
@@ -548,7 +558,7 @@ class CommitNotificationInlineTests(TestCase):
         response = self.client.get(url)
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Failure reason")
-        self.assertContains(response, "Upload limit")
+        self.assertContains(response, notification.get_decoration_type_display())
 
 
 class CommitAdminReprocessViewsTests(TestCase):
