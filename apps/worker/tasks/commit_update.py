@@ -1,8 +1,11 @@
 import datetime as dt
 import logging
 
+from sqlalchemy.orm import joinedload
+
 from app import celery_app
 from database.models import Branch, Commit, Pull
+from database.models.core import Owner, Repository
 from helpers.exceptions import RepositoryWithoutValidBotError
 from helpers.github_installation import get_installation_name_for_owner_for_task
 from services.repository import (
@@ -29,8 +32,12 @@ class CommitUpdateTask(BaseCodecovTask, name=commit_update_task_name):
         **kwargs,
     ):
         commit = None
-        commits = db_session.query(Commit).filter(
-            Commit.repoid == repoid, Commit.commitid == commitid
+        commits = (
+            db_session.query(Commit)
+            .filter(Commit.repoid == repoid, Commit.commitid == commitid)
+            .options(
+                joinedload(Commit.repository).joinedload(Repository.author),
+            )
         )
         commit = commits.first()
         assert commit, "Commit not found in database."
