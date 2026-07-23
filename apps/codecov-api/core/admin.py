@@ -3,7 +3,8 @@ from dataclasses import dataclass
 
 from django import forms
 from django.contrib import admin, messages
-from django.db.models import Count, F, Q, QuerySet
+from django.db.models import Count, F, OuterRef, Q, QuerySet, Subquery
+from django.db.models.functions import Coalesce
 from django.http import HttpRequest, HttpResponseRedirect
 from django.urls import path, reverse
 from django.utils import timezone
@@ -167,11 +168,73 @@ REPROCESS_CONFIGS = {
 }
 
 
-PENDING_UPLOAD_FILTER = (
-    Q(reports__sessions__state__in=["uploaded", "started"])
-    | Q(reports__sessions__state="")
-    | Q(reports__sessions__state__isnull=True)
+PENDING_SESSION_FILTER = (
+    Q(state__in=["uploaded", "started"]) | Q(state="") | Q(state__isnull=True)
 )
+
+
+def _commit_count_subquery(model, *, filters=None):
+    qs = model.objects.filter(commit_id=OuterRef("pk"), **(filters or {}))
+    return qs.order_by().values("commit_id").annotate(count=Count("pk")).values("count")
+
+
+def _session_count_subquery(*, filters=None):
+    qs = ReportSession.objects.filter(report__commit_id=OuterRef("pk"))
+    if filters is not None:
+        qs = qs.filter(filters)
+    return (
+        qs.order_by()
+        .values("report__commit_id")
+        .annotate(count=Count("pk"))
+        .values("count")
+    )
+
+
+def _report_results_count_subquery(*, filters=None):
+    qs = ReportResults.objects.filter(report__commit_id=OuterRef("pk"))
+    if filters is not None:
+        qs = qs.filter(filters)
+    return (
+        qs.order_by()
+        .values("report__commit_id")
+        .annotate(count=Count("pk"))
+        .values("count")
+    )
+
+
+def annotate_commit_changelist(queryset):
+    return queryset.annotate(
+        report_count=Coalesce(Subquery(_commit_count_subquery(CommitReport)), 0),
+        notification_count=Coalesce(
+            Subquery(_commit_count_subquery(CommitNotification)), 0
+        ),
+        success_notification_count=Coalesce(
+            Subquery(
+                _commit_count_subquery(
+                    CommitNotification,
+                    filters={"state": CommitNotification.States.SUCCESS},
+                )
+            ),
+            0,
+        ),
+        upload_count=Coalesce(Subquery(_session_count_subquery()), 0),
+        error_upload_count=Coalesce(
+            Subquery(_session_count_subquery(filters=Q(state="error"))),
+            0,
+        ),
+        pending_upload_count=Coalesce(
+            Subquery(_session_count_subquery(filters=PENDING_SESSION_FILTER)),
+            0,
+        ),
+        error_report_results_count=Coalesce(
+            Subquery(
+                _report_results_count_subquery(
+                    filters=Q(state=ReportResults.ReportResultsStates.ERROR)
+                )
+            ),
+            0,
+        ),
+    )
 
 
 def get_repo_yaml(repository):
@@ -583,34 +646,10 @@ class CommitAdmin(AdminMixin, admin.ModelAdmin):
         return format_html('<a href="{}">{}</a>', url, obj.parent_commit_id)
 
     def get_queryset(self, request):
-        return (
+        return annotate_commit_changelist(
             super()
             .get_queryset(request)
             .select_related("repository", "repository__author")
-            .annotate(
-                report_count=Count("reports", distinct=True),
-                notification_count=Count("notifications", distinct=True),
-                success_notification_count=Count(
-                    "notifications",
-                    filter=Q(notifications__state=CommitNotification.States.SUCCESS),
-                    distinct=True,
-                ),
-                upload_count=Count("reports__sessions"),
-                error_upload_count=Count(
-                    "reports__sessions",
-                    filter=Q(reports__sessions__state="error"),
-                ),
-                pending_upload_count=Count(
-                    "reports__sessions",
-                    filter=PENDING_UPLOAD_FILTER,
-                ),
-                error_report_results_count=Count(
-                    "reports__reportresults",
-                    filter=Q(
-                        reports__reportresults__state=ReportResults.ReportResultsStates.ERROR
-                    ),
-                ),
-            )
         )
 
     @admin.display(description="Reports", ordering="report_count")
