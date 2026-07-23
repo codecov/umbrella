@@ -12,6 +12,7 @@ from core.admin import (
     CommitReportInline,
     RepositoryAdmin,
     RepositoryAdminForm,
+    attach_commit_changelist_counts,
     get_repo_yaml,
     notification_failure_reason,
 )
@@ -206,8 +207,8 @@ class CommitAdminTests(TestCase):
         request = MagicMock()
         self.assertFalse(self.commit_admin.has_add_permission(request))
 
-    def test_default_ordering_is_timestamp_descending(self):
-        self.assertEqual(self.commit_admin.ordering, ("-timestamp",))
+    def test_default_ordering_is_id_descending(self):
+        self.assertEqual(self.commit_admin.ordering, ("-id",))
 
     def test_has_no_delete_permission(self):
         """Test that delete permission is disabled."""
@@ -267,7 +268,9 @@ class CommitAdminTests(TestCase):
     def _get_annotated_commit(self, commit):
         request = MagicMock()
         request.user = self.user
-        return self.commit_admin.get_queryset(request).get(pk=commit.pk)
+        obj = self.commit_admin.get_queryset(request).get(pk=commit.pk)
+        attach_commit_changelist_counts([obj])
+        return obj
 
     def test_report_count_display(self):
         commit = CommitFactory(repository=self.repo)
