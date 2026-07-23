@@ -3,7 +3,7 @@ from dataclasses import dataclass
 
 from django import forms
 from django.contrib import admin, messages
-from django.db.models import Q, QuerySet
+from django.db.models import Count, F, Q, QuerySet
 from django.http import HttpRequest, HttpResponseRedirect
 from django.urls import path, reverse
 from django.utils import timezone
@@ -11,8 +11,8 @@ from django.utils.html import format_html, format_html_join
 
 from codecov.admin import AdminMixin, deny_viewers, is_viewer
 from codecov_auth.models import Owner, RepositoryToken
-from core.models import Commit, Pull, Repository
-from reports.models import CommitReport, ReportSession
+from core.models import Commit, CommitNotification, Pull, Repository
+from reports.models import CommitReport, ReportResults, ReportSession
 from services.task.task import TaskService
 from shared.celery_config import manual_upload_completion_trigger_task_name
 from shared.django_apps.reports.models import ReportType
@@ -95,6 +95,17 @@ def installation_table(installations):
     )
 
 
+def notification_failure_reason(notification: CommitNotification) -> str | None:
+    if notification.state != CommitNotification.States.ERROR:
+        return None
+    if (
+        notification.decoration_type
+        and notification.decoration_type != CommitNotification.DecorationTypes.STANDARD
+    ):
+        return notification.get_decoration_type_display()
+    return "Delivery failed"
+
+
 @dataclass
 class ReprocessConfig:
     """Configuration for reprocessing a specific report type."""
@@ -154,6 +165,13 @@ REPROCESS_CONFIGS = {
         cleanup_fn=_cleanup_bundle_analysis,
     ),
 }
+
+
+PENDING_UPLOAD_FILTER = (
+    Q(reports__sessions__state__in=["uploaded", "started"])
+    | Q(reports__sessions__state="")
+    | Q(reports__sessions__state__isnull=True)
+)
 
 
 def get_repo_yaml(repository):
@@ -397,10 +415,121 @@ class PullsAdmin(AdminMixin, admin.ModelAdmin):
         return False
 
 
+class CommitReportInline(admin.TabularInline):
+    model = CommitReport
+    extra = 0
+    can_delete = False
+    verbose_name = "Commit report"
+    verbose_name_plural = "Commit reports"
+    readonly_fields = (
+        "id",
+        "report_type_display",
+        "code",
+        "external_id",
+        "created_at",
+        "updated_at",
+    )
+    fields = readonly_fields
+    ordering = ("report_type", "id")
+
+    @admin.display(description="Report type")
+    def report_type_display(self, obj):
+        return obj.report_type or ReportType.COVERAGE
+
+    def has_add_permission(self, request, obj=None):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+
+class CommitNotificationInline(admin.TabularInline):
+    model = CommitNotification
+    extra = 0
+    can_delete = False
+    verbose_name = "Commit notification"
+    verbose_name_plural = "Commit notifications"
+    readonly_fields = (
+        "notification_type",
+        "decoration_type",
+        "state",
+        "failure_reason",
+        "gh_app_link",
+        "created_at",
+        "updated_at",
+    )
+    fields = readonly_fields
+    ordering = ("notification_type",)
+
+    @admin.display(description="Failure reason")
+    def failure_reason(self, obj):
+        return notification_failure_reason(obj) or "-"
+
+    @admin.display(description="GitHub App")
+    def gh_app_link(self, obj):
+        if obj.gh_app_id is None:
+            return "-"
+        return format_html(
+            '<a href="{}">{}</a>',
+            _installation_change_url(obj.gh_app),
+            obj.gh_app.name,
+        )
+
+    def has_add_permission(self, request, obj=None):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related("gh_app")
+
+
+class CommitNotificationStatusFilter(admin.SimpleListFilter):
+    title = "notification status"
+    parameter_name = "notification_status"
+
+    def lookups(self, request, model_admin):
+        return (
+            ("all_passed", "All notifications passed"),
+            ("has_failure", "Has notification failure"),
+        )
+
+    def queryset(self, request, queryset):
+        if self.value() == "all_passed":
+            return queryset.filter(notification_count__gt=0).filter(
+                notification_count=F("success_notification_count")
+            )
+        if self.value() == "has_failure":
+            return queryset.filter(notification_count__gt=0).exclude(
+                notification_count=F("success_notification_count")
+            )
+        return queryset
+
+
 @admin.register(Commit)
 class CommitAdmin(AdminMixin, admin.ModelAdmin):
-    list_display = ("short_commitid", "repository", "branch", "state", "timestamp")
-    list_filter = ("state", "timestamp")
+    inlines = [CommitReportInline, CommitNotificationInline]
+    list_display = (
+        "short_commitid",
+        "repository_link",
+        "report_count_display",
+        "reports_status",
+        "notification_count_display",
+        "notifications_successful",
+        "branch",
+        "state",
+        "timestamp",
+    )
+    list_filter = ("state", CommitNotificationStatusFilter, "timestamp")
+    list_select_related = ("repository", "repository__author")
+    ordering = ("-timestamp",)
     search_fields = ("commitid__startswith", "repository__name", "message")
     readonly_fields = (
         "id",
@@ -412,7 +541,7 @@ class CommitAdmin(AdminMixin, admin.ModelAdmin):
         "branch",
         "pullid",
         "message",
-        "parent_commit_id",
+        "parent_commit_link",
         "state",
         "ci_passed",
         "totals",
@@ -429,6 +558,84 @@ class CommitAdmin(AdminMixin, admin.ModelAdmin):
     @admin.display(description="Commit SHA")
     def short_commitid(self, obj):
         return obj.commitid[:7] if obj.commitid else ""
+
+    @admin.display(description="Repository", ordering="repository__name")
+    def repository_link(self, obj):
+        repo = obj.repository
+        if repo is None:
+            return "-"
+        author = repo.author
+        if author is None:
+            label = repo.name
+        else:
+            label = f"{author.service}:{author.username}/{repo.name}"
+        url = reverse("admin:core_repository_change", args=[repo.repoid])
+        return format_html('<a href="{}">{}</a>', url, label)
+
+    @admin.display(description="Parent commit id")
+    def parent_commit_link(self, obj):
+        if not obj.parent_commit_id:
+            return "-"
+        parent = obj.parent_commit
+        if parent is None:
+            return obj.parent_commit_id
+        url = reverse("admin:core_commit_change", args=[parent.pk])
+        return format_html('<a href="{}">{}</a>', url, obj.parent_commit_id)
+
+    def get_queryset(self, request):
+        return (
+            super()
+            .get_queryset(request)
+            .select_related("repository", "repository__author")
+            .annotate(
+                report_count=Count("reports", distinct=True),
+                notification_count=Count("notifications", distinct=True),
+                success_notification_count=Count(
+                    "notifications",
+                    filter=Q(notifications__state=CommitNotification.States.SUCCESS),
+                    distinct=True,
+                ),
+                upload_count=Count("reports__sessions"),
+                error_upload_count=Count(
+                    "reports__sessions",
+                    filter=Q(reports__sessions__state="error"),
+                ),
+                pending_upload_count=Count(
+                    "reports__sessions",
+                    filter=PENDING_UPLOAD_FILTER,
+                ),
+                error_report_results_count=Count(
+                    "reports__reportresults",
+                    filter=Q(
+                        reports__reportresults__state=ReportResults.ReportResultsStates.ERROR
+                    ),
+                ),
+            )
+        )
+
+    @admin.display(description="Reports", ordering="report_count")
+    def report_count_display(self, obj):
+        return obj.report_count
+
+    @admin.display(description="Report status", boolean=True)
+    def reports_status(self, obj):
+        if obj.report_count == 0:
+            return None
+        if obj.error_upload_count or obj.error_report_results_count:
+            return False
+        if obj.pending_upload_count or obj.upload_count == 0:
+            return None
+        return True
+
+    @admin.display(description="Notifications", ordering="notification_count")
+    def notification_count_display(self, obj):
+        return obj.notification_count
+
+    @admin.display(description="All notifications OK", boolean=True)
+    def notifications_successful(self, obj):
+        if obj.notification_count == 0:
+            return None
+        return obj.success_notification_count == obj.notification_count
 
     def has_add_permission(self, request):
         return False
