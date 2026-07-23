@@ -30,9 +30,10 @@ class RepositoryQuerySet(QuerySet):
         filters = Q(private=False)
 
         if owner is not None:
-            filters = filters | Q(author__ownerid=owner.ownerid)
-            if owner.permission:
+            if owner.permission is not None:
                 filters = filters | Q(repoid__in=owner.permission)
+            else:
+                filters = filters | Q(author__ownerid=owner.ownerid, private=True)
 
         filters &= ~Q(deleted=True)
 

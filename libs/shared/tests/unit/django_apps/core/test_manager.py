@@ -48,10 +48,21 @@ def test_repository_queryset_viewable_repos(
     all_queryset = Repository.objects.all()
     assert all_queryset.count() == 3
 
-    # filters out the unviewable repo, which is the repo that has neither permissions nor
-    # authorship related to the user.
+    # filters out repos that are not public and not in the user's permission list.
     viewable_repos = all_queryset.viewable_repos(user_owner)
-    assert viewable_repos.count() == 2
+    assert viewable_repos.count() == 1
+
+
+@pytest.mark.django_db
+def test_repository_queryset_viewable_repos_with_null_permission(
+    viewable_repo_by_authorship: Repository,
+):
+    owner = viewable_repo_by_authorship.author
+    owner.permission = None
+    owner.save()
+
+    viewable_repos = Repository.objects.viewable_repos(owner)
+    assert viewable_repos.filter(repoid=viewable_repo_by_authorship.repoid).exists()
 
 
 @pytest.mark.django_db

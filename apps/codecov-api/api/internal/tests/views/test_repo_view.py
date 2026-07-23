@@ -344,8 +344,10 @@ class TestRepositoryViewSetList(RepositoryViewSetTestSuite):
         assert response.status_code == 200
         assert len(response.data["results"]) == 3
 
-    def test_returns_private_repos_if_user_owns_repo(self):
+    def test_returns_private_repos_if_user_owns_repo_and_has_permission(self):
         new_repo = RepositoryFactory(author=self.current_owner, name="C")
+        self.current_owner.permission.append(new_repo.repoid)
+        self.current_owner.save()
 
         response = self._list(
             {
@@ -356,6 +358,19 @@ class TestRepositoryViewSetList(RepositoryViewSetTestSuite):
 
         assert response.status_code == 200
         assert new_repo.name in [repo["name"] for repo in response.data["results"]]
+
+    def test_hides_private_repos_owned_by_user_without_permission(self):
+        new_repo = RepositoryFactory(author=self.current_owner, name="C")
+
+        response = self._list(
+            {
+                "service": self.current_owner.service,
+                "owner_username": self.current_owner.username,
+            }
+        )
+
+        assert response.status_code == 200
+        assert new_repo.name not in [repo["name"] for repo in response.data["results"]]
 
     def test_returns_public_repos_if_not_owned_by_user_and_not_in_permissions_array(
         self,
