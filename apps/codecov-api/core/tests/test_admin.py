@@ -3,17 +3,32 @@ from unittest.mock import MagicMock, patch
 
 from django.contrib.admin.sites import AdminSite
 from django.test import TestCase
+from django.urls import reverse
 
-from core.admin import CommitAdmin, RepositoryAdmin, RepositoryAdminForm, get_repo_yaml
-from core.models import Commit, Repository
+from core.admin import (
+    CommitAdmin,
+    CommitNotificationInline,
+    CommitNotificationStatusFilter,
+    CommitReportInline,
+    RepositoryAdmin,
+    RepositoryAdminForm,
+    get_repo_yaml,
+    notification_failure_reason,
+)
+from core.models import Commit, CommitNotification, Repository
 from shared.django_apps.codecov_auth.tests.factories import (
     GithubAppInstallationFactory,
     UserFactory,
 )
-from shared.django_apps.core.tests.factories import CommitFactory, RepositoryFactory
-from shared.django_apps.reports.models import ReportType
+from shared.django_apps.core.tests.factories import (
+    CommitFactory,
+    CommitNotificationFactory,
+    RepositoryFactory,
+)
+from shared.django_apps.reports.models import ReportResults, ReportType
 from shared.django_apps.reports.tests.factories import (
     CommitReportFactory,
+    ReportResultsFactory,
     UploadFactory,
 )
 from shared.reports.enums import UploadState
@@ -191,6 +206,9 @@ class CommitAdminTests(TestCase):
         request = MagicMock()
         self.assertFalse(self.commit_admin.has_add_permission(request))
 
+    def test_default_ordering_is_timestamp_descending(self):
+        self.assertEqual(self.commit_admin.ordering, ("-timestamp",))
+
     def test_has_no_delete_permission(self):
         """Test that delete permission is disabled."""
         request = MagicMock()
@@ -208,6 +226,163 @@ class CommitAdminTests(TestCase):
         commit.commitid = ""
         result = self.commit_admin.short_commitid(commit)
         self.assertEqual(result, "")
+
+    def test_repository_link(self):
+        commit = CommitFactory(repository=self.repo)
+        result = self.commit_admin.repository_link(commit)
+        expected_label = (
+            f"{self.repo.author.service}:{self.repo.author.username}/{self.repo.name}"
+        )
+        self.assertIn(expected_label, result)
+        self.assertIn(
+            reverse("admin:core_repository_change", args=[self.repo.repoid]), result
+        )
+
+    def test_repository_link_without_author(self):
+        commit = CommitFactory(repository=self.repo)
+        commit.repository.author_id = None
+        result = self.commit_admin.repository_link(commit)
+        self.assertIn(self.repo.name, result)
+        self.assertIn(
+            reverse("admin:core_repository_change", args=[self.repo.repoid]), result
+        )
+
+    def test_parent_commit_link(self):
+        parent = CommitFactory(repository=self.repo, commitid="a" * 40)
+        commit = CommitFactory(repository=self.repo, parent_commit_id=parent.commitid)
+        result = self.commit_admin.parent_commit_link(commit)
+        self.assertIn(parent.commitid, result)
+        self.assertIn(reverse("admin:core_commit_change", args=[parent.pk]), result)
+
+    def test_parent_commit_link_missing_parent(self):
+        commit = CommitFactory(repository=self.repo, parent_commit_id="b" * 40)
+        result = self.commit_admin.parent_commit_link(commit)
+        self.assertEqual(result, "b" * 40)
+
+    def test_parent_commit_link_empty(self):
+        commit = CommitFactory(repository=self.repo, parent_commit_id=None)
+        result = self.commit_admin.parent_commit_link(commit)
+        self.assertEqual(result, "-")
+
+    def _get_annotated_commit(self, commit):
+        request = MagicMock()
+        request.user = self.user
+        return self.commit_admin.get_queryset(request).get(pk=commit.pk)
+
+    def test_report_count_display(self):
+        commit = CommitFactory(repository=self.repo)
+        CommitReportFactory.create_batch(2, commit=commit)
+        annotated = self._get_annotated_commit(commit)
+        self.assertEqual(self.commit_admin.report_count_display(annotated), 2)
+
+    def test_reports_status_no_reports(self):
+        commit = CommitFactory(repository=self.repo)
+        annotated = self._get_annotated_commit(commit)
+        self.assertIsNone(self.commit_admin.reports_status(annotated))
+
+    def test_reports_status_all_processed(self):
+        commit = CommitFactory(repository=self.repo)
+        report = CommitReportFactory(commit=commit, report_type=ReportType.COVERAGE)
+        UploadFactory(report=report, state="processed")
+        annotated = self._get_annotated_commit(commit)
+        self.assertTrue(self.commit_admin.reports_status(annotated))
+
+    def test_reports_status_pending_upload(self):
+        commit = CommitFactory(repository=self.repo)
+        report = CommitReportFactory(commit=commit, report_type=ReportType.COVERAGE)
+        UploadFactory(report=report, state="uploaded")
+        annotated = self._get_annotated_commit(commit)
+        self.assertIsNone(self.commit_admin.reports_status(annotated))
+
+    def test_reports_status_error_upload(self):
+        commit = CommitFactory(repository=self.repo)
+        report = CommitReportFactory(commit=commit, report_type=ReportType.COVERAGE)
+        UploadFactory(report=report, state="error")
+        annotated = self._get_annotated_commit(commit)
+        self.assertFalse(self.commit_admin.reports_status(annotated))
+
+    def test_reports_status_error_report_results(self):
+        commit = CommitFactory(repository=self.repo)
+        report = CommitReportFactory(commit=commit, report_type=ReportType.TEST_RESULTS)
+        ReportResultsFactory(
+            report=report, state=ReportResults.ReportResultsStates.ERROR
+        )
+        annotated = self._get_annotated_commit(commit)
+        self.assertFalse(self.commit_admin.reports_status(annotated))
+
+    def test_notification_count_display(self):
+        commit = CommitFactory(repository=self.repo)
+        CommitNotificationFactory(
+            commit=commit,
+            notification_type=CommitNotification.NotificationTypes.COMMENT,
+        )
+        CommitNotificationFactory(
+            commit=commit,
+            notification_type=CommitNotification.NotificationTypes.SLACK,
+        )
+        annotated = self._get_annotated_commit(commit)
+        self.assertEqual(self.commit_admin.notification_count_display(annotated), 2)
+
+    def test_notifications_successful_true(self):
+        commit = CommitFactory(repository=self.repo)
+        CommitNotificationFactory(
+            commit=commit, state=CommitNotification.States.SUCCESS
+        )
+        annotated = self._get_annotated_commit(commit)
+        self.assertTrue(self.commit_admin.notifications_successful(annotated))
+
+    def test_notifications_successful_false(self):
+        commit = CommitFactory(repository=self.repo)
+        CommitNotificationFactory(commit=commit, state=CommitNotification.States.ERROR)
+        annotated = self._get_annotated_commit(commit)
+        self.assertFalse(self.commit_admin.notifications_successful(annotated))
+
+    def test_notifications_successful_none_without_notifications(self):
+        commit = CommitFactory(repository=self.repo)
+        annotated = self._get_annotated_commit(commit)
+        self.assertIsNone(self.commit_admin.notifications_successful(annotated))
+
+    def test_notification_status_filter_all_passed(self):
+        passed = CommitFactory(repository=self.repo)
+        CommitNotificationFactory(
+            commit=passed, state=CommitNotification.States.SUCCESS
+        )
+        failed = CommitFactory(repository=self.repo)
+        CommitNotificationFactory(commit=failed, state=CommitNotification.States.ERROR)
+        CommitFactory(repository=self.repo)
+
+        request = MagicMock()
+        request.user = self.user
+        qs = self.commit_admin.get_queryset(request)
+        filter_instance = CommitNotificationStatusFilter(
+            request, {"notification_status": "all_passed"}, Commit, self.commit_admin
+        )
+        filtered = filter_instance.queryset(request, qs)
+        self.assertEqual(list(filtered.values_list("pk", flat=True)), [passed.pk])
+
+    def test_notification_status_filter_has_failure(self):
+        passed = CommitFactory(repository=self.repo)
+        CommitNotificationFactory(
+            commit=passed, state=CommitNotification.States.SUCCESS
+        )
+        failed = CommitFactory(repository=self.repo)
+        CommitNotificationFactory(commit=failed, state=CommitNotification.States.ERROR)
+        pending = CommitFactory(repository=self.repo)
+        CommitNotificationFactory(
+            commit=pending, state=CommitNotification.States.PENDING
+        )
+        CommitFactory(repository=self.repo)
+
+        request = MagicMock()
+        request.user = self.user
+        qs = self.commit_admin.get_queryset(request)
+        filter_instance = CommitNotificationStatusFilter(
+            request, {"notification_status": "has_failure"}, Commit, self.commit_admin
+        )
+        filtered = filter_instance.queryset(request, qs)
+        self.assertCountEqual(
+            list(filtered.values_list("pk", flat=True)), [failed.pk, pending.pk]
+        )
 
     def test_get_urls_includes_custom_urls(self):
         """Test that get_urls includes all reprocessing URL patterns."""
@@ -263,6 +438,127 @@ class CommitAdminTests(TestCase):
         result = self.commit_admin.reprocess_actions(commit)
 
         self.assertIn("Trigger Notifications", result)
+
+
+class CommitAdminInlineTests(TestCase):
+    def setUp(self):
+        self.user = UserFactory(is_staff=True)
+        self.client = Client()
+        self.client.force_login(self.user)
+        self.commit_admin = CommitAdmin(Commit, AdminSite())
+        self.repo = RepositoryFactory()
+        self.commit = CommitFactory(repository=self.repo)
+
+    def test_commit_admin_includes_inlines(self):
+        request = MagicMock()
+        request.user = self.user
+        inlines = self.commit_admin.get_inline_instances(request, self.commit)
+        self.assertEqual(len(inlines), 2)
+        self.assertIsInstance(inlines[0], CommitReportInline)
+        self.assertIsInstance(inlines[1], CommitNotificationInline)
+
+
+class CommitReportInlineTests(TestCase):
+    def setUp(self):
+        self.user = UserFactory(is_staff=True)
+        self.client = Client()
+        self.client.force_login(self.user)
+        self.commit_admin = CommitAdmin(Commit, AdminSite())
+        self.repo = RepositoryFactory()
+        self.commit = CommitFactory(repository=self.repo)
+
+    def test_report_inline_is_read_only(self):
+        request = MagicMock()
+        request.user = self.user
+        inline = CommitReportInline(Commit, AdminSite())
+        self.assertFalse(inline.has_add_permission(request, self.commit))
+        self.assertFalse(inline.has_change_permission(request, self.commit))
+        self.assertFalse(inline.has_delete_permission(request, self.commit))
+
+    def test_commit_change_page_shows_reports(self):
+        CommitReportFactory(
+            commit=self.commit,
+            report_type=ReportType.COVERAGE,
+            code="default",
+        )
+        url = reverse("admin:core_commit_change", args=[self.commit.pk])
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Commit reports")
+        self.assertContains(response, "coverage")
+        self.assertContains(response, "default")
+
+
+class CommitNotificationInlineTests(TestCase):
+    def setUp(self):
+        self.user = UserFactory(is_staff=True)
+        self.client = Client()
+        self.client.force_login(self.user)
+        self.commit_admin = CommitAdmin(Commit, AdminSite())
+        self.repo = RepositoryFactory()
+        self.commit = CommitFactory(repository=self.repo)
+
+    def test_notification_inline_is_read_only(self):
+        request = MagicMock()
+        request.user = self.user
+        inline = CommitNotificationInline(Commit, AdminSite())
+        self.assertFalse(inline.has_add_permission(request, self.commit))
+        self.assertFalse(inline.has_change_permission(request, self.commit))
+        self.assertFalse(inline.has_delete_permission(request, self.commit))
+
+    def test_commit_change_page_shows_notifications(self):
+        notification = CommitNotificationFactory(
+            commit=self.commit,
+            notification_type=CommitNotification.NotificationTypes.COMMENT,
+            decoration_type=CommitNotification.DecorationTypes.STANDARD,
+            state=CommitNotification.States.SUCCESS,
+        )
+        url = reverse("admin:core_commit_change", args=[self.commit.pk])
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Commit notifications")
+        self.assertContains(response, notification.get_notification_type_display())
+        self.assertContains(response, notification.get_decoration_type_display())
+        self.assertContains(response, notification.get_state_display())
+
+    def test_failure_reason_delivery_failed(self):
+        notification = CommitNotificationFactory(
+            commit=self.commit,
+            state=CommitNotification.States.ERROR,
+            decoration_type=CommitNotification.DecorationTypes.STANDARD,
+        )
+        self.assertEqual(notification_failure_reason(notification), "Delivery failed")
+
+    def test_failure_reason_from_decoration_type(self):
+        notification = CommitNotificationFactory(
+            commit=self.commit,
+            state=CommitNotification.States.ERROR,
+            decoration_type=CommitNotification.DecorationTypes.UPLOAD_LIMIT,
+        )
+        self.assertEqual(
+            notification_failure_reason(notification),
+            notification.get_decoration_type_display(),
+        )
+
+    def test_failure_reason_none_for_success(self):
+        notification = CommitNotificationFactory(
+            commit=self.commit,
+            state=CommitNotification.States.SUCCESS,
+        )
+        self.assertIsNone(notification_failure_reason(notification))
+
+    def test_commit_change_page_shows_notification_failure_reason(self):
+        notification = CommitNotificationFactory(
+            commit=self.commit,
+            notification_type=CommitNotification.NotificationTypes.CHECKS_PROJECT,
+            decoration_type=CommitNotification.DecorationTypes.UPLOAD_LIMIT,
+            state=CommitNotification.States.ERROR,
+        )
+        url = reverse("admin:core_commit_change", args=[self.commit.pk])
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Failure reason")
+        self.assertContains(response, notification.get_decoration_type_display())
 
 
 class CommitAdminReprocessViewsTests(TestCase):
