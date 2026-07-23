@@ -60,11 +60,6 @@ devenv.admin:
 	read external_id; \
 	docker compose run --entrypoint python --rm api manage.py shell -c "from codecov_auth.models import User; user = User.objects.get(external_id='$$external_id'); user.is_staff = True; user.is_superuser = True; user.save(); print(f'User {user.name} (external_id: $$external_id) is now an admin')"
 
-.PHONY: devenv.seed-commit-admin-data
-devenv.seed-commit-admin-data:
-	$(MAKE) devenv.start.deps
-	docker compose run --entrypoint python --rm api manage.py seed_commit_admin_data $(ARGS)
-
 .PHONY: devenv.stop
 devenv.stop:
 	docker compose down --remove-orphans
