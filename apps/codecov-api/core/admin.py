@@ -3,8 +3,7 @@ from dataclasses import dataclass
 
 from django import forms
 from django.contrib import admin, messages
-from django.db.models import Count, F, OuterRef, Q, QuerySet, Subquery
-from django.db.models.functions import Coalesce
+from django.db.models import Count, Exists, OuterRef, Q, QuerySet
 from django.http import HttpRequest, HttpResponseRedirect
 from django.urls import path, reverse
 from django.utils import timezone
@@ -172,69 +171,77 @@ PENDING_SESSION_FILTER = (
     Q(state__in=["uploaded", "started"]) | Q(state="") | Q(state__isnull=True)
 )
 
+_COMMIT_CHANGELIST_COUNT_FIELDS = (
+    "report_count",
+    "notification_count",
+    "success_notification_count",
+    "upload_count",
+    "error_upload_count",
+    "pending_upload_count",
+    "error_report_results_count",
+)
 
-def _commit_count_subquery(model, *, filters=None):
-    qs = model.objects.filter(commit_id=OuterRef("pk"), **(filters or {}))
-    return qs.order_by().values("commit_id").annotate(count=Count("pk")).values("count")
+
+def _empty_commit_changelist_counts():
+    return dict.fromkeys(_COMMIT_CHANGELIST_COUNT_FIELDS, 0)
 
 
-def _session_count_subquery(*, filters=None):
-    qs = ReportSession.objects.filter(report__commit_id=OuterRef("pk"))
-    if filters is not None:
-        qs = qs.filter(filters)
-    return (
-        qs.order_by()
+def attach_commit_changelist_counts(commits):
+    if not commits:
+        return
+
+    commit_ids = [commit.pk for commit in commits]
+    counts_by_id = {
+        commit_id: _empty_commit_changelist_counts() for commit_id in commit_ids
+    }
+
+    for commit_id, count in (
+        CommitReport.objects.filter(commit_id__in=commit_ids)
+        .values("commit_id")
+        .annotate(count=Count("pk"))
+        .values_list("commit_id", "count")
+    ):
+        counts_by_id[commit_id]["report_count"] = count
+
+    for row in (
+        CommitNotification.objects.filter(commit_id__in=commit_ids)
+        .values("commit_id")
+        .annotate(
+            total=Count("pk"),
+            success=Count("pk", filter=Q(state=CommitNotification.States.SUCCESS)),
+        )
+    ):
+        counts_by_id[row["commit_id"]]["notification_count"] = row["total"]
+        counts_by_id[row["commit_id"]]["success_notification_count"] = row["success"]
+
+    for row in (
+        ReportSession.objects.filter(report__commit_id__in=commit_ids)
+        .values("report__commit_id")
+        .annotate(
+            upload_count=Count("pk"),
+            error_upload_count=Count("pk", filter=Q(state="error")),
+            pending_upload_count=Count("pk", filter=PENDING_SESSION_FILTER),
+        )
+    ):
+        commit_id = row["report__commit_id"]
+        counts_by_id[commit_id]["upload_count"] += row["upload_count"]
+        counts_by_id[commit_id]["error_upload_count"] += row["error_upload_count"]
+        counts_by_id[commit_id]["pending_upload_count"] += row["pending_upload_count"]
+
+    for commit_id, count in (
+        ReportResults.objects.filter(
+            report__commit_id__in=commit_ids,
+            state=ReportResults.ReportResultsStates.ERROR,
+        )
         .values("report__commit_id")
         .annotate(count=Count("pk"))
-        .values("count")
-    )
+        .values_list("report__commit_id", "count")
+    ):
+        counts_by_id[commit_id]["error_report_results_count"] = count
 
-
-def _report_results_count_subquery(*, filters=None):
-    qs = ReportResults.objects.filter(report__commit_id=OuterRef("pk"))
-    if filters is not None:
-        qs = qs.filter(filters)
-    return (
-        qs.order_by()
-        .values("report__commit_id")
-        .annotate(count=Count("pk"))
-        .values("count")
-    )
-
-
-def annotate_commit_changelist(queryset):
-    return queryset.annotate(
-        report_count=Coalesce(Subquery(_commit_count_subquery(CommitReport)), 0),
-        notification_count=Coalesce(
-            Subquery(_commit_count_subquery(CommitNotification)), 0
-        ),
-        success_notification_count=Coalesce(
-            Subquery(
-                _commit_count_subquery(
-                    CommitNotification,
-                    filters={"state": CommitNotification.States.SUCCESS},
-                )
-            ),
-            0,
-        ),
-        upload_count=Coalesce(Subquery(_session_count_subquery()), 0),
-        error_upload_count=Coalesce(
-            Subquery(_session_count_subquery(filters=Q(state="error"))),
-            0,
-        ),
-        pending_upload_count=Coalesce(
-            Subquery(_session_count_subquery(filters=PENDING_SESSION_FILTER)),
-            0,
-        ),
-        error_report_results_count=Coalesce(
-            Subquery(
-                _report_results_count_subquery(
-                    filters=Q(state=ReportResults.ReportResultsStates.ERROR)
-                )
-            ),
-            0,
-        ),
-    )
+    for commit in commits:
+        for field, value in counts_by_id[commit.pk].items():
+            setattr(commit, field, value)
 
 
 def get_repo_yaml(repository):
@@ -565,14 +572,16 @@ class CommitNotificationStatusFilter(admin.SimpleListFilter):
         )
 
     def queryset(self, request, queryset):
+        has_notifications = CommitNotification.objects.filter(commit_id=OuterRef("pk"))
+        has_failure = CommitNotification.objects.filter(
+            commit_id=OuterRef("pk")
+        ).exclude(state=CommitNotification.States.SUCCESS)
         if self.value() == "all_passed":
-            return queryset.filter(notification_count__gt=0).filter(
-                notification_count=F("success_notification_count")
+            return queryset.filter(Exists(has_notifications)).exclude(
+                Exists(has_failure)
             )
         if self.value() == "has_failure":
-            return queryset.filter(notification_count__gt=0).exclude(
-                notification_count=F("success_notification_count")
-            )
+            return queryset.filter(Exists(has_failure))
         return queryset
 
 
@@ -592,7 +601,7 @@ class CommitAdmin(AdminMixin, admin.ModelAdmin):
     )
     list_filter = ("state", CommitNotificationStatusFilter, "timestamp")
     list_select_related = ("repository", "repository__author")
-    ordering = ("-timestamp",)
+    ordering = ("-id",)
     search_fields = ("commitid__startswith", "repository__name", "message")
     readonly_fields = (
         "id",
@@ -646,13 +655,21 @@ class CommitAdmin(AdminMixin, admin.ModelAdmin):
         return format_html('<a href="{}">{}</a>', url, obj.parent_commit_id)
 
     def get_queryset(self, request):
-        return annotate_commit_changelist(
+        return (
             super()
             .get_queryset(request)
             .select_related("repository", "repository__author")
         )
 
-    @admin.display(description="Reports", ordering="report_count")
+    def changelist_view(self, request, extra_context=None):
+        response = super().changelist_view(request, extra_context=extra_context)
+        if request.method == "GET" and hasattr(response, "context_data"):
+            changelist = response.context_data.get("cl")
+            if changelist is not None:
+                attach_commit_changelist_counts(list(changelist.result_list))
+        return response
+
+    @admin.display(description="Reports")
     def report_count_display(self, obj):
         return obj.report_count
 
@@ -666,7 +683,7 @@ class CommitAdmin(AdminMixin, admin.ModelAdmin):
             return None
         return True
 
-    @admin.display(description="Notifications", ordering="notification_count")
+    @admin.display(description="Notifications")
     def notification_count_display(self, obj):
         return obj.notification_count
 
