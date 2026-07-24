@@ -53,6 +53,7 @@ from utils.config import get_config
 
 owner = ariadne_load_local_graphql(__file__, "owner.graphql")
 owner = owner + build_connection_graphql("RepositoryConnection", "Repository")
+owner = owner + build_connection_graphql("MemberConnection", "Owner")
 owner_bindable = ObjectType("Owner")
 AI_FEATURES_GH_APP_ID = get_config("github", "ai_features_app_id")
 
@@ -472,3 +473,18 @@ def resolve_activated_user_count(owner: Owner, info: GraphQLResolveInfo) -> int:
 @require_part_of_org
 def resolve_billing(owner: Owner, info: GraphQLResolveInfo) -> dict | None:
     return owner
+
+
+@owner_bindable.field("members")
+@sync_to_async
+@require_part_of_org
+def resolve_members(
+    owner: Owner, info: GraphQLResolveInfo, **kwargs: Any
+) -> Coroutine[Any, Any, Connection]:
+    queryset = Owner.objects.filter(organizations__contains=[owner.ownerid])
+    return queryset_to_connection_sync(
+        queryset,
+        ordering=("ownerid",),
+        ordering_direction=OrderingDirection.ASC,
+        **kwargs,
+    )

@@ -46,4 +46,10 @@ type Owner {
   aiEnabledRepos: [String]
   uploadTokenRequired: Boolean
   activatedUserCount: Int
+  members(
+    first: Int
+    after: String
+    last: Int
+    before: String
+  ): MemberConnection @cost(complexity: 25, multipliers: ["first", "last"])
 }
