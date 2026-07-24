@@ -73,7 +73,12 @@ def unquote_git_path(path: str) -> str:
                 # The examples all match "users/.../Icon\r"
                 # https://apple.stackexchange.com/questions/31867/what-is-icon-r-file-and-how-do-i-delete-them
                 i += 2
-            elif path[i + 1] in string.octdigits:
+            elif (
+                i + 3 < len(path)
+                and path[i + 1] in string.octdigits
+                and path[i + 2] in string.octdigits
+                and path[i + 3] in string.octdigits
+            ):
                 # Decode an escaped byte; the next three characters are octets.
                 rv.append(int(path[i + 1 : i + 4], 8))
                 i += 4
