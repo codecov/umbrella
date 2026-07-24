@@ -166,7 +166,11 @@ def get_changes(
                 # Diff says it's because it's new
                 # This is expected
                 continue
-            r = get_segment_offsets(diff["segments"])
+            if diff.get("type") in ("deleted", "binary") or "segments" not in diff:
+                # Deleted/binary files have no segments; treat as new
+                new_files.add(filename)
+                continue
+            r = get_segment_offsets(diff.get("segments") or [])
             additions: set[int] = set(r[1])
             if any(ln not in additions for ln, _ in _file.lines):
                 # file has new coverage lines that are not accounted by the diff
