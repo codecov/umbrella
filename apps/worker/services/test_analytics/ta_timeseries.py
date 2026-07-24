@@ -31,6 +31,13 @@ def get_flaky_tests_dict(repo_id: int) -> dict[bytes, FlakeInfo]:
     }
 
 
+def _strip_nul(s: str | None) -> str | None:
+    """Remove NUL (0x00) bytes from a string to prevent PostgreSQL errors."""
+    if s is None:
+        return None
+    return s.replace("\x00", "")
+
+
 def insert_testrun(
     timestamp: datetime,
     repo_id: int | None,
@@ -58,16 +65,18 @@ def insert_testrun(
             Testrun(
                 timestamp=timestamp,
                 test_id=test_id,
-                name=testrun["name"],
-                classname=testrun["classname"],
-                testsuite=testrun["testsuite"],
-                computed_name=testrun["computed_name"]
-                or f"{testrun['classname']}::{testrun['name']}",
+                name=_strip_nul(testrun["name"]),
+                classname=_strip_nul(testrun["classname"]),
+                testsuite=_strip_nul(testrun["testsuite"]),
+                computed_name=_strip_nul(
+                    testrun["computed_name"]
+                    or f"{testrun['classname']}::{testrun['name']}"
+                ),
                 outcome=outcome,
                 duration_seconds=testrun["duration"],
-                failure_message=testrun["failure_message"],
+                failure_message=_strip_nul(testrun["failure_message"]),
                 framework=parsing_info["framework"],
-                filename=testrun["filename"],
+                filename=_strip_nul(testrun["filename"]),
                 properties=testrun.get("properties"),
                 repo_id=repo_id,
                 commit_sha=commit_sha,
