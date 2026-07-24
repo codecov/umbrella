@@ -488,6 +488,7 @@ class SyncReposTask(BaseCodecovTask, name=sync_repos_task_name):
                 "username": username,
             },
         )
+        service_id = str(service_id)
         owner = (
             db_session.query(Owner)
             .filter(Owner.service == service, Owner.service_id == service_id)
