@@ -322,7 +322,7 @@ class StatusProjectMixin:
         )
         threshold = self._get_threshold()
 
-        head_coverage = Decimal(comparison.head.report.totals.coverage)
+        head_coverage = Decimal(comparison.head.report.totals.coverage or 0)
         log.info(
             "Adjust base applied to project status",
             extra={
@@ -565,7 +565,7 @@ class StatusProjectMixin:
         # Proper comparison head vs base report
         threshold = self._get_threshold()
         target_coverage, is_custom_target = self._get_target(base_report_totals)
-        head_coverage = Decimal(head_report_totals.coverage)
+        head_coverage = Decimal(head_report_totals.coverage or 0)
         head_coverage_rounded = round_number(self.current_yaml, head_coverage)
 
         # threshold is used to determine success/failure, but is not included in messaging
