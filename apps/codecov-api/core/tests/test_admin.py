@@ -1,3 +1,4 @@
+import json
 import uuid
 from unittest.mock import MagicMock, patch
 
@@ -7,12 +8,14 @@ from django.urls import reverse
 
 from core.admin import (
     CommitAdmin,
+    CommitChangelistPaginator,
     CommitNotificationInline,
     CommitNotificationStatusFilter,
     CommitReportInline,
     RepositoryAdmin,
     RepositoryAdminForm,
     attach_commit_changelist_counts,
+    attach_commit_upload_status_flags,
     get_repo_yaml,
     notification_failure_reason,
 )
@@ -268,9 +271,64 @@ class CommitAdminTests(TestCase):
     def _get_annotated_commit(self, commit):
         request = MagicMock()
         request.user = self.user
-        obj = self.commit_admin.get_queryset(request).get(pk=commit.pk)
-        attach_commit_changelist_counts([obj])
-        return obj
+        return self.commit_admin.get_object(request, str(commit.pk))
+
+    def test_get_search_results_by_repoid(self):
+        other_repo = RepositoryFactory()
+        match = CommitFactory(repository=self.repo)
+        CommitFactory(repository=other_repo)
+
+        request = MagicMock()
+        queryset = Commit.objects.all()
+        results, _ = self.commit_admin.get_search_results(
+            request, queryset, str(self.repo.repoid)
+        )
+        self.assertEqual(list(results.values_list("pk", flat=True)), [match.pk])
+
+    def test_get_search_results_by_commit_sha(self):
+        commit = CommitFactory(repository=self.repo, commitid="a" * 40)
+        CommitFactory(repository=self.repo)
+
+        request = MagicMock()
+        queryset = Commit.objects.all()
+        results, _ = self.commit_admin.get_search_results(
+            request, queryset, commit.commitid
+        )
+        self.assertEqual(list(results.values_list("pk", flat=True)), [commit.pk])
+
+    def test_get_search_results_invalid_term_returns_empty(self):
+        CommitFactory(repository=self.repo)
+        request = MagicMock()
+        queryset = Commit.objects.all()
+        results, _ = self.commit_admin.get_search_results(
+            request, queryset, "not-a-valid-search"
+        )
+        self.assertEqual(results.count(), 0)
+
+    def test_changelist_reports_status_view(self):
+        commit = CommitFactory(repository=self.repo)
+        report = CommitReportFactory(commit=commit, report_type=ReportType.COVERAGE)
+        UploadFactory(report=report, state="processed")
+
+        url = reverse("admin:core_commit_changelist_reports_status")
+        self.client.force_login(self.user)
+        response = self.client.post(
+            url,
+            data=json.dumps({"commit_ids": [commit.pk]}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.json()["statuses"][str(commit.pk)],
+            "true",
+        )
+
+    def test_upload_status_flags_skipped_without_reports(self):
+        commit = CommitFactory(repository=self.repo)
+        attach_commit_changelist_counts([commit])
+        self.assertEqual(commit.report_count, 0)
+        attach_commit_upload_status_flags([commit])
+        self.assertFalse(getattr(commit, "has_upload", False))
 
     def test_report_count_display(self):
         commit = CommitFactory(repository=self.repo)
@@ -281,28 +339,28 @@ class CommitAdminTests(TestCase):
     def test_reports_status_no_reports(self):
         commit = CommitFactory(repository=self.repo)
         annotated = self._get_annotated_commit(commit)
-        self.assertIsNone(self.commit_admin.reports_status(annotated))
+        self.assertIsNone(self.commit_admin.reports_status_detail(annotated))
 
     def test_reports_status_all_processed(self):
         commit = CommitFactory(repository=self.repo)
         report = CommitReportFactory(commit=commit, report_type=ReportType.COVERAGE)
         UploadFactory(report=report, state="processed")
         annotated = self._get_annotated_commit(commit)
-        self.assertTrue(self.commit_admin.reports_status(annotated))
+        self.assertTrue(self.commit_admin.reports_status_detail(annotated))
 
     def test_reports_status_pending_upload(self):
         commit = CommitFactory(repository=self.repo)
         report = CommitReportFactory(commit=commit, report_type=ReportType.COVERAGE)
         UploadFactory(report=report, state="uploaded")
         annotated = self._get_annotated_commit(commit)
-        self.assertIsNone(self.commit_admin.reports_status(annotated))
+        self.assertIsNone(self.commit_admin.reports_status_detail(annotated))
 
     def test_reports_status_error_upload(self):
         commit = CommitFactory(repository=self.repo)
         report = CommitReportFactory(commit=commit, report_type=ReportType.COVERAGE)
         UploadFactory(report=report, state="error")
         annotated = self._get_annotated_commit(commit)
-        self.assertFalse(self.commit_admin.reports_status(annotated))
+        self.assertFalse(self.commit_admin.reports_status_detail(annotated))
 
     def test_reports_status_error_report_results(self):
         commit = CommitFactory(repository=self.repo)
@@ -311,7 +369,13 @@ class CommitAdminTests(TestCase):
             report=report, state=ReportResults.ReportResultsStates.ERROR
         )
         annotated = self._get_annotated_commit(commit)
-        self.assertFalse(self.commit_admin.reports_status(annotated))
+        self.assertFalse(self.commit_admin.reports_status_detail(annotated))
+
+    def test_commit_changelist_paginator_caps_filtered_count(self):
+        CommitFactory.create_batch(3, repository=self.repo)
+        queryset = Commit.objects.filter(repository=self.repo)
+        paginator = CommitChangelistPaginator(queryset, per_page=2)
+        self.assertEqual(paginator.count, 3)
 
     def test_notification_count_display(self):
         commit = CommitFactory(repository=self.repo)

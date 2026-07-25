@@ -1,12 +1,20 @@
+import json
+import re
 from collections.abc import Callable
 from dataclasses import dataclass
 
 from django import forms
 from django.contrib import admin, messages
 from django.db.models import Count, Exists, OuterRef, Q, QuerySet
-from django.http import HttpRequest, HttpResponseRedirect
+from django.http import (
+    HttpRequest,
+    HttpResponseNotAllowed,
+    HttpResponseRedirect,
+    JsonResponse,
+)
 from django.urls import path, reverse
 from django.utils import timezone
+from django.utils.functional import cached_property
 from django.utils.html import format_html, format_html_join
 
 from codecov.admin import AdminMixin, deny_viewers, is_viewer
@@ -175,15 +183,22 @@ _COMMIT_CHANGELIST_COUNT_FIELDS = (
     "report_count",
     "notification_count",
     "success_notification_count",
-    "upload_count",
-    "error_upload_count",
-    "pending_upload_count",
-    "error_report_results_count",
 )
+
+_COMMIT_UPLOAD_STATUS_FIELDS = (
+    "has_upload",
+    "has_error_upload",
+    "has_pending_upload",
+    "has_error_report_results",
+)
+
+_COMMIT_SHA_EXACT = re.compile(r"^[0-9a-fA-F]{40}$")
 
 
 def _empty_commit_changelist_counts():
-    return dict.fromkeys(_COMMIT_CHANGELIST_COUNT_FIELDS, 0)
+    counts = dict.fromkeys(_COMMIT_CHANGELIST_COUNT_FIELDS, 0)
+    counts.update(dict.fromkeys(_COMMIT_UPLOAD_STATUS_FIELDS, False))
+    return counts
 
 
 def attach_commit_changelist_counts(commits):
@@ -214,34 +229,90 @@ def attach_commit_changelist_counts(commits):
         counts_by_id[row["commit_id"]]["notification_count"] = row["total"]
         counts_by_id[row["commit_id"]]["success_notification_count"] = row["success"]
 
-    for row in (
-        ReportSession.objects.filter(report__commit_id__in=commit_ids)
-        .values("report__commit_id")
-        .annotate(
-            upload_count=Count("pk"),
-            error_upload_count=Count("pk", filter=Q(state="error")),
-            pending_upload_count=Count("pk", filter=PENDING_SESSION_FILTER),
-        )
-    ):
-        commit_id = row["report__commit_id"]
-        counts_by_id[commit_id]["upload_count"] += row["upload_count"]
-        counts_by_id[commit_id]["error_upload_count"] += row["error_upload_count"]
-        counts_by_id[commit_id]["pending_upload_count"] += row["pending_upload_count"]
-
-    for commit_id, count in (
-        ReportResults.objects.filter(
-            report__commit_id__in=commit_ids,
-            state=ReportResults.ReportResultsStates.ERROR,
-        )
-        .values("report__commit_id")
-        .annotate(count=Count("pk"))
-        .values_list("report__commit_id", "count")
-    ):
-        counts_by_id[commit_id]["error_report_results_count"] = count
-
     for commit in commits:
         for field, value in counts_by_id[commit.pk].items():
+            if field in _COMMIT_CHANGELIST_COUNT_FIELDS:
+                setattr(commit, field, value)
+
+
+def attach_commit_upload_status_flags(commits):
+    if not commits:
+        return
+
+    commit_ids_with_reports = [
+        commit.pk for commit in commits if getattr(commit, "report_count", 0) > 0
+    ]
+    if not commit_ids_with_reports:
+        return
+
+    flags_by_id = {
+        commit_id: dict.fromkeys(_COMMIT_UPLOAD_STATUS_FIELDS, False)
+        for commit_id in commit_ids_with_reports
+    }
+
+    upload_sessions = ReportSession.objects.filter(
+        report__commit_id__in=commit_ids_with_reports
+    )
+    for commit_id in upload_sessions.values_list(
+        "report__commit_id", flat=True
+    ).distinct():
+        flags_by_id[commit_id]["has_upload"] = True
+
+    for commit_id in (
+        upload_sessions.filter(state="error")
+        .values_list("report__commit_id", flat=True)
+        .distinct()
+    ):
+        flags_by_id[commit_id]["has_error_upload"] = True
+
+    for commit_id in (
+        upload_sessions.filter(PENDING_SESSION_FILTER)
+        .values_list("report__commit_id", flat=True)
+        .distinct()
+    ):
+        flags_by_id[commit_id]["has_pending_upload"] = True
+
+    for commit_id in (
+        ReportResults.objects.filter(
+            report__commit_id__in=commit_ids_with_reports,
+            state=ReportResults.ReportResultsStates.ERROR,
+        )
+        .values_list("report__commit_id", flat=True)
+        .distinct()
+    ):
+        flags_by_id[commit_id]["has_error_report_results"] = True
+
+    for commit in commits:
+        if commit.pk not in flags_by_id:
+            continue
+        for field, value in flags_by_id[commit.pk].items():
             setattr(commit, field, value)
+
+
+def compute_commit_reports_status(obj) -> bool | None:
+    if getattr(obj, "report_count", 0) == 0:
+        return None
+    if getattr(obj, "has_error_upload", False) or getattr(
+        obj, "has_error_report_results", False
+    ):
+        return False
+    if getattr(obj, "has_pending_upload", False) or not getattr(
+        obj, "has_upload", False
+    ):
+        return None
+    return True
+
+
+class CommitChangelistPaginator(EstimatedCountPaginator):
+    """Cap filtered changelist counts so search and filters avoid full-table COUNTs."""
+
+    max_filtered_count = 10_001
+
+    @cached_property
+    def count(self) -> int:
+        if self.object_list.query.where:  # type: ignore[attr-defined]
+            return self.object_list.values("pk")[: self.max_filtered_count].count()  # type: ignore[attr-defined]
+        return super().count
 
 
 def get_repo_yaml(repository):
@@ -588,11 +659,12 @@ class CommitNotificationStatusFilter(admin.SimpleListFilter):
 @admin.register(Commit)
 class CommitAdmin(AdminMixin, admin.ModelAdmin):
     inlines = [CommitReportInline, CommitNotificationInline]
+    change_list_template = "admin/core/commit/change_list.html"
     list_display = (
         "short_commitid",
         "repository_link",
         "report_count_display",
-        "reports_status",
+        "reports_status_async",
         "notification_count_display",
         "notifications_successful",
         "branch",
@@ -602,7 +674,7 @@ class CommitAdmin(AdminMixin, admin.ModelAdmin):
     list_filter = ("state", CommitNotificationStatusFilter, "timestamp")
     list_select_related = ("repository", "repository__author")
     ordering = ("-id",)
-    search_fields = ("commitid__startswith", "repository__name", "message")
+    search_help_text = "Search by repoid (exact) or full commit SHA (exact)."
     readonly_fields = (
         "id",
         "commitid",
@@ -620,10 +692,11 @@ class CommitAdmin(AdminMixin, admin.ModelAdmin):
         "merged",
         "deleted",
         "notified",
+        "reports_status_detail",
         "reprocess_actions",
     )
     fields = readonly_fields
-    paginator = EstimatedCountPaginator
+    paginator = CommitChangelistPaginator
     show_full_result_count = False
 
     # Show short commit SHA in list view
@@ -661,6 +734,31 @@ class CommitAdmin(AdminMixin, admin.ModelAdmin):
             .select_related("repository", "repository__author")
         )
 
+    def get_object(self, request, object_id, from_field=None):
+        obj = super().get_object(request, object_id, from_field)
+        if obj is not None:
+            attach_commit_changelist_counts([obj])
+            attach_commit_upload_status_flags([obj])
+        return obj
+
+    def get_search_results(
+        self,
+        request: HttpRequest,
+        queryset: QuerySet[Commit],
+        search_term: str,
+    ) -> tuple[QuerySet[Commit], bool]:
+        term = search_term.strip()
+        if not term:
+            return queryset, False
+
+        if term.isdigit():
+            return queryset.filter(repository_id=int(term)), False
+
+        if _COMMIT_SHA_EXACT.match(term):
+            return queryset.filter(commitid__iexact=term), False
+
+        return queryset.none(), False
+
     def changelist_view(self, request, extra_context=None):
         response = super().changelist_view(request, extra_context=extra_context)
         if request.method == "GET" and hasattr(response, "context_data"):
@@ -673,15 +771,17 @@ class CommitAdmin(AdminMixin, admin.ModelAdmin):
     def report_count_display(self, obj):
         return obj.report_count
 
+    @admin.display(description="Report status")
+    def reports_status_async(self, obj):
+        return format_html(
+            '<span class="commit-reports-status" data-commit-id="{}" '
+            'aria-busy="true" title="Loading report status">…</span>',
+            obj.pk,
+        )
+
     @admin.display(description="Report status", boolean=True)
-    def reports_status(self, obj):
-        if obj.report_count == 0:
-            return None
-        if obj.error_upload_count or obj.error_report_results_count:
-            return False
-        if obj.pending_upload_count or obj.upload_count == 0:
-            return None
-        return True
+    def reports_status_detail(self, obj):
+        return compute_commit_reports_status(obj)
 
     @admin.display(description="Notifications")
     def notification_count_display(self, obj):
@@ -708,6 +808,11 @@ class CommitAdmin(AdminMixin, admin.ModelAdmin):
         urls = super().get_urls()
         custom_urls = [
             path(
+                "changelist-reports-status/",
+                self.admin_site.admin_view(self.changelist_reports_status_view),
+                name="core_commit_changelist_reports_status",
+            ),
+            path(
                 "<path:object_id>/reprocess_coverage/",
                 self.admin_site.admin_view(self.reprocess_coverage_view),
                 name="core_commit_reprocess_coverage",
@@ -729,6 +834,45 @@ class CommitAdmin(AdminMixin, admin.ModelAdmin):
             ),
         ]
         return custom_urls + urls
+
+    def changelist_reports_status_view(self, request):
+        if request.method != "POST":
+            return HttpResponseNotAllowed(["POST"])
+
+        try:
+            payload = json.loads(request.body)
+        except json.JSONDecodeError:
+            return JsonResponse({"error": "Invalid JSON"}, status=400)
+
+        raw_ids = payload.get("commit_ids")
+        if not isinstance(raw_ids, list) or not raw_ids:
+            return JsonResponse({"error": "commit_ids required"}, status=400)
+
+        commit_ids = []
+        for raw_id in raw_ids:
+            if isinstance(raw_id, int):
+                commit_ids.append(raw_id)
+            elif isinstance(raw_id, str) and raw_id.isdigit():
+                commit_ids.append(int(raw_id))
+
+        if not commit_ids:
+            return JsonResponse({})
+
+        commits = list(Commit.objects.filter(pk__in=commit_ids))
+        attach_commit_changelist_counts(commits)
+        attach_commit_upload_status_flags(commits)
+
+        statuses = {}
+        for commit in commits:
+            status = compute_commit_reports_status(commit)
+            if status is True:
+                statuses[str(commit.pk)] = "true"
+            elif status is False:
+                statuses[str(commit.pk)] = "false"
+            else:
+                statuses[str(commit.pk)] = "unknown"
+
+        return JsonResponse({"statuses": statuses})
 
     @admin.display(description="Reprocess Actions")
     def reprocess_actions(self, obj):

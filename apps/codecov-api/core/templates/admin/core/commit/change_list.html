@@ -1,0 +1,14 @@
+{% extends "admin/change_list.html" %}
+{% load admin_urls static %}
+
+{% block extrahead %}
+  {{ block.super }}
+  <script src="{% static 'core/js/commit_reports_status.js' %}" defer></script>
+{% endblock %}
+
+{% block content %}
+  <div id="commit-reports-status-loader"
+       data-status-url="{% url 'admin:core_commit_changelist_reports_status' %}"
+       hidden></div>
+  {{ block.super }}
+{% endblock %}
