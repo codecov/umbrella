@@ -29,12 +29,13 @@ class Command(BaseCommand):
                 "is_superuser": True,
             },
         )
-        user.set_password("commit-admin-demo")
         user.is_staff = True
         user.is_superuser = True
-        user.save()
+        user.save(update_fields=["is_staff", "is_superuser"])
 
         owner = OwnerFactory(username="commit-admin-demo", service="github")
+        owner.user = user
+        owner.save(update_fields=["user"])
         repo = RepositoryFactory(
             author=owner,
             name="commit-admin-demo",
@@ -149,7 +150,11 @@ class Command(BaseCommand):
         healthy_url = reverse("admin:core_commit_change", args=[healthy_commit.pk])
 
         self.stdout.write(self.style.SUCCESS("Commit admin demo data created."))
-        self.stdout.write(f"Staff login: {user.email} / commit-admin-demo")
+        self.stdout.write(f"Staff user: {user.email} (is_staff={user.is_staff})")
+        self.stdout.write(
+            "Admin login: use your normal dev OAuth login, or mark an existing "
+            "user is_staff=True in the DB."
+        )
         self.stdout.write(f"Repository repoid: {repo.repoid}")
         self.stdout.write(f"Changelist: {changelist_url}")
         self.stdout.write(f"Inconsistent commit detail: {detail_url}")
