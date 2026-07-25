@@ -1,5 +1,6 @@
 import json
 import re
+from collections import Counter
 from collections.abc import Callable
 from dataclasses import dataclass
 
@@ -19,6 +20,7 @@ from django.utils.html import format_html, format_html_join
 
 from codecov.admin import AdminMixin, deny_viewers, is_viewer
 from codecov_auth.models import Owner, RepositoryToken
+from compare.models import CommitComparison
 from core.models import Commit, CommitNotification, Pull, Repository
 from reports.models import CommitReport, ReportResults, ReportSession
 from services.task.task import TaskService
@@ -303,6 +305,56 @@ def compute_commit_reports_status(obj) -> bool | None:
     return True
 
 
+def _upload_is_pending(state: str | None) -> bool:
+    return state in ("uploaded", "started") or not state
+
+
+def format_upload_state_summary(sessions: list[ReportSession]) -> str:
+    if not sessions:
+        return "No uploads"
+    counts = Counter(session.state or "(empty)" for session in sessions)
+    return ", ".join(f"{count} {state}" for state, count in sorted(counts.items()))
+
+
+def compute_report_processing_status(report: CommitReport) -> str:
+    sessions = list(report.sessions.all())
+    report_results = getattr(report, "reportresults", None)
+    if (
+        report_results is not None
+        and report_results.state == ReportResults.ReportResultsStates.ERROR
+    ):
+        return "error"
+    if any(session.state == "error" for session in sessions):
+        return "error"
+    if not sessions:
+        return "no_uploads"
+    if any(_upload_is_pending(session.state) for session in sessions):
+        return "pending"
+    return "complete"
+
+
+REPORT_PROCESSING_STATUS_LABELS = {
+    "complete": "Complete",
+    "pending": "Pending",
+    "error": "Error",
+    "no_uploads": "No uploads",
+}
+
+
+def get_parent_commit_comparison(commit: Commit) -> CommitComparison | None:
+    if not commit.parent_commit_id:
+        return None
+    return (
+        CommitComparison.objects.filter(
+            compare_commit=commit,
+            base_commit__repository_id=commit.repository_id,
+            base_commit__commitid=commit.parent_commit_id,
+        )
+        .select_related("base_commit")
+        .first()
+    )
+
+
 class CommitChangelistPaginator(EstimatedCountPaginator):
     """Cap filtered changelist counts so search and filters avoid full-table COUNTs."""
 
@@ -565,6 +617,9 @@ class CommitReportInline(admin.TabularInline):
     readonly_fields = (
         "id",
         "report_type_display",
+        "processing_status_display",
+        "upload_summary",
+        "report_results_status",
         "code",
         "external_id",
         "created_at",
@@ -576,6 +631,30 @@ class CommitReportInline(admin.TabularInline):
     @admin.display(description="Report type")
     def report_type_display(self, obj):
         return obj.report_type or ReportType.COVERAGE
+
+    @admin.display(description="Processing status")
+    def processing_status_display(self, obj):
+        status = compute_report_processing_status(obj)
+        return REPORT_PROCESSING_STATUS_LABELS[status]
+
+    @admin.display(description="Uploads")
+    def upload_summary(self, obj):
+        return format_upload_state_summary(list(obj.sessions.all()))
+
+    @admin.display(description="Report results")
+    def report_results_status(self, obj):
+        report_results = getattr(obj, "reportresults", None)
+        if report_results is None:
+            return "-"
+        return report_results.state or "-"
+
+    def get_queryset(self, request):
+        return (
+            super()
+            .get_queryset(request)
+            .prefetch_related("sessions")
+            .select_related("reportresults")
+        )
 
     def has_add_permission(self, request, obj=None):
         return False
@@ -693,6 +772,8 @@ class CommitAdmin(AdminMixin, admin.ModelAdmin):
         "deleted",
         "notified",
         "reports_status_detail",
+        "parent_comparison_summary",
+        "uploads_table",
         "reprocess_actions",
     )
     fields = readonly_fields
@@ -782,6 +863,77 @@ class CommitAdmin(AdminMixin, admin.ModelAdmin):
     @admin.display(description="Report status", boolean=True)
     def reports_status_detail(self, obj):
         return compute_commit_reports_status(obj)
+
+    @admin.display(description="Parent comparison (patch coverage)")
+    def parent_comparison_summary(self, obj):
+        comparison = get_parent_commit_comparison(obj)
+        if comparison is None:
+            if obj.parent_commit_id:
+                return format_html(
+                    "No comparison row (parent: {})",
+                    obj.parent_commit_id[:7],
+                )
+            return "No parent commit"
+
+        url = reverse("admin:compare_commitcomparison_change", args=[comparison.pk])
+        patch_pct = (
+            comparison.patch_totals.get("coverage") if comparison.patch_totals else None
+        )
+        details = [
+            format_html('<a href="{}">Comparison {}</a>', url, comparison.pk),
+            f"state={comparison.state}",
+        ]
+        if comparison.error:
+            details.append(f"error={comparison.error}")
+        if patch_pct is not None:
+            details.append(f"patch={patch_pct}%")
+        elif comparison.state == CommitComparison.CommitComparisonStates.PROCESSED:
+            details.append("patch=(no coverable lines)")
+        return format_html(" · ".join(details))
+
+    @admin.display(description="Uploads")
+    def uploads_table(self, obj):
+        uploads = list(
+            ReportSession.objects.filter(report__commit=obj)
+            .select_related("report")
+            .order_by("report__report_type", "created_at", "id")
+        )
+        if not uploads:
+            return "-"
+
+        rows = format_html_join(
+            "",
+            "<tr>"
+            "<td style='padding:2px 8px 2px 0'>{}</td>"
+            "<td style='padding:2px 8px 2px 0'>{}</td>"
+            "<td style='padding:2px 8px 2px 0'><code>{}</code></td>"
+            "<td style='padding:2px 8px 2px 0'>{}</td>"
+            "<td style='padding:2px 8px 2px 0'>{}</td>"
+            "<td>{}</td>"
+            "</tr>",
+            (
+                (
+                    upload.report.report_type or ReportType.COVERAGE,
+                    upload.pk,
+                    str(upload.external_id)[:8] if upload.external_id else "-",
+                    upload.state or "-",
+                    upload.name or "-",
+                    timezone.localtime(upload.created_at).strftime("%Y-%m-%d %H:%M:%S"),
+                )
+                for upload in uploads
+            ),
+        )
+        return format_html(
+            "<table><thead><tr>"
+            "<th style='text-align:left;padding-right:8px'>Report</th>"
+            "<th style='text-align:left;padding-right:8px'>Upload ID</th>"
+            "<th style='text-align:left;padding-right:8px'>External ID</th>"
+            "<th style='text-align:left;padding-right:8px'>State</th>"
+            "<th style='text-align:left;padding-right:8px'>Name</th>"
+            "<th style='text-align:left'>Created</th>"
+            "</tr></thead><tbody>{}</tbody></table>",
+            rows,
+        )
 
     @admin.display(description="Notifications")
     def notification_count_display(self, obj):

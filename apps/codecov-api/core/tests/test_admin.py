@@ -6,6 +6,7 @@ from django.contrib.admin.sites import AdminSite
 from django.test import TestCase
 from django.urls import reverse
 
+from compare.tests.factories import CommitComparisonFactory
 from core.admin import (
     CommitAdmin,
     CommitChangelistPaginator,
@@ -16,6 +17,7 @@ from core.admin import (
     RepositoryAdminForm,
     attach_commit_changelist_counts,
     attach_commit_upload_status_flags,
+    compute_report_processing_status,
     get_repo_yaml,
     notification_failure_reason,
 )
@@ -24,6 +26,7 @@ from shared.django_apps.codecov_auth.tests.factories import (
     GithubAppInstallationFactory,
     UserFactory,
 )
+from shared.django_apps.compare.models import CommitComparison
 from shared.django_apps.core.tests.factories import (
     CommitFactory,
     CommitNotificationFactory,
@@ -554,6 +557,89 @@ class CommitReportInlineTests(TestCase):
         self.assertContains(response, "Commit reports")
         self.assertContains(response, "coverage")
         self.assertContains(response, "default")
+        self.assertContains(response, "Processing status")
+        self.assertContains(response, "No uploads")
+
+    def test_report_inline_shows_pending_upload_summary(self):
+        report = CommitReportFactory(
+            commit=self.commit,
+            report_type=ReportType.COVERAGE,
+        )
+        UploadFactory(report=report, state="started")
+        UploadFactory(report=report, state="processed")
+
+        request = MagicMock()
+        request.user = self.user
+        inline = CommitReportInline(Commit, AdminSite())
+        inline_report = inline.get_queryset(request).get(pk=report.pk)
+
+        self.assertEqual(
+            inline.processing_status_display(inline_report),
+            "Pending",
+        )
+        self.assertEqual(
+            inline.upload_summary(inline_report),
+            "1 processed, 1 started",
+        )
+
+    def test_report_inline_shows_error_from_report_results(self):
+        report = CommitReportFactory(
+            commit=self.commit,
+            report_type=ReportType.TEST_RESULTS,
+        )
+        UploadFactory(report=report, state="processed")
+        ReportResultsFactory(
+            report=report, state=ReportResults.ReportResultsStates.ERROR
+        )
+
+        request = MagicMock()
+        request.user = self.user
+        inline = CommitReportInline(Commit, AdminSite())
+        inline_report = inline.get_queryset(request).get(pk=report.pk)
+
+        self.assertEqual(
+            compute_report_processing_status(inline_report),
+            "error",
+        )
+        self.assertEqual(inline.report_results_status(inline_report), "error")
+
+    def test_commit_change_page_shows_uploads_table(self):
+        report = CommitReportFactory(
+            commit=self.commit,
+            report_type=ReportType.COVERAGE,
+        )
+        upload = UploadFactory(report=report, state="started", name="ci-upload")
+
+        url = reverse("admin:core_commit_change", args=[self.commit.pk])
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Uploads")
+        self.assertContains(response, str(upload.pk))
+        self.assertContains(response, "started")
+        self.assertContains(response, "ci-upload")
+
+    def test_parent_comparison_summary(self):
+        parent = CommitFactory(
+            repository=self.repo,
+            commitid="b" * 40,
+        )
+        commit = CommitFactory(
+            repository=self.repo,
+            commitid="c" * 40,
+            parent_commit_id=parent.commitid,
+        )
+        comparison = CommitComparisonFactory(
+            base_commit=parent,
+            compare_commit=commit,
+            state=CommitComparison.CommitComparisonStates.ERROR,
+            error=CommitComparison.CommitComparisonErrors.MISSING_HEAD_REPORT,
+            patch_totals={"coverage": None, "hits": 0, "misses": 0},
+        )
+
+        summary = self.commit_admin.parent_comparison_summary(commit)
+        self.assertIn(str(comparison.pk), summary)
+        self.assertIn("missing_head_report", summary)
+        self.assertIn("state=error", summary)
 
 
 class CommitNotificationInlineTests(TestCase):
