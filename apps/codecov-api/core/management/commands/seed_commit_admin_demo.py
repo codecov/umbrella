@@ -2,19 +2,21 @@ from django.core.management.base import BaseCommand
 from django.urls import reverse
 
 from compare.models import CommitComparison
-from core.models import Commit, CommitNotification
-from shared.django_apps.codecov_auth.tests.factories import OwnerFactory, UserFactory
-from shared.django_apps.core.tests.factories import (
-    CommitFactory,
-    CommitNotificationFactory,
-    RepositoryFactory,
+from core.models import Commit, CommitNotification, Repository
+from shared.django_apps.codecov_auth.models import Owner
+from shared.django_apps.codecov_auth.tests.factories import UserFactory
+from shared.django_apps.reports.models import (
+    CommitReport,
+    ReportResults,
+    ReportSession,
+    ReportType,
 )
-from shared.django_apps.reports.models import ReportResults, ReportType
-from shared.django_apps.reports.tests.factories import (
-    CommitReportFactory,
-    ReportResultsFactory,
-    UploadFactory,
-)
+
+DEMO_USERNAME = "commit-admin-demo"
+DEMO_REPO_NAME = "commit-admin-demo"
+PARENT_SHA = "7fe69c8a88a695add50508bf3a3b87e127be06"
+INCONSISTENT_SHA = "fa59b5c4c1ddf670e633ec56f7618810ae09fea9"
+HEALTHY_SHA = "a" * 40
 
 
 class Command(BaseCommand):
@@ -33,73 +35,84 @@ class Command(BaseCommand):
         user.is_superuser = True
         user.save(update_fields=["is_staff", "is_superuser"])
 
-        owner = OwnerFactory(username="commit-admin-demo", service="github")
+        owner, _ = Owner.objects.get_or_create(
+            service="github",
+            username=DEMO_USERNAME,
+            defaults={
+                "service_id": DEMO_USERNAME,
+                "name": "Commit Admin Demo",
+            },
+        )
         owner.user = user
         owner.save(update_fields=["user"])
-        repo = RepositoryFactory(
+
+        repo, _ = Repository.objects.get_or_create(
             author=owner,
-            name="commit-admin-demo",
-            service_id="commit-admin-demo",
+            name=DEMO_REPO_NAME,
+            defaults={"service_id": DEMO_USERNAME, "private": True},
         )
 
-        parent_commit = CommitFactory(
+        parent_commit, _ = Commit.objects.update_or_create(
             repository=repo,
-            author=owner,
-            commitid="7fe69c8a88a695add50508bf3a3b87e127be06",
-            message="Release v0.20.0",
-            parent_commit_id="6fdc0abcac42c365488b9c57a0868217e7dad20b",
-            state=Commit.CommitStates.COMPLETE,
-            totals={"c": "100.00000", "h": 10, "m": 0, "n": 10},
+            commitid=PARENT_SHA,
+            defaults={
+                "author": owner,
+                "message": "Release v0.20.0",
+                "parent_commit_id": "6fdc0abcac42c365488b9c57a0868217e7dad20b",
+                "state": Commit.CommitStates.COMPLETE,
+                "totals": {"c": "100.00000", "h": 10, "m": 0, "n": 10},
+            },
         )
-        parent_report = CommitReportFactory(
+        parent_report, _ = CommitReport.objects.get_or_create(
             commit=parent_commit,
             report_type=ReportType.COVERAGE,
         )
-        UploadFactory(report=parent_report, state="processed", name="parent-ci")
-
-        inconsistent_commit = CommitFactory(
-            repository=repo,
-            author=owner,
-            commitid="fa59b5c4c1ddf670e633ec56f7618810ae09fea9",
-            message="Release v0.20.1",
-            parent_commit_id=parent_commit.commitid,
-            state=Commit.CommitStates.COMPLETE,
-            totals={"c": "100.00000", "h": 10, "m": 0, "n": 10},
+        ReportSession.objects.update_or_create(
+            report=parent_report,
+            name="parent-ci",
+            defaults={"state": "processed"},
         )
 
-        coverage_report = CommitReportFactory(
+        inconsistent_commit, _ = Commit.objects.update_or_create(
+            repository=repo,
+            commitid=INCONSISTENT_SHA,
+            defaults={
+                "author": owner,
+                "message": "Release v0.20.1",
+                "parent_commit_id": parent_commit.commitid,
+                "state": Commit.CommitStates.COMPLETE,
+                "totals": {"c": "100.00000", "h": 10, "m": 0, "n": 10},
+            },
+        )
+
+        coverage_report, _ = CommitReport.objects.get_or_create(
             commit=inconsistent_commit,
             report_type=ReportType.COVERAGE,
         )
-        UploadFactory(
-            report=coverage_report,
-            state="started",
-            name="stuck-upload-1",
-        )
-        UploadFactory(
-            report=coverage_report,
-            state="started",
-            name="stuck-upload-2",
-        )
-        UploadFactory(
-            report=coverage_report,
-            state="started",
-            name="stuck-upload-3",
-        )
-        UploadFactory(
-            report=coverage_report,
-            state="processed",
-            name="merged-upload",
-        )
+        for name, state in (
+            ("stuck-upload-1", "started"),
+            ("stuck-upload-2", "started"),
+            ("stuck-upload-3", "started"),
+            ("merged-upload", "processed"),
+        ):
+            ReportSession.objects.update_or_create(
+                report=coverage_report,
+                name=name,
+                defaults={"state": state},
+            )
 
-        test_report = CommitReportFactory(
+        test_report, _ = CommitReport.objects.get_or_create(
             commit=inconsistent_commit,
             report_type=ReportType.TEST_RESULTS,
         )
-        UploadFactory(report=test_report, state="processed", name="test-analytics")
-        ReportResultsFactory(
+        ReportSession.objects.update_or_create(
             report=test_report,
-            state=ReportResults.ReportResultsStates.ERROR,
+            name="test-analytics",
+            defaults={"state": "processed"},
+        )
+        ReportResults.objects.update_or_create(
+            report=test_report,
+            defaults={"state": ReportResults.ReportResultsStates.ERROR},
         )
 
         CommitComparison.objects.update_or_create(
@@ -112,29 +125,37 @@ class Command(BaseCommand):
             },
         )
 
-        CommitNotificationFactory(
+        CommitNotification.objects.update_or_create(
             commit=inconsistent_commit,
-            state=CommitNotification.States.SUCCESS,
+            notification_type=CommitNotification.NotificationTypes.COMMENT,
+            defaults={"state": CommitNotification.States.SUCCESS},
         )
-        CommitNotificationFactory(
+        CommitNotification.objects.update_or_create(
             commit=inconsistent_commit,
-            state=CommitNotification.States.ERROR,
+            notification_type=CommitNotification.NotificationTypes.STATUS_PATCH,
+            defaults={"state": CommitNotification.States.ERROR},
         )
 
-        healthy_commit = CommitFactory(
+        healthy_commit, _ = Commit.objects.update_or_create(
             repository=repo,
-            author=owner,
-            commitid="a" * 40,
-            message="Healthy commit with processed uploads",
-            parent_commit_id=parent_commit.commitid,
-            state=Commit.CommitStates.COMPLETE,
-            totals={"c": "95.00000", "h": 19, "m": 1, "n": 20},
+            commitid=HEALTHY_SHA,
+            defaults={
+                "author": owner,
+                "message": "Healthy commit with processed uploads",
+                "parent_commit_id": parent_commit.commitid,
+                "state": Commit.CommitStates.COMPLETE,
+                "totals": {"c": "95.00000", "h": 19, "m": 1, "n": 20},
+            },
         )
-        healthy_report = CommitReportFactory(
+        healthy_report, _ = CommitReport.objects.get_or_create(
             commit=healthy_commit,
             report_type=ReportType.COVERAGE,
         )
-        UploadFactory(report=healthy_report, state="processed", name="healthy-ci")
+        ReportSession.objects.update_or_create(
+            report=healthy_report,
+            name="healthy-ci",
+            defaults={"state": "processed"},
+        )
         CommitComparison.objects.update_or_create(
             base_commit=parent_commit,
             compare_commit=healthy_commit,
