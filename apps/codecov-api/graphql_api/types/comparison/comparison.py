@@ -29,6 +29,9 @@ from services.comparison import (
 )
 
 comparison_bindable = ObjectType("Comparison")
+file_comparison_bindable = ObjectType("FileComparison")
+file_comparison_edge_bindable = ObjectType("FileComparisonEdge")
+file_comparison_connection_bindable = ObjectType("FileComparisonConnection")
 
 
 @comparison_bindable.field("state")
@@ -259,6 +262,38 @@ def resolve_has_different_number_of_head_and_base_reports(
         return False
     comparison: Comparison = info.context["comparison"]
     return comparison.has_different_number_of_head_and_base_sessions
+
+
+@comparison_bindable.field("fileComparisons")
+@sync_to_async
+def resolve_file_comparisons(
+    comparison_report: ComparisonReport, info: GraphQLResolveInfo
+):
+    command: CompareCommands = info.context["executor"].get_command("compare")
+    comparison: Comparison = info.context.get("comparison", None)
+    files = command.fetch_impacted_files(comparison_report, comparison, None)
+    edges = [{"node": f} for f in (files or [])]
+    return {"edges": edges}
+
+
+@file_comparison_bindable.field("name")
+def resolve_file_comparison_name(impacted_file: ImpactedFile, info) -> str | None:
+    return impacted_file.file_name
+
+
+@file_comparison_bindable.field("headName")
+def resolve_file_comparison_head_name(impacted_file: ImpactedFile, info) -> str | None:
+    return impacted_file.head_name
+
+
+@file_comparison_bindable.field("patchCoverage")
+def resolve_file_comparison_patch_coverage(impacted_file: ImpactedFile, info):
+    return impacted_file.patch_coverage
+
+
+@file_comparison_bindable.field("headCoverage")
+def resolve_file_comparison_head_coverage(impacted_file: ImpactedFile, info):
+    return impacted_file.head_coverage
 
 
 comparison_result_bindable = UnionType("ComparisonResult")
