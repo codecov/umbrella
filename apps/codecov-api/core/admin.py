@@ -1,3 +1,4 @@
+import logging
 from collections.abc import Callable
 from dataclasses import dataclass
 
@@ -5,12 +6,17 @@ from django import forms
 from django.contrib import admin, messages
 from django.db.models import Count, Exists, OuterRef, Q, QuerySet
 from django.http import HttpRequest, HttpResponseRedirect
+from django.shortcuts import render
 from django.urls import path, reverse
 from django.utils import timezone
 from django.utils.html import format_html, format_html_join
 
 from codecov.admin import AdminMixin, deny_viewers, is_viewer
 from codecov_auth.models import Owner, RepositoryToken
+from core.incident_replay import (
+    INCIDENT_REPLAY_BATCH_CAP,
+    build_incident_replay_preview,
+)
 from core.models import Commit, CommitNotification, Pull, Repository
 from reports.models import CommitReport, ReportResults, ReportSession
 from services.task.task import TaskService
@@ -24,6 +30,8 @@ from shared.reports.enums import UploadState
 from shared.yaml import UserYaml
 from shared.yaml.user_yaml import OwnerContext
 from upload.helpers import dispatch_upload_task
+
+log = logging.getLogger(__name__)
 
 
 def _installation_change_url(installation):
@@ -588,6 +596,7 @@ class CommitNotificationStatusFilter(admin.SimpleListFilter):
 @admin.register(Commit)
 class CommitAdmin(AdminMixin, admin.ModelAdmin):
     inlines = [CommitReportInline, CommitNotificationInline]
+    change_list_template = "admin/core/commit/change_list.html"
     list_display = (
         "short_commitid",
         "repository_link",
@@ -707,6 +716,11 @@ class CommitAdmin(AdminMixin, admin.ModelAdmin):
     def get_urls(self):
         urls = super().get_urls()
         custom_urls = [
+            path(
+                "incident-replay/",
+                self.admin_site.admin_view(self.incident_replay_view),
+                name="core_commit_incident_replay",
+            ),
             path(
                 "<path:object_id>/reprocess_coverage/",
                 self.admin_site.admin_view(self.reprocess_coverage_view),
@@ -964,3 +978,76 @@ class CommitAdmin(AdminMixin, admin.ModelAdmin):
         return HttpResponseRedirect(
             reverse("admin:core_commit_change", args=[commit.pk])
         )
+
+    def incident_replay_view(self, request):
+        deny_viewers(request)
+        context = {
+            **self.admin_site.each_context(request),
+            "title": "Incident notification replay",
+            "opts": self.model._meta,
+            "batch_cap": INCIDENT_REPLAY_BATCH_CAP,
+            "pairs_input": "",
+            "preview": None,
+            "show_confirm": False,
+        }
+
+        if request.method == "POST":
+            raw_pairs = request.POST.get("pairs", "")
+            action = request.POST.get("action", "preview")
+            preview = build_incident_replay_preview(raw_pairs)
+            context["pairs_input"] = raw_pairs
+            context["preview"] = preview
+
+            if preview.parse_errors:
+                for error in preview.parse_errors:
+                    self.message_user(
+                        request,
+                        f"Line {error.line_number}: {error.message}",
+                        level=messages.ERROR,
+                    )
+            elif action == "enqueue" and request.POST.get("confirm") == "yes":
+                task_service = TaskService()
+                queued = 0
+                for _pair, commit in preview.resolved:
+                    commit_yaml = get_repo_yaml(commit.repository)
+                    commit_yaml_dict = commit_yaml.to_dict() if commit_yaml else None
+                    task_service.manual_upload_completion_trigger(
+                        commit.repository.repoid,
+                        commit.commitid,
+                        current_yaml=commit_yaml_dict,
+                    )
+                    queued += 1
+
+                log.info(
+                    "Incident notification replay queued",
+                    extra={
+                        "admin_user": getattr(
+                            request.user, "username", str(request.user)
+                        ),
+                        "queued": queued,
+                        "missing": len(preview.missing),
+                        "duplicate_count": preview.duplicate_count,
+                        "truncated": preview.truncated,
+                    },
+                )
+                self.message_user(
+                    request,
+                    (
+                        f"Queued notification replay for {queued} commits"
+                        + (
+                            f" ({len(preview.missing)} missing commits skipped)"
+                            if preview.missing
+                            else ""
+                        )
+                    ),
+                    level=messages.SUCCESS,
+                )
+                return HttpResponseRedirect(reverse("admin:core_commit_changelist"))
+
+            context["show_confirm"] = (
+                action == "preview"
+                and not preview.parse_errors
+                and bool(preview.resolved)
+            )
+
+        return render(request, "admin/core/commit/incident_replay.html", context)
