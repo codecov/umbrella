@@ -137,6 +137,15 @@ else:
         "services", "ta_timeseries_database", "port", default=5432
     )
 
+TA_TIMESERIES_CONNECT_TIMEOUT = int(
+    get_config("services", "ta_timeseries_database", "connect_timeout", default=5)
+)
+TA_TIMESERIES_STATEMENT_TIMEOUT_MS = int(
+    get_config(
+        "services", "ta_timeseries_database", "statement_timeout_ms", default=10_000
+    )
+)
+
 # this is the time in seconds django decides to keep the connection open after the request
 # the default is 0 seconds, meaning django closes the connection after every request
 # https://docs.djangoproject.com/en/3.1/ref/settings/#conn-max-age
@@ -204,6 +213,10 @@ if TA_TIMESERIES_ENABLED:
         "PORT": TA_TIMESERIES_DATABASE_PORT,
         "CONN_MAX_AGE": CONN_MAX_AGE,
         "CONN_HEALTH_CHECKS": CONN_HEALTH_CHECKS,
+        "OPTIONS": {
+            "connect_timeout": TA_TIMESERIES_CONNECT_TIMEOUT,
+            "options": f"-c statement_timeout={TA_TIMESERIES_STATEMENT_TIMEOUT_MS}",
+        },
     }
 
 # See https://django-postgres-extra.readthedocs.io/en/main/settings.html

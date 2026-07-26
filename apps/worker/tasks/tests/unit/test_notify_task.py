@@ -436,6 +436,32 @@ class TestNotifyTaskHelpers:
 
 
 class TestNotifyTask:
+    def test_skips_test_status_without_test_results_report(
+        self, dbsession, mocker, mock_self_app
+    ):
+        mocked_get_test_status = mocker.patch(
+            "tasks.notify.get_test_status", return_value=(False, False)
+        )
+        commit = CommitFactory.create(
+            message="",
+            pullid=None,
+            branch="test-branch-1",
+            commitid="649eaaf2924e92dc7fd8d370ddb857033231e67a",
+        )
+        dbsession.add(commit)
+        dbsession.flush()
+        task = NotifyTask()
+        mocker.patch.object(
+            NotifyTask,
+            "fetch_and_update_whether_ci_passed",
+            return_value={},
+        )
+        mocker.patch.object(NotifyTask, "should_send_notifications", return_value=False)
+        task.run_impl_within_lock(
+            dbsession, repoid=commit.repoid, commitid=commit.commitid, current_yaml={}
+        )
+        mocked_get_test_status.assert_not_called()
+
     def test_simple_call_no_notifications(
         self, dbsession, mocker, mock_storage, mock_configuration, mock_self_app
     ):

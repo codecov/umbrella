@@ -226,9 +226,12 @@ class NotifyTask(BaseCodecovTask, name=notify_task_name):
         commit: Commit = commits_query.first()
         assert commit, "Commit not found in database."
 
-        any_failures, all_tests_passed = get_test_status(
-            commit.repoid, commit.commitid, commit.timestamp
-        )
+        if commit.commit_report(ReportType.TEST_RESULTS) is not None:
+            any_failures, all_tests_passed = get_test_status(
+                commit.repoid, commit.commitid, commit.timestamp
+            )
+        else:
+            any_failures, all_tests_passed = False, False
 
         # This functionality is disabled for now because it's too noisy for customers
         ta_error_msg = None
