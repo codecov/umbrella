@@ -27,7 +27,7 @@ from shared.django_apps.codecov_auth.constants import (
     GRAVATAR_BASE_URL,
 )
 from shared.django_apps.codecov_auth.helpers import get_gitlab_url
-from shared.django_apps.codecov_auth.managers import OwnerManager
+from shared.django_apps.codecov_auth.managers import OwnerManager, UserManager
 from shared.django_apps.core.managers import RepositoryManager
 from shared.django_apps.core.models import DateTimeWithoutTZField, Repository
 from shared.helpers.github_apps import is_configured
@@ -78,6 +78,8 @@ class TrialStatus(models.TextChoices):
 
 
 class User(ExportModelOperationsMixin("codecov_auth.user"), BaseCodecovModel):
+    objects = UserManager()
+
     class CustomerIntent(models.TextChoices):
         BUSINESS = "BUSINESS"
         PERSONAL = "PERSONAL"

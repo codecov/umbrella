@@ -72,6 +72,11 @@ class OwnerQuerySet(QuerySet):
         )
 
 
+class UserManager(Manager):
+    def get_by_natural_key(self, username):
+        return self.get(email=username)
+
+
 # We cannot use `QuerySet.as_manager()` since it relies on the `inspect` module and will
 # not play nicely with Cython (which we use for self-hosted):
 # https://cython.readthedocs.io/en/latest/src/userguide/limitations.html#inspect-support
