@@ -84,7 +84,7 @@ def process_single_upload(
             case _:
                 continue
 
-    Testrun.objects.bulk_update(testruns, ["outcome"])
+    Testrun.objects.bulk_update(testruns, ["outcome"], batch_size=1000)
 
 
 @sentry_sdk.trace
