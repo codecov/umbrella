@@ -3,6 +3,7 @@ import json
 import logging
 
 import httpx
+from sqlalchemy.sql import text
 
 from app import celery_app
 from database.models import Commit, Constants, Repository, Upload, User
@@ -77,11 +78,23 @@ class BrollyStatsRollupTask(CodecovCronTask, name=brolly_stats_rollup_task_name)
         """
         return get_config("setup", "telemetry", "admin_email", default=None)
 
+    # Maximum time (milliseconds) to allow each DB statement to run before aborting.
+    _DB_STATEMENT_TIMEOUT_MS = 60_000  # 60s
+
+    # Maximum time (seconds) to wait for the HTTP telemetry endpoint to respond.
+    _HTTP_TIMEOUT_S = 30
+
     def run_cron_task(self, db_session, *args, **kwargs):
         # We shouldn't even schedule this task if it's not enabled, but
         # let's double-check that we're supposed to collect stats.
         if not get_config("setup", "telemetry", "enabled", default=True):
             return {"uploaded": False, "reason": "telemetry disabled in codecov.yml"}
+
+        # Apply a per-statement timeout so that slow COUNT queries on large tables
+        # fail fast rather than running until Celery's hard task timeout fires.
+        db_session.execute(
+            text(f"SET LOCAL statement_timeout = {self._DB_STATEMENT_TIMEOUT_MS}")
+        )
 
         payload = {
             "install_id": self._get_install_id(db_session),
@@ -103,11 +116,13 @@ class BrollyStatsRollupTask(CodecovCronTask, name=brolly_stats_rollup_task_name)
             "Accept": "application/json",
             "Content-Type": "application/json",
         }
-        res = httpx.Client().post(
-            url=brolly_endpoint,
-            content=json.dumps(payload),
-            headers=headers,
-        )
+        with httpx.Client() as client:
+            res = client.post(
+                url=brolly_endpoint,
+                content=json.dumps(payload),
+                headers=headers,
+                timeout=self._HTTP_TIMEOUT_S,
+            )
 
         match res.status_code:
             case httpx.codes.OK:
