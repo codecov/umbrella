@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 
 import sentry_sdk
 from django.conf import settings
-from django.db import connections
+from django.db import connections, transaction
 from django.db.models import (
     Avg,
     DateTimeField,
@@ -164,8 +164,10 @@ def trigger_backfill(datasets: list[Dataset]):
         if dataset.repository_id not in timerange_by_repo:
             continue  # there are no commits, and thus nothing to backfill
         start_date, end_date = timerange_by_repo[dataset.repository_id]
-        TaskService().backfill_dataset(
-            dataset, start_date=start_date, end_date=end_date
+        transaction.on_commit(
+            lambda d=dataset, s=start_date, e=end_date: TaskService().backfill_dataset(
+                d, start_date=s, end_date=e
+            )
         )
 
 
