@@ -133,6 +133,18 @@ def resolve_misses_count(impacted_file: ImpactedFile, info) -> int:
     return impacted_file.misses_count
 
 
+impacted_files_bindable = ObjectType("ImpactedFiles")
+
+
+@impacted_files_bindable.field("impactedFile")
+@sync_to_async
+def resolve_impacted_files_impacted_file(impacted_files, info, path) -> ImpactedFile:
+    comparison_report = impacted_files.get("_comparison_report", None)
+    if comparison_report is None:
+        return None
+    return comparison_report.impacted_file(path)
+
+
 impacted_files_result_bindable = UnionType("ImpactedFilesResult")
 
 
