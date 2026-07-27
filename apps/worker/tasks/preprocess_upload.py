@@ -1,5 +1,6 @@
 import logging
 
+import httpx
 from sqlalchemy.orm import joinedload
 
 from app import celery_app
@@ -24,6 +25,7 @@ from shared.celery_config import (
 from shared.django_apps.upload_breadcrumbs.models import Errors, Milestones
 from shared.helpers.redis import get_redis_connection
 from shared.torngit.base import TorngitBaseAdapter
+from shared.torngit.exceptions import TorngitServerFailureError
 from tasks.base import BaseCodecovTask
 
 log = logging.getLogger(__name__)
@@ -96,6 +98,27 @@ class PreProcessUpload(BaseCodecovTask, name=pre_process_upload_task_name):
             )
             self.retry(
                 max_retries=PREPROCESS_UPLOAD_MAX_RETRIES, countdown=retry.countdown
+            )
+        except (TorngitServerFailureError, httpx.TransportError) as e:
+            log.warning(
+                "Network error while preprocessing upload, retrying",
+                extra={
+                    "commit": commitid,
+                    "repoid": repoid,
+                    "error": str(e),
+                },
+            )
+            if self._has_exceeded_max_attempts(PREPROCESS_UPLOAD_MAX_RETRIES):
+                log.error(
+                    "Max retries exceeded for PreProcessUpload due to network error",
+                    extra={"commit": commitid, "repoid": repoid},
+                )
+                return {
+                    "preprocessed_upload": False,
+                    "reason": "network_error_max_retries_exceeded",
+                }
+            self.retry(
+                max_retries=PREPROCESS_UPLOAD_MAX_RETRIES, countdown=60
             )
 
     def process_impl_within_lock(self, db_session, repoid, commitid):
