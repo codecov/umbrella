@@ -8,7 +8,7 @@ type Pull {
   updatestamp: DateTime
   head: Commit
   comparedTo: Commit
-  compareWithBase: ComparisonResult
+  compareWithBase(hasUnintendedChanges: Boolean): ComparisonResult
   bundleAnalysisCompareWithBase: BundleAnalysisComparisonResult
   commits(
     first: Int
