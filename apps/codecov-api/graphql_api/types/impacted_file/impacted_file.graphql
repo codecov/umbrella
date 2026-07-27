@@ -16,6 +16,7 @@ type ImpactedFile {
 
 type ImpactedFiles {
   results: [ImpactedFile]
+  pageInfo: PageInfo!
 }
 
 union ImpactedFilesResult =
