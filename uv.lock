@@ -734,6 +734,18 @@ wheels = [
 ]
 
 [[package]]
+name = "django-ipware"
+version = "7.0.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "python-ipware" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/23/64/c7e4791edf01ba483cce444770b3e6a930ba12195ba1eeb37b5bf6dce8a8/django-ipware-7.0.1.tar.gz", hash = "sha256:d9ec43d2bf7cdf216fed8d494a084deb5761a54860a53b2e74346a4f384cff47", size = 6827, upload-time = "2024-04-19T20:02:49.257Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/11/33/bf539925b102d68200da5b1d3eacb8aa5d5d9a065972e8b8724d0d53bb0d/django_ipware-7.0.1-py2.py3-none-any.whl", hash = "sha256:db16bbee920f661ae7f678e4270460c85850f03c6761a4eaeb489bdc91f64709", size = 6425, upload-time = "2024-04-19T20:02:47.469Z" },
+]
+
+[[package]]
 name = "django-model-utils"
 version = "5.0.0"
 source = { registry = "https://pypi.org/simple" }
@@ -2328,6 +2340,15 @@ wheels = [
 ]
 
 [[package]]
+name = "python-ipware"
+version = "3.0.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/9e/60/da4426c3e9aee56f08b24091a9e85a0414260f928f97afd0013dfbd0332f/python_ipware-3.0.0.tar.gz", hash = "sha256:9117b1c4dddcb5d5ca49e6a9617de2fc66aec2ef35394563ac4eecabdf58c062", size = 16609, upload-time = "2024-04-19T20:00:58.938Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/08/bd/ccd7416fdb30f104ddf6cfd8ee9f699441c7d9880a26f9b3089438adee05/python_ipware-3.0.0-py3-none-any.whl", hash = "sha256:fc936e6e7ec9fcc107f9315df40658f468ac72f739482a707181742882e36b60", size = 10761, upload-time = "2024-04-19T20:00:57.171Z" },
+]
+
+[[package]]
 name = "python-json-logger"
 version = "3.3.0"
 source = { registry = "https://pypi.org/simple" }
@@ -2942,6 +2963,7 @@ codecov-api = [
     { name = "django-csp" },
     { name = "django-cursor-pagination" },
     { name = "django-filter" },
+    { name = "django-ipware" },
     { name = "django-model-utils" },
     { name = "django-postgres-extra" },
     { name = "django-prometheus" },
@@ -3034,6 +3056,7 @@ prod = [
     { name = "django-csp" },
     { name = "django-cursor-pagination" },
     { name = "django-filter" },
+    { name = "django-ipware" },
     { name = "django-model-utils" },
     { name = "django-postgres-extra" },
     { name = "django-prometheus" },
@@ -3204,6 +3227,7 @@ codecov-api = [
     { name = "django-csp", specifier = "==3.8.0" },
     { name = "django-cursor-pagination", specifier = ">=0.3.0" },
     { name = "django-filter", specifier = ">=2.4.0" },
+    { name = "django-ipware", specifier = ">=6.0.5" },
     { name = "django-model-utils", specifier = ">=4.5.1" },
     { name = "django-postgres-extra", specifier = ">=2.0.8" },
     { name = "django-prometheus", specifier = ">=2.3.1" },
@@ -3297,6 +3321,7 @@ prod = [
     { name = "django-csp", specifier = "==3.8.0" },
     { name = "django-cursor-pagination", specifier = ">=0.3.0" },
     { name = "django-filter", specifier = ">=2.4.0" },
+    { name = "django-ipware", specifier = ">=6.0.5" },
     { name = "django-model-utils", specifier = ">=4.5.1" },
     { name = "django-postgres-extra", specifier = ">=2.0.8" },
     { name = "django-prometheus", specifier = ">=2.3.1" },

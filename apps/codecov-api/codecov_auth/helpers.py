@@ -5,6 +5,7 @@ from django.conf import settings
 from django.contrib.admin.models import CHANGE, LogEntry
 from django.contrib.contenttypes.models import ContentType
 from django.http import HttpRequest
+from ipware import get_client_ip
 
 from codecov_auth.constants import GITLAB_BASE_URL
 
@@ -39,19 +40,30 @@ def get_client_ip_address(request: HttpRequest) -> str:
     Get the client's IP address from the request, parsing the X-Forwarded-For
     header if it exists with a configured proxy depth or Remote-Addr otherwise.
 
+    Uses django-ipware to safely extract the client IP from proxy headers,
+    with protection against header spoofing. The library uses the "right-most"
+    strategy, which means it trusts the rightmost non-trusted IP in the
+    X-Forwarded-For chain (the most reliable position).
+
     :param request: The HTTP request object
     :return: The client's IP address as a string
     """
-    x_forwarded_for: str | None = request.META.get("HTTP_X_FORWARDED_FOR")
-    if x_forwarded_for:
-        ips = x_forwarded_for.split(",")
-        depth = min(
-            settings.TRUSTED_PROXY_DEPTH, len(ips)
-        )  # Ensure we don't go out of bounds
-        ip = ips[-depth].strip()
-    else:
-        ip = request.META.get("REMOTE_ADDR")
-    return ip
+    # Get configuration for trusted proxies
+    proxy_count = getattr(settings, "TRUSTED_PROXY_COUNT", 0)
+    trusted_proxies = getattr(settings, "TRUSTED_PROXY_IPS", [])
+
+    # Use ipware to get the client IP with security best practices
+    client_ip, is_routable = get_client_ip(
+        request,
+        proxy_order="right-most",  # Use rightmost non-trusted IP (most secure)
+        proxy_count=proxy_count,  # Number of proxies to traverse
+        proxy_trusted_ips=trusted_proxies,  # List of trusted proxy IPs
+        request_header_order=["X_FORWARDED_FOR", "REMOTE_ADDR"],
+    )
+
+    # Fallback to REMOTE_ADDR if ipware couldn't determine the IP
+    # or return a safe default
+    return client_ip or request.META.get("REMOTE_ADDR", "unknown")
 
 
 # https://stackoverflow.com/questions/7905106/adding-a-log-entry-for-an-action-by-a-user-in-a-django-ap
