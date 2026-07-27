@@ -145,6 +145,20 @@ CONN_HEALTH_CHECKS = get_config(
     "services", "database", "conn_health_checks", default=True
 )
 
+# Lock timeout in milliseconds. When a DB operation waits on a PostgreSQL lock
+# longer than this value it will raise an OperationalError instead of hanging
+# indefinitely. This prevents Celery tasks from blocking until the hard timeout
+# (e.g. 720 s) and getting killed via SIGKILL.
+# Set to 0 to disable (default PostgreSQL behavior — wait forever).
+DB_LOCK_TIMEOUT_MS = int(
+    get_config("services", "database", "lock_timeout_ms", default=30000)
+)
+_DB_OPTIONS = (
+    {"options": f"-c lock_timeout={DB_LOCK_TIMEOUT_MS}"}
+    if DB_LOCK_TIMEOUT_MS > 0
+    else {}
+)
+
 DATABASES = {
     "default": {
         "ENGINE": "psqlextra.backend",
@@ -155,6 +169,7 @@ DATABASES = {
         "PORT": DATABASE_PORT,
         "CONN_MAX_AGE": CONN_MAX_AGE,
         "CONN_HEALTH_CHECKS": CONN_HEALTH_CHECKS,
+        "OPTIONS": _DB_OPTIONS,
     }
 }
 
@@ -168,6 +183,7 @@ if DATABASE_READ_REPLICA_ENABLED:
         "PORT": DATABASE_READ_PORT,
         "CONN_MAX_AGE": CONN_MAX_AGE,
         "CONN_HEALTH_CHECKS": CONN_HEALTH_CHECKS,
+        "OPTIONS": _DB_OPTIONS,
     }
 
 if TIMESERIES_ENABLED:
@@ -180,6 +196,7 @@ if TIMESERIES_ENABLED:
         "PORT": TIMESERIES_DATABASE_PORT,
         "CONN_MAX_AGE": CONN_MAX_AGE,
         "CONN_HEALTH_CHECKS": CONN_HEALTH_CHECKS,
+        "OPTIONS": _DB_OPTIONS,
     }
 
     if TIMESERIES_DATABASE_READ_REPLICA_ENABLED:
@@ -192,6 +209,7 @@ if TIMESERIES_ENABLED:
             "PORT": TIMESERIES_DATABASE_READ_PORT,
             "CONN_MAX_AGE": CONN_MAX_AGE,
             "CONN_HEALTH_CHECKS": CONN_HEALTH_CHECKS,
+            "OPTIONS": _DB_OPTIONS,
         }
 
 if TA_TIMESERIES_ENABLED:
@@ -204,6 +222,7 @@ if TA_TIMESERIES_ENABLED:
         "PORT": TA_TIMESERIES_DATABASE_PORT,
         "CONN_MAX_AGE": CONN_MAX_AGE,
         "CONN_HEALTH_CHECKS": CONN_HEALTH_CHECKS,
+        "OPTIONS": _DB_OPTIONS,
     }
 
 # See https://django-postgres-extra.readthedocs.io/en/main/settings.html

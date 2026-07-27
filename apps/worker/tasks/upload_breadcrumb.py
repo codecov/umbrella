@@ -1,6 +1,7 @@
 import logging
 import re
 
+from django.db import OperationalError
 from sqlalchemy.orm import Session
 
 from app import celery_app
@@ -94,13 +95,25 @@ class UploadBreadcrumbTask(BaseCodecovTask, name=upload_breadcrumb_task_name):
                 labels={"milestone": Milestones(breadcrumb_data.milestone).label},
             )
 
-        UploadBreadcrumb.objects.create(
-            commit_sha=commit_sha,
-            repo_id=repo_id,
-            breadcrumb_data=breadcrumb_data.model_dump(),
-            upload_ids=upload_ids,
-            sentry_trace_id=sentry_trace_id,
-        )
+        try:
+            UploadBreadcrumb.objects.create(
+                commit_sha=commit_sha,
+                repo_id=repo_id,
+                breadcrumb_data=breadcrumb_data.model_dump(),
+                upload_ids=upload_ids,
+                sentry_trace_id=sentry_trace_id,
+            )
+        except OperationalError:
+            log.warning(
+                "Failed to create UploadBreadcrumb due to a database error "
+                "(e.g. lock timeout). The breadcrumb will not be recorded.",
+                extra={
+                    "commit_sha": commit_sha,
+                    "repo_id": repo_id,
+                },
+                exc_info=True,
+            )
+            return {"successful": False}
         return {"successful": True}
 
 
