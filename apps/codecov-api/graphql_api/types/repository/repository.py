@@ -145,6 +145,19 @@ async def resolve_pulls(
     )
 
 
+@repository_bindable.field("pullRequests")
+async def resolve_pull_requests(
+    repository: Repository,
+    info: GraphQLResolveInfo,
+    filters: dict[str, list[PullRequestState]] | None = None,
+    ordering_direction: OrderingDirection | None = OrderingDirection.DESC,
+    **kwargs: Any,
+) -> list[Pull]:
+    return await resolve_pulls(
+        repository, info, filters=filters, ordering_direction=ordering_direction, **kwargs
+    )
+
+
 # the `requested_fields` here are prefixed with `edges.node`, as this is a `Connection`
 # and using `commits { edges { node { ... } } }` is the way this is queried.
 STATUS_FIELDS = {"edges.node.coverageStatus", "edges.node.bundleStatus"}
