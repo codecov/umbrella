@@ -152,7 +152,7 @@ def process_flakes_for_commit(repo_id: int, commit_id: str):
             extra={"upload": upload.id},
         )
 
-    Testrun.objects.bulk_update(all_testruns, ["outcome"])
+    Testrun.objects.bulk_update(all_testruns, ["outcome"], batch_size=500)
 
     log.info(
         "process_flakes_for_commit: bulk creating flakes",
@@ -164,6 +164,7 @@ def process_flakes_for_commit(repo_id: int, commit_id: str):
         update_conflicts=True,
         unique_fields=["id"],
         update_fields=["end_date", "count", "recent_passes_count", "fail_count"],
+        batch_size=500,
     )
 
 
