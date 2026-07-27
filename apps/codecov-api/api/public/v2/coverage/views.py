@@ -2,7 +2,8 @@ from datetime import datetime
 
 from drf_spectacular.utils import extend_schema
 from rest_framework import mixins, viewsets
-from rest_framework.exceptions import APIException
+from rest_framework.exceptions import APIException, ValidationError as DRFValidationError
+from django.utils.dateparse import parse_datetime
 
 from api.public.v2.schema import repo_parameters
 from api.shared.mixins import RepoPropertyMixin
@@ -49,14 +50,23 @@ class CoverageViewSet(
     # this is here so that drf-spectacular can introspect the model filters
     queryset = MeasurementSummary1Day.objects.none()
 
+    def get_date_param(self, name: str, default: datetime) -> datetime:
+        raw = self.request.query_params.get(name)
+        if raw is None:
+            return default
+        parsed = parse_datetime(raw)
+        if parsed is None:
+            raise DRFValidationError(
+                {name: f"'{raw}' is not a valid datetime. Use YYYY-MM-DD HH:MM[:ss[.uuuuuu]][TZ] format."}
+            )
+        return parsed
+
     def get_queryset(self):
         return repository_coverage_measurements_with_fallback(
             self.repo,
             self.get_measurement_interval(),
-            start_date=self.request.query_params.get(
-                "start_date", datetime(2000, 1, 1)
-            ),
-            end_date=self.request.query_params.get("end_date", datetime.now()),
+            start_date=self.get_date_param("start_date", datetime(2000, 1, 1)),
+            end_date=self.get_date_param("end_date", datetime.now()),
             branch=self.request.query_params.get("branch"),
         )
 
@@ -102,10 +112,10 @@ class FlagCoverageViewSet(CoverageViewSet):
             measurable_id=str(flag.pk),
         )
 
-        start_date = self.request.query_params.get("start_date")
+        start_date = self.get_date_param("start_date", None)
         if start_date is not None:
             queryset = queryset.filter(timestamp_bin__gte=start_date)
-        end_date = self.request.query_params.get("end_date")
+        end_date = self.get_date_param("end_date", None)
         if end_date is not None:
             queryset = queryset.filter(timestamp_bin__lte=end_date)
 
