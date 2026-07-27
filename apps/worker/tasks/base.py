@@ -373,7 +373,9 @@ class BaseCodecovTask(celery_app.Task):
             )
             return False
 
-    def _analyse_error(self, exception: SQLAlchemyError, *args, **kwargs):
+    def _analyse_error(
+        self, exception: SQLAlchemyError, *args, db_session=None, **kwargs
+    ):
         """Analyze SQLAlchemy errors and log appropriate messages for PostgreSQL-specific issues."""
         try:
             import psycopg2  # noqa: PLC0415
@@ -395,6 +397,23 @@ class BaseCodecovTask(celery_app.Task):
                     extra={"task_args": args, "task_kwargs": kwargs},
                     exc_info=True,
                 )
+                return
+            elif hasattr(exception, "orig") and isinstance(
+                exception.orig, psycopg2.errors.InternalError_
+            ):
+                log.warning(
+                    "PostgreSQL internal error (possibly stale type OID cache); disposing connection pool",
+                    extra={"task_args": args, "task_kwargs": kwargs},
+                    exc_info=True,
+                )
+                if db_session is not None:
+                    try:
+                        db_session.get_bind().dispose()
+                    except Exception:
+                        log.warning(
+                            "Failed to dispose connection pool after InternalError",
+                            exc_info=True,
+                        )
                 return
         except ImportError:
             log.debug(
@@ -484,7 +503,7 @@ class BaseCodecovTask(celery_app.Task):
                         TestResultsFlow.log(TestResultsFlow.UNCAUGHT_RETRY_EXCEPTION)
                     return None
             except SQLAlchemyError as ex:
-                self._analyse_error(ex, args, kwargs)
+                self._analyse_error(ex, args, kwargs, db_session=db_session)
                 db_session.rollback()
                 retry_count = getattr(self.request, "retries", 0)
                 countdown = TASK_RETRY_BACKOFF_BASE_SECONDS * (2**retry_count)
