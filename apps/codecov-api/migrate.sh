@@ -8,4 +8,5 @@ if [ -f "/usr/local/bin/berglas" ]; then
 fi
 
 $prefix python manage.py migrate
+$prefix python migrate_timeseries.py
 $prefix python manage.py pgpartition --yes --skip-delete
