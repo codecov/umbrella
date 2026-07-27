@@ -366,8 +366,8 @@ class GraphHandler(APIView, RepoPropertyMixin, GraphBadgeAPIMixin):
     def get_flare(self):
         pullid = self.kwargs.get("pullid")
 
-        if not pullid:
-            # pullid not in kwargs, try to generate flare from commit
+        if not pullid or not str(pullid).isdigit():
+            # pullid not in kwargs or non-numeric, try to generate flare from commit
             return self.get_commit_flare()
         else:
             # pullid was included in the request
