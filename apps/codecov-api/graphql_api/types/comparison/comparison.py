@@ -36,6 +36,26 @@ def resolve_state(comparison: ComparisonReport, info: GraphQLResolveInfo) -> str
     return comparison.commit_comparison.state
 
 
+@comparison_bindable.field("behindBy")
+def resolve_behind_by(
+    comparison: ComparisonReport, info: GraphQLResolveInfo, **kwargs: Any
+) -> int | None:
+    pull = getattr(comparison, "pull", None)
+    if pull is None:
+        return None
+    return pull.behind_by
+
+
+@comparison_bindable.field("behindByCommit")
+def resolve_behind_by_commit(
+    comparison: ComparisonReport, info: GraphQLResolveInfo, **kwargs: Any
+) -> str | None:
+    pull = getattr(comparison, "pull", None)
+    if pull is None:
+        return None
+    return pull.behind_by_commit
+
+
 @comparison_bindable.field("impactedFiles")
 @sync_to_async
 def resolve_impacted_files(
