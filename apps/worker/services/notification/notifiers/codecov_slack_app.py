@@ -120,9 +120,20 @@ class CodecovSlackAppNotifier(AbstractBaseNotifier):
             "owner": self.repository.author.username,
             "comparison": compare_dict,
         }
-        response = requests.post(
-            request_url, headers=headers, data=json.dumps(data, cls=EnhancedJSONEncoder)
-        )
+        try:
+            response = requests.post(
+                request_url,
+                headers=headers,
+                data=json.dumps(data, cls=EnhancedJSONEncoder),
+                timeout=5,
+            )
+        except requests.exceptions.ConnectionError as e:
+            return NotificationResult(
+                data_sent=data,
+                notification_attempted=True,
+                notification_successful=False,
+                explanation=f"Failed to notify slack app due to connection error: {e}",
+            )
 
         if response.status_code == 200:
             return NotificationResult(
