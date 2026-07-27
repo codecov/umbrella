@@ -13,6 +13,11 @@ def resolve_id(component_comparison: ComponentComparison, info) -> str:
     return component_comparison.component_id
 
 
+@component_comparison_bindable.field("componentId")
+def resolve_component_id(component_comparison: ComponentComparison, info) -> str:
+    return component_comparison.component_id
+
+
 @component_comparison_bindable.field("name")
 def resolve_name(component_comparison: ComponentComparison, info) -> str:
     components: dict[str, Component] = info.context["components"]
