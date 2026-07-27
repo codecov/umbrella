@@ -2559,6 +2559,18 @@ class PublicBotUsageAdmin(admin.ModelAdmin):
     def has_delete_permission(self, request, obj=None) -> bool:
         return False
 
+    def change_view(self, request, object_id, form_url="", extra_context=None):
+        """Redirect to the changelist — this model is read-only."""
+        from django.http import HttpResponseRedirect
+        from django.urls import reverse
+
+        opts = self.model._meta
+        changelist_url = reverse(
+            "admin:%s_%s_changelist" % (opts.app_label, opts.model_name),
+            current_app=self.admin_site.name,
+        )
+        return HttpResponseRedirect(changelist_url)
+
     def get_queryset(self, request):
         deny_viewers(request)
         return PublicBotUsage.objects.all()

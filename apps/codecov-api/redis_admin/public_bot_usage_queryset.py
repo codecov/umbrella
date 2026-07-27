@@ -94,6 +94,29 @@ class PublicBotUsageQuerySet:
     def order_by(self, *fields: str) -> PublicBotUsageQuerySet:
         return self._clone(ordering=fields or self._ordering)
 
+    def get(self, **kwargs: Any) -> Any:
+        """Retrieve a single object matching *kwargs* from the Redis-backed list.
+
+        Raises ``model.DoesNotExist`` when no match is found and
+        ``model.MultipleObjectsReturned`` when more than one match is found,
+        mirroring the contract of a real Django QuerySet.
+        """
+        results = [
+            obj
+            for obj in self._fetch_all()
+            if all(getattr(obj, k, None) == v for k, v in kwargs.items())
+        ]
+        if not results:
+            raise self.model.DoesNotExist(
+                f"{self.model.__name__} matching query does not exist."
+            )
+        if len(results) > 1:
+            raise self.model.MultipleObjectsReturned(
+                f"get() returned more than one {self.model.__name__} -- "
+                f"it returned {len(results)}!"
+            )
+        return results[0]
+
     def filter(self, **kwargs: Any) -> PublicBotUsageQuerySet:
         bot_filter = kwargs.get("bot") or kwargs.get("bot__exact") or self.bot_filter
         repo_filter = kwargs.get("repo__icontains") or self.repo_filter
