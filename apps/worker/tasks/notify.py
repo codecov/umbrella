@@ -518,7 +518,15 @@ class NotifyTask(BaseCodecovTask, name=notify_task_name):
                 },
             )
             db_session.commit()
-            return {"notified": True, "notifications": notifications}
+            serializable_notifications = [
+                {
+                    "notifier": n["notifier"],
+                    "title": n["title"],
+                    "result": n["result"].to_dict() if n["result"] is not None else None,
+                }
+                for n in notifications
+            ]
+            return {"notified": True, "notifications": serializable_notifications}
         else:
             log.info(
                 "Not sending notifications at all",
