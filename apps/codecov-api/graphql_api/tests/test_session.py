@@ -13,8 +13,8 @@ query MySession {
         node {
           name
           ip
-          lastseen
-          useragent
+          lastSeen
+          userAgent
           type
           lastFour
         }
@@ -44,8 +44,8 @@ class SessionTestCase(GraphQLTestHelper, TestCase):
             {
                 "name": current_session.name,
                 "ip": current_session.ip,
-                "lastseen": "2021-01-01T00:00:00+00:00",
-                "useragent": current_session.useragent,
+                "lastSeen": "2021-01-01T00:00:00+00:00",
+                "userAgent": current_session.useragent,
                 "type": current_session.type,
                 "lastFour": str(current_session.token)[-4:],
             }
