@@ -643,7 +643,7 @@ class Github(TorngitBaseAdapter):
             },
         )
 
-        if not token_to_use:
+        if not token_to_use or not token_to_use.get("key"):
             raise TorngitMisconfiguredCredentials()
         response = await self.make_http_call(*args, token_to_use=token_to_use, **kwargs)
         return self._parse_response(response)
@@ -656,7 +656,7 @@ class Github(TorngitBaseAdapter):
         Continues to request pages while there's a link to the next page.
         """
         token_to_use = token or self.token
-        if not token_to_use:
+        if not token_to_use or not token_to_use.get("key"):
             raise TorngitMisconfiguredCredentials()
         url = self.count_and_get_url_template(
             url_name=url_name
@@ -787,7 +787,7 @@ class Github(TorngitBaseAdapter):
             "Accept": "application/json",
             "User-Agent": os.getenv("USER_AGENT", "Default"),
         }
-        if token_to_use:
+        if token_to_use and token_to_use.get("key"):
             _headers["Authorization"] = "token {}".format(token_to_use["key"])
         _headers.update(headers or {})
         log_dict = {}
