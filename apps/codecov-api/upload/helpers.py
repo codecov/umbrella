@@ -934,29 +934,51 @@ def upload_breadcrumb_context(
     """
     try:
         if initial_breadcrumb and commit_sha and repo_id:
-            TaskService().upload_breadcrumb(
-                commit_sha=commit_sha,
-                repo_id=repo_id,
-                breadcrumb_data=BreadcrumbData(
-                    milestone=milestone,
-                    endpoint=endpoint,
-                    uploader=uploader if uploader else None,
-                ),
-            )
+            try:
+                TaskService().upload_breadcrumb(
+                    commit_sha=commit_sha,
+                    repo_id=repo_id,
+                    breadcrumb_data=BreadcrumbData(
+                        milestone=milestone,
+                        endpoint=endpoint,
+                        uploader=uploader if uploader else None,
+                    ),
+                )
+            except Exception:
+                log.warning(
+                    "Failed to dispatch initial upload breadcrumb task",
+                    extra={
+                        "repo_id": repo_id,
+                        "commit_sha": commit_sha,
+                        "milestone": milestone,
+                    },
+                    exc_info=True,
+                )
 
         yield
 
     except Exception as e:
         if commit_sha and repo_id:
-            TaskService().upload_breadcrumb(
-                commit_sha=commit_sha,
-                repo_id=repo_id,
-                breadcrumb_data=BreadcrumbData(
-                    milestone=milestone,
-                    endpoint=endpoint,
-                    uploader=uploader if uploader else None,
-                    error=error if error else Errors.UNKNOWN,
-                    error_text=repr(e) if not error else None,
-                ),
-            )
+            try:
+                TaskService().upload_breadcrumb(
+                    commit_sha=commit_sha,
+                    repo_id=repo_id,
+                    breadcrumb_data=BreadcrumbData(
+                        milestone=milestone,
+                        endpoint=endpoint,
+                        uploader=uploader if uploader else None,
+                        error=error if error else Errors.UNKNOWN,
+                        error_text=repr(e) if not error else None,
+                    ),
+                )
+            except Exception:
+                log.warning(
+                    "Failed to dispatch error upload breadcrumb task",
+                    extra={
+                        "repo_id": repo_id,
+                        "commit_sha": commit_sha,
+                        "milestone": milestone,
+                    },
+                    exc_info=True,
+                )
         raise
