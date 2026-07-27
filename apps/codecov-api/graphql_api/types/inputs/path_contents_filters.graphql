@@ -4,6 +4,7 @@ input PathContentsFilters {
   ordering: PathContentsOrdering
   flags: [String!]
   components: [String!]
+  hasUnintendedChanges: Boolean
 }
 
 input PathContentsOrdering {
