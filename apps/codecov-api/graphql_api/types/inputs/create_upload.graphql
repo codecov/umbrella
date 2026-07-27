@@ -1,0 +1,9 @@
+input CreateUploadInput {
+  repoName: String!
+  ownerUsername: String!
+  commitSha: String!
+  branch: String
+  pullId: Int
+  flags: [String]
+  reportType: String
+}

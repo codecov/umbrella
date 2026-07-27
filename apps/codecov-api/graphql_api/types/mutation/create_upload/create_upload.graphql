@@ -1,0 +1,6 @@
+union CreateUploadError = UnauthenticatedError | ValidationError | NotFoundError
+
+type CreateUploadPayload {
+    error: CreateUploadError
+    upload: Upload
+}
