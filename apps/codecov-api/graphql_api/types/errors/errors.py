@@ -23,6 +23,18 @@ class MissingBaseReport:
     message = "Missing base report"
 
 
+class ComparisonError:
+    message = "Comparison error"
+
+
+class ComponentsComparisonError:
+    message = "Components comparison error"
+
+
+class MissingReports:
+    message = "Missing reports"
+
+
 class MissingCoverage:
     def __init__(self, message="Missing coverage"):
         self.message = message

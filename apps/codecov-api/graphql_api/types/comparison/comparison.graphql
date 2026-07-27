@@ -40,6 +40,18 @@ type FirstPullRequest {
   message: String!
 }
 
+type ComparisonError implements ResolverError {
+  message: String!
+}
+
+type ComponentsComparisonError implements ResolverError {
+  message: String!
+}
+
+type MissingReports implements ResolverError {
+  message: String!
+}
+
 union ComparisonResult =
     Comparison
   | FirstPullRequest
@@ -48,3 +60,6 @@ union ComparisonResult =
   | MissingComparison
   | MissingBaseReport
   | MissingHeadReport
+  | ComparisonError
+  | ComponentsComparisonError
+  | MissingReports
