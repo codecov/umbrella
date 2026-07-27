@@ -210,7 +210,21 @@ async def resolve_test_suites(
 
 @test_analytics_bindable.field("flags")
 async def resolve_flags(
-    repository: Repository, _info: GraphQLResolveInfo, term: str | None = None, **_: Any
-) -> list[str]:
+    repository: Repository,
+    _info: GraphQLResolveInfo,
+    term: str | None = None,
+    first: int | None = None,
+    after: str | None = None,
+    last: int | None = None,
+    before: str | None = None,
+    **_: Any,
+):
     result = await sync_to_async(get_flags)(repository.repoid, term)
-    return sorted(result)
+    sorted_result = sorted(result)
+    return await queryset_to_connection(
+        sorted_result,
+        first=first,
+        after=after,
+        last=last,
+        before=before,
+    )
