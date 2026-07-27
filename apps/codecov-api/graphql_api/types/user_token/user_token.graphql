@@ -4,4 +4,5 @@ type UserToken {
     type: String!
     lastFour: String!
     expiration: DateTime
+    token: String @deprecated(reason: "Use lastFour instead")
 }
