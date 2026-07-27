@@ -1,5 +1,6 @@
 import logging
 
+import httpx
 import sentry_sdk
 from asgiref.sync import async_to_sync
 from celery.exceptions import MaxRetriesExceededError
@@ -350,6 +351,23 @@ class NotifyTask(BaseCodecovTask, name=notify_task_name):
         except TorngitServerFailureError:
             log.info(
                 "Unable to fetch CI results due to server issues. Not notifying user",
+                extra={"repoid": commit.repoid, "commit": commit.commitid},
+            )
+            self.log_checkpoint(UploadFlow.NOTIF_GIT_SERVICE_ERROR)
+            self._call_upload_breadcrumb_task(
+                commit_sha=commit.commitid,
+                repo_id=commit.repoid,
+                milestone=milestone,
+                error=Errors.GIT_CLIENT_ERROR,
+            )
+            return {
+                "notified": False,
+                "notifications": None,
+                "reason": "server_issues_ci_result",
+            }
+        except httpx.TransportError:
+            log.info(
+                "Unable to fetch CI results due to a network error. Not notifying user",
                 extra={"repoid": commit.repoid, "commit": commit.commitid},
             )
             self.log_checkpoint(UploadFlow.NOTIF_GIT_SERVICE_ERROR)
