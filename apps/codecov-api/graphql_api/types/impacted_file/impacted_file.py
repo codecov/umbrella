@@ -133,6 +133,15 @@ def resolve_misses_count(impacted_file: ImpactedFile, info) -> int:
     return impacted_file.misses_count
 
 
+impacted_files_bindable = ObjectType("ImpactedFiles")
+
+
+@impacted_files_bindable.field("edges")
+def resolve_impacted_files_edges(impacted_files, info):
+    results = impacted_files.get("results") or []
+    return [{"node": item} for item in results]
+
+
 impacted_files_result_bindable = UnionType("ImpactedFilesResult")
 
 
