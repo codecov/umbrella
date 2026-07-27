@@ -86,6 +86,13 @@ def resolve_commit(repository: Repository, info: GraphQLResolveInfo, id: str) ->
     return commit
 
 
+@repository_bindable.field("uploadTokenRequired")
+def resolve_upload_token_required(
+    repository: Repository, info: GraphQLResolveInfo
+) -> bool | None:
+    return repository.author.upload_token_required_for_public_repos
+
+
 @repository_bindable.field("uploadToken")
 def resolve_upload_token(
     repository: Repository, info: GraphQLResolveInfo
