@@ -1,5 +1,5 @@
 from collections.abc import Iterable
-from datetime import datetime
+from datetime import datetime, timezone
 
 from ariadne import ObjectType
 
@@ -43,8 +43,14 @@ def resolve_percent_change(flag: RepositoryFlag, info) -> float:
 
 @flag_bindable.field("measurements")
 def resolve_measurements(
-    flag: RepositoryFlag, info, interval: Interval, after: datetime, before: datetime
+    flag: RepositoryFlag,
+    info,
+    interval: Interval,
+    after: datetime,
+    before: datetime = None,
 ) -> Iterable[MeasurementSummary]:
+    if before is None:
+        before = datetime.now(tz=timezone.utc)
     measurements = info.context["flag_measurements"].get(flag.pk, [])
     if len(measurements) == 0:
         return []
