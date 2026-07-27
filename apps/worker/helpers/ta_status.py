@@ -1,8 +1,12 @@
+import logging
 from datetime import datetime
 
 from django.conf import settings
+from django.db import OperationalError
 
 from services.test_analytics.ta_timeseries import get_pr_comment_agg
+
+log = logging.getLogger(__name__)
 
 
 def get_test_status(
@@ -13,7 +17,16 @@ def get_test_status(
     if not settings.TA_TIMESERIES_ENABLED:
         return False, False
 
-    pr_comment_agg = get_pr_comment_agg(repo_id, commit_sha, lower_bound_timestamp)
+    try:
+        pr_comment_agg = get_pr_comment_agg(repo_id, commit_sha, lower_bound_timestamp)
+    except OperationalError:
+        log.warning(
+            "Failed to get test status from ta_timeseries due to a database error",
+            extra={"repo_id": repo_id, "commit_sha": commit_sha},
+            exc_info=True,
+        )
+        return False, False
+
     failed = pr_comment_agg.get("failed", 0)
     passed = pr_comment_agg.get("passed", 0)
 
