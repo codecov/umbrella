@@ -357,6 +357,10 @@ class BundleAnalysisReport:
         return [BundleReport(bundle) for bundle in self.report.bundle_reports()]
 
     @cached_property
+    def assets(self) -> list["AssetReport"]:
+        return [asset for bundle in self.bundles for asset in bundle.assets()]
+
+    @cached_property
     def size_total(self) -> int:
         return sum([bundle.size_total for bundle in self.bundles])
 
