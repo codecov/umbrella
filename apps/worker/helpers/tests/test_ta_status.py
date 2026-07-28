@@ -1,4 +1,5 @@
 import pytest
+from django.db import DatabaseError
 from django.test import override_settings
 
 from database.tests.factories import CommitFactory, RepositoryFactory
@@ -80,3 +81,19 @@ def test_get_test_status_when_ta_timeseries_disabled(dbsession, setup_testruns):
 
     assert any_failures is False
     assert all_passed is False
+
+
+@pytest.mark.django_db(databases=["default", "ta_timeseries"])
+def test_get_test_status_database_error_fails_open(mocker, dbsession, setup_testruns):
+    repository, commit = setup_testruns("pass", "pass")
+    mocker.patch(
+        "helpers.ta_status.get_pr_comment_agg",
+        side_effect=DatabaseError("server closed the connection unexpectedly"),
+    )
+    mock_sentry = mocker.patch("helpers.ta_status.sentry_sdk.capture_exception")
+
+    any_failures, all_passed = get_test_status(repository.repoid, commit.commitid)
+
+    assert any_failures is False
+    assert all_passed is False
+    mock_sentry.assert_called_once()

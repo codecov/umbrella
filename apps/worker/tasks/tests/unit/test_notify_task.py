@@ -8,7 +8,7 @@ import respx
 from celery.exceptions import MaxRetriesExceededError, Retry
 from freezegun import freeze_time
 
-from database.enums import Decoration, Notification, NotificationState
+from database.enums import Decoration, Notification, NotificationState, ReportType
 from database.models.core import CommitNotification
 from database.tests.factories import (
     CommitFactory,
@@ -436,6 +436,71 @@ class TestNotifyTaskHelpers:
 
 
 class TestNotifyTask:
+    def test_skips_test_status_without_test_results_report(
+        self, dbsession, mocker, mock_storage, mock_configuration, mock_self_app
+    ):
+        mocked_get_test_status = mocker.patch(
+            "tasks.notify.get_test_status", return_value=(False, False)
+        )
+        mocker.patch.object(
+            NotifyTask,
+            "fetch_and_update_whether_ci_passed",
+            return_value={},
+        )
+        mocker.patch.object(NotifyTask, "should_send_notifications", return_value=False)
+        commit = CommitFactory.create(
+            message="",
+            pullid=None,
+            branch="test-branch-1",
+            commitid="649eaaf2924e92dc7fd8d370ddb857033231e67a",
+        )
+        dbsession.add(commit)
+        dbsession.flush()
+        task = NotifyTask()
+        task.run_impl_within_lock(
+            dbsession, repoid=commit.repoid, commitid=commit.commitid, current_yaml={}
+        )
+        mocked_get_test_status.assert_not_called()
+
+    def test_calls_test_status_with_test_results_report(
+        self, dbsession, mocker, mock_storage, mock_configuration, mock_self_app
+    ):
+        mocked_get_test_status = mocker.patch(
+            "tasks.notify.get_test_status", return_value=(False, False)
+        )
+        mocker.patch.object(
+            NotifyTask,
+            "fetch_and_update_whether_ci_passed",
+            return_value={},
+        )
+        mocker.patch.object(NotifyTask, "should_send_notifications", return_value=False)
+
+        def commit_report_side_effect(self, report_type):
+            if report_type == ReportType.TEST_RESULTS:
+                return object()
+            return None
+
+        mocker.patch(
+            "database.models.core.Commit.commit_report",
+            autospec=True,
+            side_effect=commit_report_side_effect,
+        )
+        commit = CommitFactory.create(
+            message="",
+            pullid=None,
+            branch="test-branch-1",
+            commitid="649eaaf2924e92dc7fd8d370ddb857033231e67a",
+        )
+        dbsession.add(commit)
+        dbsession.flush()
+        task = NotifyTask()
+        task.run_impl_within_lock(
+            dbsession, repoid=commit.repoid, commitid=commit.commitid, current_yaml={}
+        )
+        mocked_get_test_status.assert_called_once_with(
+            commit.repoid, commit.commitid, commit.timestamp
+        )
+
     def test_simple_call_no_notifications(
         self, dbsession, mocker, mock_storage, mock_configuration, mock_self_app
     ):
