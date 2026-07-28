@@ -1,0 +1,90 @@
+{% extends "admin/base_site.html" %}
+{% load i18n admin_urls %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+  <a href="{% url 'admin:index' %}">{% trans 'Home' %}</a>
+  &rsaquo; <a href="{% url 'admin:app_list' app_label=opts.app_label %}">{{ opts.app_config.verbose_name }}</a>
+  &rsaquo; <a href="{% url opts|admin_urlname:'changelist' %}">{{ opts.verbose_name_plural|capfirst }}</a>
+  &rsaquo; {{ title }}
+</div>
+{% endblock %}
+
+{% block content %}
+<p>
+  Paste one <code>&lt;repoid&gt; &lt;commit SHA&gt;</code> pair per line.
+  Duplicates are removed automatically. Each batch is capped at {{ batch_cap }} pairs.
+</p>
+
+<form method="post">
+  {% csrf_token %}
+  <textarea name="pairs" rows="16" cols="100" style="width:100%;font-family:monospace;">{{ pairs_input }}</textarea>
+
+  {% if preview and not preview.parse_errors %}
+    <h2>Preview</h2>
+    <ul>
+      <li>Parsed pairs: {{ preview.parsed_pairs|length }}</li>
+      <li>Resolved commits: {{ preview.resolved|length }}</li>
+      <li>Missing commits: {{ preview.missing|length }}</li>
+      <li>Duplicates skipped: {{ preview.duplicate_count }}</li>
+      {% if preview.truncated %}
+        <li><strong>Input truncated to {{ batch_cap }} pairs.</strong></li>
+      {% endif %}
+    </ul>
+
+    {% if preview.resolved %}
+      <h3>Resolved (first 20)</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Repoid</th>
+            <th>Commit</th>
+            <th>Repository</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for pair, commit in preview.resolved|slice:":20" %}
+            <tr>
+              <td>{{ pair.repoid }}</td>
+              <td><code>{{ pair.commit_sha }}</code></td>
+              <td>{% if commit.repository.author %}{{ commit.repository.author.service }}:{{ commit.repository.author.username }}/{% endif %}{{ commit.repository.name }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% endif %}
+
+    {% if preview.missing %}
+      <h3>Missing (first 20)</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Repoid</th>
+            <th>Commit</th>
+            <th>Line</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for pair in preview.missing|slice:":20" %}
+            <tr>
+              <td>{{ pair.repoid }}</td>
+              <td><code>{{ pair.commit_sha }}</code></td>
+              <td>{{ pair.line_number }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% endif %}
+  {% endif %}
+
+  <div style="margin-top: 1rem;">
+    <button type="submit" name="action" value="preview" class="button">Preview</button>
+    {% if show_confirm %}
+      <input type="hidden" name="confirm" value="yes" />
+      <button type="submit" name="action" value="enqueue" class="button default">
+        Queue {{ preview.resolved|length }} notification replays
+      </button>
+    {% endif %}
+  </div>
+</form>
+{% endblock %}

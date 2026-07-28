@@ -892,6 +892,60 @@ class CommitAdminReprocessViewsTests(TestCase):
         mock_task_service.return_value.schedule_task.assert_called_once()
 
 
+class CommitIncidentReplayAdminTests(AdminTest):
+    def setUp(self):
+        super().setUp()
+        self.user.is_staff = True
+        self.user.save()
+        self.commit_admin = CommitAdmin(Commit, AdminSite)
+        self.repo = RepositoryFactory()
+
+    def test_get_urls_includes_incident_replay(self):
+        url_names = [url.name for url in self.commit_admin.get_urls()]
+        self.assertIn("core_commit_incident_replay", url_names)
+
+    @patch("core.admin.deny_viewers")
+    def test_incident_replay_preview_renders(self, mock_deny_viewers):
+        commit = CommitFactory(repository=self.repo)
+        self.client.force_login(self.user)
+        response = self.client.post(
+            reverse("admin:core_commit_incident_replay"),
+            {
+                "pairs": f"{self.repo.repoid} {commit.commitid}",
+                "action": "preview",
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Resolved commits: 1")
+        mock_deny_viewers.assert_called_once()
+
+    @patch("core.admin.TaskService")
+    @patch("core.admin.get_repo_yaml")
+    @patch("core.admin.deny_viewers")
+    def test_incident_replay_enqueue(
+        self, mock_deny_viewers, mock_get_yaml, mock_task_service
+    ):
+        commit = CommitFactory(repository=self.repo)
+        mock_yaml = MagicMock()
+        mock_yaml.to_dict.return_value = {}
+        mock_get_yaml.return_value = mock_yaml
+        self.client.force_login(self.user)
+        response = self.client.post(
+            reverse("admin:core_commit_incident_replay"),
+            {
+                "pairs": f"{self.repo.repoid} {commit.commitid}",
+                "action": "enqueue",
+                "confirm": "yes",
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+        mock_task_service.return_value.manual_upload_completion_trigger.assert_called_once_with(
+            self.repo.repoid,
+            commit.commitid,
+            current_yaml={},
+        )
+
+
 class GetRepoYamlTests(TestCase):
     """Tests for get_repo_yaml helper function."""
 
