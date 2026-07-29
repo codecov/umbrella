@@ -237,6 +237,22 @@ def attach_commit_changelist_counts(commits):
                 setattr(commit, field, value)
 
 
+def attach_commit_report_counts(commits):
+    """Attach report_count without scanning notifications."""
+    if not commits:
+        return
+
+    commit_ids = [commit.pk for commit in commits]
+    counts = dict(
+        CommitReport.objects.filter(commit_id__in=commit_ids)
+        .values("commit_id")
+        .annotate(count=Count("pk"))
+        .values_list("commit_id", "count")
+    )
+    for commit in commits:
+        commit.report_count = counts.get(commit.pk, 0)
+
+
 def attach_commit_upload_status_flags(commits):
     if not commits:
         return
@@ -252,37 +268,45 @@ def attach_commit_upload_status_flags(commits):
         for commit_id in commit_ids_with_reports
     }
 
-    upload_sessions = ReportSession.objects.filter(
-        report__commit_id__in=commit_ids_with_reports
+    # Prefer report_id__in (indexed) over joining uploads → commit reports.
+    report_id_to_commit = dict(
+        CommitReport.objects.filter(commit_id__in=commit_ids_with_reports).values_list(
+            "id", "commit_id"
+        )
     )
-    for commit_id in upload_sessions.values_list(
-        "report__commit_id", flat=True
-    ).distinct():
-        flags_by_id[commit_id]["has_upload"] = True
+    if not report_id_to_commit:
+        for commit in commits:
+            if commit.pk in flags_by_id:
+                for field, value in flags_by_id[commit.pk].items():
+                    setattr(commit, field, value)
+        return
 
-    for commit_id in (
-        upload_sessions.filter(state="error")
-        .values_list("report__commit_id", flat=True)
-        .distinct()
+    report_ids = list(report_id_to_commit.keys())
+
+    for row in (
+        ReportSession.objects.filter(report_id__in=report_ids)
+        .values("report_id")
+        .annotate(
+            has_error=Count("pk", filter=Q(state="error")),
+            has_pending=Count("pk", filter=PENDING_SESSION_FILTER),
+        )
     ):
-        flags_by_id[commit_id]["has_error_upload"] = True
+        flags = flags_by_id[report_id_to_commit[row["report_id"]]]
+        flags["has_upload"] = True
+        if row["has_error"]:
+            flags["has_error_upload"] = True
+        if row["has_pending"]:
+            flags["has_pending_upload"] = True
 
-    for commit_id in (
-        upload_sessions.filter(PENDING_SESSION_FILTER)
-        .values_list("report__commit_id", flat=True)
-        .distinct()
-    ):
-        flags_by_id[commit_id]["has_pending_upload"] = True
-
-    for commit_id in (
+    for report_id in (
         ReportResults.objects.filter(
-            report__commit_id__in=commit_ids_with_reports,
+            report_id__in=report_ids,
             state=ReportResults.ReportResultsStates.ERROR,
         )
-        .values_list("report__commit_id", flat=True)
+        .values_list("report_id", flat=True)
         .distinct()
     ):
-        flags_by_id[commit_id]["has_error_report_results"] = True
+        flags_by_id[report_id_to_commit[report_id]]["has_error_report_results"] = True
 
     for commit in commits:
         if commit.pk not in flags_by_id:
@@ -854,10 +878,20 @@ class CommitAdmin(AdminMixin, admin.ModelAdmin):
 
     @admin.display(description="Report status")
     def reports_status_async(self, obj):
+        report_count = getattr(obj, "report_count", 0)
+        if report_count == 0:
+            return format_html(
+                '<span class="commit-reports-status" data-commit-id="{}" '
+                'data-report-count="0" title="No reports">'
+                '<img src="/static/admin/img/icon-unknown.svg" alt="Unknown"></span>',
+                obj.pk,
+            )
         return format_html(
             '<span class="commit-reports-status" data-commit-id="{}" '
-            'aria-busy="true" title="Loading report status">…</span>',
+            'data-report-count="{}" aria-busy="true" '
+            'title="Loading report status">…</span>',
             obj.pk,
+            report_count,
         )
 
     @admin.display(description="Report status", boolean=True)
@@ -1010,8 +1044,9 @@ class CommitAdmin(AdminMixin, admin.ModelAdmin):
         if not commit_ids:
             return JsonResponse({})
 
-        commits = list(Commit.objects.filter(pk__in=commit_ids))
-        attach_commit_changelist_counts(commits)
+        commits = list(Commit.objects.filter(pk__in=commit_ids).only("id"))
+        # Status only needs report_count + upload flags — skip notification aggregation.
+        attach_commit_report_counts(commits)
         attach_commit_upload_status_flags(commits)
 
         statuses = {}

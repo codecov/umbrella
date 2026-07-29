@@ -19,6 +19,12 @@
     return img;
   }
 
+  function setCellStatus(cell, status) {
+    cell.textContent = "";
+    cell.removeAttribute("aria-busy");
+    cell.appendChild(renderStatusIcon(status));
+  }
+
   function loadReportStatuses() {
     var loader = document.getElementById("commit-reports-status-loader");
     if (!loader) return;
@@ -29,10 +35,18 @@
     var cells = document.querySelectorAll(".commit-reports-status[data-commit-id]");
     if (!cells.length) return;
 
+    var pendingCells = [];
     var commitIds = [];
     for (var i = 0; i < cells.length; i++) {
-      commitIds.push(cells[i].dataset.commitId);
+      var cell = cells[i];
+      // Zero-report rows are already rendered server-side; skip the round-trip.
+      if (cell.dataset.reportCount === "0") {
+        continue;
+      }
+      pendingCells.push(cell);
+      commitIds.push(cell.dataset.commitId);
     }
+    if (!commitIds.length) return;
 
     fetch(url, {
       method: "POST",
@@ -51,17 +65,17 @@
       })
       .then(function (payload) {
         var statuses = payload.statuses || {};
-        for (var j = 0; j < cells.length; j++) {
-          var cell = cells[j];
-          var status = statuses[cell.dataset.commitId] || "unknown";
-          cell.textContent = "";
-          cell.removeAttribute("aria-busy");
-          cell.appendChild(renderStatusIcon(status));
+        for (var j = 0; j < pendingCells.length; j++) {
+          var pendingCell = pendingCells[j];
+          setCellStatus(
+            pendingCell,
+            statuses[pendingCell.dataset.commitId] || "unknown"
+          );
         }
       })
       .catch(function () {
-        for (var k = 0; k < cells.length; k++) {
-          var failedCell = cells[k];
+        for (var k = 0; k < pendingCells.length; k++) {
+          var failedCell = pendingCells[k];
           failedCell.textContent = "?";
           failedCell.removeAttribute("aria-busy");
           failedCell.title = "Could not load report status";
