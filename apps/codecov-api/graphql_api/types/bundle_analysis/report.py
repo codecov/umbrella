@@ -28,6 +28,13 @@ def resolve_bundles(
     return bundles_analysis_report.bundles
 
 
+@bundle_analysis_report_bindable.field("assets")
+def resolve_assets(
+    bundles_analysis_report: BundleAnalysisReport, info: GraphQLResolveInfo
+) -> list:
+    return bundles_analysis_report.assets
+
+
 @bundle_analysis_report_bindable.field("bundle")
 def resolve_bundle(
     bundles_analysis_report: BundleAnalysisReport,
