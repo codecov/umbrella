@@ -319,6 +319,9 @@ class BundleReport:
             )
             return json.loads(result.info)
 
+    def output_path(self) -> str | None:
+        return self.info().get("output_path")
+
     def is_cached(self) -> bool:
         with get_db_session(self.db_path) as session:
             result = session.query(Bundle).filter(Bundle.id == self.bundle.id).first()
