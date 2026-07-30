@@ -28,6 +28,13 @@ def resolve_bundles(
     return bundles_analysis_report.bundles
 
 
+@bundle_analysis_report_bindable.field("chunks")
+def resolve_chunks(
+    bundles_analysis_report: BundleAnalysisReport, info: GraphQLResolveInfo
+) -> list[BundleReport]:
+    return bundles_analysis_report.bundles
+
+
 @bundle_analysis_report_bindable.field("bundle")
 def resolve_bundle(
     bundles_analysis_report: BundleAnalysisReport,
