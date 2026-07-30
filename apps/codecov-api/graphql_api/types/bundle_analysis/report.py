@@ -5,7 +5,7 @@ from graphql import GraphQLResolveInfo
 
 from graphql_api.types.comparison.comparison import MissingHeadReport
 from graphql_api.types.enums import BundleLoadTypes
-from services.bundle_analysis import BundleAnalysisReport, BundleData, BundleReport
+from services.bundle_analysis import BundleAnalysisReport, BundleData, BundleReport, BundleSize
 
 bundle_analysis_report_result_bindable = UnionType("BundleAnalysisReportResult")
 bundle_analysis_report_bindable = ObjectType("BundleAnalysisReport")
@@ -83,3 +83,11 @@ def resolve_bundle_data(
 @bundle_analysis_report_bindable.field("isCached")
 def resolve_is_cached(bundle_report: BundleReport, info: GraphQLResolveInfo) -> bool:
     return bundle_report.is_cached
+
+
+@bundle_analysis_report_bindable.field("assetSize")
+def resolve_asset_size(
+    bundle_analysis_report: BundleAnalysisReport, info: GraphQLResolveInfo
+) -> BundleSize:
+    bundle_data = BundleData(bundle_analysis_report.size_total)
+    return bundle_data.size
