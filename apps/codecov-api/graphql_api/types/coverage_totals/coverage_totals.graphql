@@ -8,4 +8,5 @@ type CoverageTotals {
   partialsCount: Int
 
   coverage: Float @deprecated(reason: "Use `percentCovered`")
+  coverageChange: Float @deprecated(reason: "Use `changeCoverage` on the Comparison type instead")
 }
