@@ -80,6 +80,13 @@ def resolve_bundle_data(
     return BundleData(bundles_analysis_report.size_total)
 
 
+@bundle_analysis_report_bindable.field("duration")
+def resolve_duration(
+    bundles_analysis_report: BundleAnalysisReport, info: GraphQLResolveInfo
+) -> int:
+    return bundles_analysis_report.duration
+
+
 @bundle_analysis_report_bindable.field("isCached")
 def resolve_is_cached(bundle_report: BundleReport, info: GraphQLResolveInfo) -> bool:
     return bundle_report.is_cached
