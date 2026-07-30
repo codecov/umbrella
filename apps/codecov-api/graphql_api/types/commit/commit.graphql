@@ -45,6 +45,8 @@ type CommitCoverageAnalytics {
 type CommitBundleAnalysis {
   bundleAnalysisCompareWithParent: BundleAnalysisComparisonResult
   bundleAnalysisReport: BundleAnalysisReportResult
+  totalSize: Int
+  totalLoadTime: Int
 }
 
 type CommitErrorsConnection {
