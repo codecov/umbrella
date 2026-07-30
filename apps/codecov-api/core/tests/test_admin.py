@@ -326,6 +326,50 @@ class CommitAdminTests(TestCase):
             "true",
         )
 
+    def test_changelist_reports_status_view_error_and_empty(self):
+        ok_commit = CommitFactory(repository=self.repo)
+        ok_report = CommitReportFactory(
+            commit=ok_commit, report_type=ReportType.COVERAGE
+        )
+        UploadFactory(report=ok_report, state="processed")
+
+        error_commit = CommitFactory(repository=self.repo)
+        error_report = CommitReportFactory(
+            commit=error_commit, report_type=ReportType.COVERAGE
+        )
+        UploadFactory(report=error_report, state="error")
+
+        empty_commit = CommitFactory(repository=self.repo)
+
+        url = reverse("admin:core_commit_changelist_reports_status")
+        self.client.force_login(self.user)
+        response = self.client.post(
+            url,
+            data=json.dumps(
+                {
+                    "commit_ids": [
+                        ok_commit.pk,
+                        error_commit.pk,
+                        empty_commit.pk,
+                    ]
+                }
+            ),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 200)
+        statuses = response.json()["statuses"]
+        self.assertEqual(statuses[str(ok_commit.pk)], "true")
+        self.assertEqual(statuses[str(error_commit.pk)], "false")
+        self.assertEqual(statuses[str(empty_commit.pk)], "unknown")
+
+    def test_reports_status_async_skips_fetch_markup_for_zero_reports(self):
+        commit = CommitFactory(repository=self.repo)
+        attach_commit_changelist_counts([commit])
+        html = self.commit_admin.reports_status_async(commit)
+        self.assertIn('data-report-count="0"', html)
+        self.assertIn("icon-unknown.svg", html)
+        self.assertNotIn("aria-busy", html)
+
     def test_upload_status_flags_skipped_without_reports(self):
         commit = CommitFactory(repository=self.repo)
         attach_commit_changelist_counts([commit])
