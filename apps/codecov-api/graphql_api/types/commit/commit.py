@@ -40,6 +40,7 @@ from graphql_api.types.errors.errors import UnknownFlags
 from reports.models import CommitReport
 from services.bundle_analysis import BundleAnalysisComparison, BundleAnalysisReport
 from services.comparison import Comparison, ComparisonReport
+from shared.bundle_analysis.comparison import MissingBaseReportError, MissingHeadReportError
 from services.components import Component
 from services.path import Dir, File, ReportPaths
 from services.yaml import YamlStates, get_yaml_state
@@ -456,16 +457,22 @@ async def resolve_commit_bundle_analysis_compare_with_parent(
     # Store the created SQLite DB path in info.context
     # when the request is fully handled, have the file deleted
     if isinstance(bundle_analysis_comparison, BundleAnalysisComparison):
-        info.context[
-            "request"
-        ].bundle_analysis_base_report_db_path = (
-            bundle_analysis_comparison.comparison.base_report.db_path
-        )
-        info.context[
-            "request"
-        ].bundle_analysis_head_report_db_path = (
-            bundle_analysis_comparison.comparison.head_report.db_path
-        )
+        try:
+            info.context[
+                "request"
+            ].bundle_analysis_base_report_db_path = (
+                bundle_analysis_comparison.comparison.base_report.db_path
+            )
+        except MissingBaseReportError:
+            return MissingBaseReport()
+        try:
+            info.context[
+                "request"
+            ].bundle_analysis_head_report_db_path = (
+                bundle_analysis_comparison.comparison.head_report.db_path
+            )
+        except MissingHeadReportError:
+            return MissingHeadReport()
 
     return bundle_analysis_comparison
 
