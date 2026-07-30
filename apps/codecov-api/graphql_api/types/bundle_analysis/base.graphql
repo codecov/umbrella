@@ -75,6 +75,8 @@ type BundleReport {
   asset(name: String!): BundleAsset
   bundleData: BundleData!
   bundleDataFiltered(filters: BundleReportFilters): BundleData!
+  sizeTotal: Int!
+  loadTimeTotal: Int!
   measurements(
     interval: MeasurementInterval!
     before: DateTime!
