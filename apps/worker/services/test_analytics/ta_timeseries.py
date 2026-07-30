@@ -188,6 +188,11 @@ def get_pr_comment_agg(
     repo_id: int, commit_sha: str, lower_bound_timestamp: datetime | None = None
 ) -> PRCommentAgg:
     with connections["ta_timeseries"].cursor() as cursor:
+        # Set a 30-second statement timeout to fail fast rather than waiting
+        # for the server to terminate the connection on long-running queries.
+        # Reset afterward so the session is clean for connection pool reuse.
+        cursor.execute("SET statement_timeout = '30s'")
+
         if lower_bound_timestamp is not None:
             query = """
                 SELECT outcome, count(*) FROM (
@@ -217,6 +222,7 @@ def get_pr_comment_agg(
 
         cursor.execute(query, params)
         outcome_dict = dict(cursor.fetchall())
+        cursor.execute("SET statement_timeout = 0")
 
         return {
             "passed": outcome_dict.get("pass", 0),
