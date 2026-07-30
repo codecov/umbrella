@@ -22,6 +22,7 @@ def resolve_bundle_analysis_report_result_type(
 
 
 @bundle_analysis_report_bindable.field("bundles")
+@bundle_analysis_report_bindable.field("entries")
 def resolve_bundles(
     bundles_analysis_report: BundleAnalysisReport, info: GraphQLResolveInfo
 ) -> list[BundleReport]:
