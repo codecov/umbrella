@@ -351,6 +351,10 @@ class AsyncGraphqlView(GraphQLAsyncView):
         formatted = error.formatted
         formatted["message"] = "INTERNAL SERVER ERROR"
         formatted["type"] = "ServerError"
+        # malformed queries (schema validation errors) are client errors - return early
+        # without logging/capturing to Sentry, for both anonymous and authenticated users
+        if is_bad_query:
+            return formatted
         # if this is one of our own command exception, we can tell a bit more
         original_error = error.original_error
         if isinstance(original_error, BaseException) or isinstance(
