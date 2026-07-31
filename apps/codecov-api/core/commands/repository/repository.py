@@ -15,6 +15,7 @@ from .interactors.regenerate_repository_token import RegenerateRepositoryTokenIn
 from .interactors.regenerate_repository_upload_token import (
     RegenerateRepositoryUploadTokenInteractor,
 )
+from .interactors.set_upload_token import SetUploadTokenInteractor
 from .interactors.update_bundle_cache_config import UpdateBundleCacheConfigInteractor
 from .interactors.update_repository import UpdateRepositoryInteractor
 
@@ -30,6 +31,16 @@ class RepositoryCommands(BaseCommand):
     ) -> Awaitable[uuid.UUID]:
         return self.get_interactor(RegenerateRepositoryUploadTokenInteractor).execute(
             repo_name, owner_username
+        )
+
+    def set_upload_token(
+        self,
+        owner_username: str,
+        repo_name: str,
+        token: str,
+    ) -> None:
+        return self.get_interactor(SetUploadTokenInteractor).execute(
+            owner_username, repo_name, token
         )
 
     def update_repository(
