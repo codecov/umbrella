@@ -467,6 +467,15 @@ def resolve_activated_user_count(owner: Owner, info: GraphQLResolveInfo) -> int:
     return owner.activated_user_count
 
 
+@owner_bindable.field("studentFreeTrial")
+@sync_to_async
+@require_part_of_org
+def resolve_student_free_trial(
+    owner: Owner, info: GraphQLResolveInfo
+) -> bool | None:
+    return owner.student
+
+
 @owner_bindable.field("billing")
 @sync_to_async
 @require_part_of_org
