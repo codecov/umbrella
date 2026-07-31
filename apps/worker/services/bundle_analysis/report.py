@@ -369,16 +369,39 @@ class BundleAnalysisReportService(BaseReportService):
         measurable_id: str,
         value: float,
     ):
-        command = postgresql.insert(Measurement.__table__).values(
-            name=name,
-            owner_id=commit.repository.ownerid,
-            repo_id=commit.repoid,
-            measurable_id=measurable_id,
-            branch=commit.branch,
-            commit_sha=commit.commitid,
-            timestamp=commit.timestamp,
-            value=value,
+        self._save_to_timeseries_bulk(
+            db_session,
+            commit,
+            [{"name": name, "measurable_id": measurable_id, "value": value}],
         )
+
+    def _save_to_timeseries_bulk(
+        self,
+        db_session: Session,
+        commit: Commit,
+        measurements: list[dict],
+    ):
+        """
+        Bulk upsert a list of measurements into the timeseries table in a single
+        DB round-trip. Each item in `measurements` must have keys:
+        ``name``, ``measurable_id``, and ``value``.
+        """
+        if not measurements:
+            return
+        rows = [
+            {
+                "name": m["name"],
+                "owner_id": commit.repository.ownerid,
+                "repo_id": commit.repoid,
+                "measurable_id": m["measurable_id"],
+                "branch": commit.branch,
+                "commit_sha": commit.commitid,
+                "timestamp": commit.timestamp,
+                "value": m["value"],
+            }
+            for m in measurements
+        ]
+        command = postgresql.insert(Measurement.__table__).values(rows)
         command = command.on_conflict_do_update(
             index_elements=[
                 Measurement.name,
@@ -417,48 +440,63 @@ class BundleAnalysisReportService(BaseReportService):
             db_session = commit.get_db_session()
             bundle_report = bundle_analysis_report.bundle_report(bundle_name)
             if bundle_report:
+                bulk_measurements: list[dict] = []
+
                 # For overall bundle size
                 if MeasurementName.bundle_analysis_report_size.value in dataset_names:
-                    self._save_to_timeseries(
-                        db_session,
-                        commit,
-                        MeasurementName.bundle_analysis_report_size.value,
-                        bundle_report.name,
-                        bundle_report.total_size(),
+                    bulk_measurements.append(
+                        {
+                            "name": MeasurementName.bundle_analysis_report_size.value,
+                            "measurable_id": bundle_report.name,
+                            "value": bundle_report.total_size(),
+                        }
                     )
 
                 # For individual javascript associated assets using UUID
-                if MeasurementName.bundle_analysis_asset_size.value in dataset_names:
-                    for asset in bundle_report.asset_reports():
-                        if asset.asset_type == AssetType.JAVASCRIPT:
-                            self._save_to_timeseries(
-                                db_session,
-                                commit,
-                                MeasurementName.bundle_analysis_asset_size.value,
-                                asset.uuid,
-                                asset.size,
-                            )
+                save_asset_size = (
+                    MeasurementName.bundle_analysis_asset_size.value in dataset_names
+                )
 
-                # For asset types sizes
+                # For asset types sizes — accumulate totals in a single pass
                 asset_type_map = {
                     MeasurementName.bundle_analysis_font_size: AssetType.FONT,
                     MeasurementName.bundle_analysis_image_size: AssetType.IMAGE,
                     MeasurementName.bundle_analysis_stylesheet_size: AssetType.STYLESHEET,
                     MeasurementName.bundle_analysis_javascript_size: AssetType.JAVASCRIPT,
                 }
-                for measurement_name, asset_type in asset_type_map.items():
-                    if measurement_name.value in dataset_names:
-                        total_size = 0
-                        for asset in bundle_report.asset_reports():
-                            if asset.asset_type == asset_type:
-                                total_size += asset.size
-                        self._save_to_timeseries(
-                            db_session,
-                            commit,
-                            measurement_name.value,
-                            bundle_report.name,
-                            total_size,
-                        )
+                active_type_totals: dict[MeasurementName, int] = {
+                    mn: 0
+                    for mn, _ in asset_type_map.items()
+                    if mn.value in dataset_names
+                }
+
+                if save_asset_size or active_type_totals:
+                    for asset in bundle_report.asset_reports():
+                        if save_asset_size and asset.asset_type == AssetType.JAVASCRIPT:
+                            bulk_measurements.append(
+                                {
+                                    "name": MeasurementName.bundle_analysis_asset_size.value,
+                                    "measurable_id": asset.uuid,
+                                    "value": asset.size,
+                                }
+                            )
+                        for mn, asset_type in asset_type_map.items():
+                            if (
+                                mn in active_type_totals
+                                and asset.asset_type == asset_type
+                            ):
+                                active_type_totals[mn] += asset.size
+
+                for mn, total_size in active_type_totals.items():
+                    bulk_measurements.append(
+                        {
+                            "name": mn.value,
+                            "measurable_id": bundle_report.name,
+                            "value": total_size,
+                        }
+                    )
+
+                self._save_to_timeseries_bulk(db_session, commit, bulk_measurements)
 
             return ProcessingResult(
                 upload=upload,
