@@ -112,6 +112,16 @@ def resolve_self_hosted_license(_, info):
     return license
 
 
+@config_bindable.field("codecovUrl")
+def resolve_codecov_url(_, info):
+    return settings.CODECOV_URL
+
+
+@config_bindable.field("apiUrl")
+def resolve_api_url(_, info):
+    return settings.CODECOV_API_URL
+
+
 @config_bindable.field("hasAdmins")
 def resolve_has_admins(_, info):
     if not settings.IS_ENTERPRISE:
