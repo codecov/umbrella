@@ -1,6 +1,7 @@
 from graphql_api.helpers.ariadne import ariadne_load_local_graphql
 
 from .activate_measurements import gql_activate_measurements
+from .activate_repository import gql_activate_repository
 from .cancel_trial import gql_cancel_trial
 from .create_api_token import gql_create_api_token
 from .create_stripe_setup_intent import gql_create_stripe_setup_intent
@@ -54,6 +55,7 @@ mutation = mutation + gql_save_terms_agreement
 mutation = mutation + gql_start_trial
 mutation = mutation + gql_cancel_trial
 mutation = mutation + gql_delete_component_measurements
+mutation = mutation + gql_activate_repository
 mutation = mutation + gql_erase_repository
 mutation = mutation + gql_update_repository
 mutation = mutation + gql_update_self_hosted_settings
