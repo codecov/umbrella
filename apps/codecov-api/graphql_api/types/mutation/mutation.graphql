@@ -26,7 +26,10 @@ type Mutation {
   regenerateSupportPin: RegenerateSupportPinPayload
   deleteFlag(input: DeleteFlagInput!): DeleteFlagPayload
   saveSentryState(input: SaveSentryStateInput!): SaveSentryStatePayload
-  saveTermsAgreement(input: SaveTermsAgreementInput!): SaveTermsAgreementPayload
+  saveTermsAgreement(
+    input: SaveTermsAgreementInput
+    termsAgreement: Boolean @deprecated(reason: "Use input instead")
+  ): SaveTermsAgreementPayload
   deleteComponentMeasurements(
     input: DeleteComponentMeasurementsInput!
   ): DeleteComponentMeasurementsPayload
