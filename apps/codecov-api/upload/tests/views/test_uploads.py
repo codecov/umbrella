@@ -963,6 +963,69 @@ class TestGitlabEnterpriseOIDC(APITestCase):
     @patch("upload.views.uploads.AnalyticsService")
     @patch("upload.helpers.jwt.decode")
     @patch("upload.helpers.PyJWKClient")
+    def test_uploads_post_github_enterprise_data_residency_oidc_auth_jwks_url(
+        self,
+        mock_jwks_client,
+        mock_jwt_decode,
+        analytics_service_mock,
+    ):
+        # GitHub Enterprise Cloud with data residency (*.ghe.com) issues OIDC
+        # tokens from token.actions.<subdomain>.ghe.com, whose JWKS lives at the
+        # issuer's standard well-known path rather than /_services/token.
+        mock_config_helper(
+            self.mocker, configs={"github_enterprise.url": "https://octocorp.ghe.com"}
+        )
+        self.mocker.patch(
+            "shared.storage.MinioStorageService.create_presigned_put",
+            return_value="presigned put",
+        )
+        self.mocker.patch("upload.views.uploads.trigger_upload_task", return_value=True)
+
+        repository = RepositoryFactory(
+            name="the_repo",
+            author__username="codecov",
+            author__service="github_enterprise",
+            author__upload_token_required_for_public_repos=True,
+            private=False,
+        )
+        mock_jwt_decode.return_value = {
+            "repository": f"url/{repository.name}",
+            "repository_owner": repository.author.username,
+            "iss": "https://token.actions.octocorp.ghe.com",
+            "audience": [settings.CODECOV_API_URL],
+        }
+        token = "ThisValueDoesNotMatterBecauseOf_mock_jwt_decode"
+
+        commit = CommitFactory(repository=repository)
+        CommitReport.objects.create(commit=commit)
+
+        client = APIClient()
+        url = reverse(
+            "new_upload.uploads",
+            args=[
+                "github_enterprise",
+                "codecov::::the_repo",
+                commit.commitid,
+                "default",
+            ],
+        )
+        response = client.post(
+            url,
+            {
+                "state": "uploaded",
+                "flags": ["flag1", "flag2"],
+                "version": "version",
+            },
+            headers={"Authorization": f"token {token}"},
+        )
+        assert response.status_code == 201
+        mock_jwks_client.assert_called_with(
+            "https://token.actions.octocorp.ghe.com/.well-known/jwks"
+        )
+
+    @patch("upload.views.uploads.AnalyticsService")
+    @patch("upload.helpers.jwt.decode")
+    @patch("upload.helpers.PyJWKClient")
     def test_uploads_post_github_enterprise_oidc_auth_no_url(
         self,
         mock_jwks_client,
