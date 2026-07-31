@@ -39,6 +39,20 @@ def resolve_head_totals(
     return component_comparison.head_totals
 
 
+@component_comparison_bindable.field("head")
+def resolve_head(
+    component_comparison: ComponentComparison, info
+) -> ReportTotals:
+    return component_comparison.head_totals
+
+
+@component_comparison_bindable.field("base")
+def resolve_base(
+    component_comparison: ComponentComparison, info
+) -> ReportTotals:
+    return component_comparison.base_totals
+
+
 @component_comparison_bindable.field("patchTotals")
 @sync_to_async
 def resolve_patch_totals(
