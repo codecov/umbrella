@@ -346,6 +346,9 @@ class AsyncGraphqlView(GraphQLAsyncView):
         is_anonymous = user.is_anonymous if user else True
         # the only way to check for a malformed query
         is_bad_query = "Cannot query field" in error.formatted["message"]
+        # GraphQL schema-validation errors (unknown argument, unknown field, etc.)
+        # have original_error=None; they are client mistakes, not server errors
+        is_graphql_validation_error = error.original_error is None
         if debug or (not is_anonymous and is_bad_query):
             return format_error(error, debug)
         formatted = error.formatted
@@ -353,7 +356,13 @@ class AsyncGraphqlView(GraphQLAsyncView):
         formatted["type"] = "ServerError"
         # if this is one of our own command exception, we can tell a bit more
         original_error = error.original_error
-        if isinstance(original_error, BaseException) or isinstance(
+        if is_graphql_validation_error:
+            # GraphQL schema-validation errors are client errors (bad queries),
+            # not server bugs — return the original message without logging or
+            # capturing to Sentry
+            formatted["message"] = error.formatted["message"]
+            formatted["type"] = "ValidationError"
+        elif isinstance(original_error, BaseException) or isinstance(
             original_error, ServiceException
         ):
             formatted["message"] = original_error.message  # type: ignore
