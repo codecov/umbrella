@@ -121,6 +121,10 @@ async def resolve_change_coverage(
         return head_totals.coverage - base_totals.coverage
 
 
+# deprecated field - alias for changeCoverage for backwards compatibility
+comparison_bindable.set_field("changeWithParent", resolve_change_coverage)
+
+
 @comparison_bindable.field("baseTotals")
 async def resolve_base_totals(
     comparison: ComparisonReport, info: GraphQLResolveInfo
