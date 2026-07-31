@@ -1,0 +1,6 @@
+union RegenerateUploadTokenError = UnauthenticatedError | UnauthorizedError | ValidationError
+
+type RegenerateUploadTokenPayload {
+  uploadToken: String
+  error: RegenerateUploadTokenError
+}

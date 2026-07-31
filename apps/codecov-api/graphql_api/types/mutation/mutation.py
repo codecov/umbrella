@@ -35,6 +35,10 @@ from .regenerate_repository_upload_token import (
     error_regenerate_repository_upload_token,
     resolve_regenerate_repository_upload_token,
 )
+from .regenerate_upload_token import (
+    error_regenerate_upload_token,
+    resolve_regenerate_upload_token,
+)
 from .regenerate_support_pin import (
     error_regenerate_support_pin,
     resolve_regenerate_support_pin,
@@ -116,6 +120,7 @@ mutation_bindable.field("storeEventMetric")(resolve_store_event_metrics)
 mutation_bindable.field("saveOktaConfig")(resolve_save_okta_config)
 mutation_bindable.field("setUploadTokenRequired")(resolve_set_upload_token_required)
 mutation_bindable.field("updateBundleCacheConfig")(resolve_update_bundle_cache_config)
+mutation_bindable.field("regenerateUploadToken")(resolve_regenerate_upload_token)
 
 mutation_resolvers = [
     mutation_bindable,
@@ -148,5 +153,6 @@ mutation_resolvers = [
     error_store_event_metrics,
     error_save_okta_config,
     error_set_upload_token_required,
+    error_regenerate_upload_token,
     error_update_bundle_cache_config,
 ]

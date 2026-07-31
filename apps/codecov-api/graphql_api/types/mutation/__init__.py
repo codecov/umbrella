@@ -16,6 +16,7 @@ from .regenerate_org_upload_token import gql_regenerate_org_upload_token
 from .regenerate_repository_token import gql_regenerate_repository_token
 from .regenerate_repository_upload_token import gql_regenerate_repository_upload_token
 from .regenerate_support_pin import gql_regenerate_support_pin
+from .regenerate_upload_token import gql_regenerate_upload_token
 from .revoke_user_token import gql_revoke_user_token
 from .save_okta_config import gql_save_okta_config
 from .save_sentry_state import gql_save_sentry_state
@@ -63,3 +64,4 @@ mutation = mutation + gql_store_event_metrics
 mutation = mutation + gql_save_okta_config
 mutation = mutation + gql_set_upload_token_required
 mutation = mutation + gql_update_bundle_cache_config
+mutation = mutation + gql_regenerate_upload_token
