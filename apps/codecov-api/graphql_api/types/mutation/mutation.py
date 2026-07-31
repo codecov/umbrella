@@ -42,10 +42,7 @@ from .regenerate_support_pin import (
 from .revoke_user_token import error_revoke_user_token, resolve_revoke_user_token
 from .save_okta_config import error_save_okta_config, resolve_save_okta_config
 from .save_sentry_state import error_save_sentry_state, resolve_save_sentry_state
-from .save_terms_agreement import (
-    error_save_terms_agreement,
-    resolve_save_terms_agreement,
-)
+from .save_terms_agreement import resolve_save_terms_agreement
 from .set_upload_token_required import (
     error_set_upload_token_required,
     resolve_set_upload_token_required,
@@ -137,7 +134,6 @@ mutation_resolvers = [
     error_delete_component_measurements,
     error_delete_flag,
     error_save_sentry_state,
-    error_save_terms_agreement,
     error_start_trial,
     error_cancel_trial,
     error_erase_repository,

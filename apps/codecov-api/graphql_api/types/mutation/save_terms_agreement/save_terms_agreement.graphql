@@ -1,7 +1,5 @@
-union SaveTermsAgreementError = UnauthenticatedError | ValidationError
-
 type SaveTermsAgreementPayload {
-  error: SaveTermsAgreementError
+  error: ResolverError
 }
 
 input SaveTermsAgreementInput {
