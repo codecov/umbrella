@@ -19,11 +19,14 @@ def apply_filters_to_queryset(
     active = filters.get("active")
     activated = filters.get("activated")
     repo_names = filters.get("repo_names")
+    repository_name = filters.get("repository_name")
     is_public = filters.get("is_public")
     ai_enabled = filters.get("ai_enabled")
 
     if repo_names:
         queryset = queryset.filter(name__in=repo_names)
+    if repository_name:
+        queryset = queryset.filter(name=repository_name)
     if term:
         queryset = queryset.filter(name__contains=term)
     if activated is not None:
