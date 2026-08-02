@@ -6,7 +6,7 @@ import sentry_sdk
 from lxml.etree import Element
 from timestring import Date, TimestringInvalid
 
-from helpers.exceptions import ReportExpiredException
+from helpers.exceptions import ReportExpiredException, ReportTooLargeError
 from services.report.languages.base import BaseLanguageProcessor, normalize_timestamp
 from services.report.report_builder import CoverageType, ReportBuilderSession
 
@@ -34,6 +34,9 @@ def Int(value):
 def get_sources_to_attempt(xml) -> Sequence[str]:
     sources = (source.text for source in xml.iter("source"))
     return tuple(s for s in sources if isinstance(s, str) and s.startswith("/"))
+
+
+DEFAULT_MAX_CLASSES = 50_000
 
 
 def from_xml(xml: Element, report_builder_session: ReportBuilderSession) -> None:
@@ -66,9 +69,36 @@ def from_xml(xml: Element, report_builder_session: ReportBuilderSession) -> None
         ("parsers", "cobertura", "partials_as_hits"),
         False,
     )
+    max_classes = report_builder_session.yaml_field(
+        ("parsers", "cobertura", "max_classes"),
+        DEFAULT_MAX_CLASSES,
+    )
 
-    for _class in xml.iter("class"):
+    all_classes = list(xml.iter("class"))
+    if len(all_classes) > max_classes:
+        log.warning(
+            "Cobertura report exceeds maximum class count and will not be processed",
+            extra={"class_count": len(all_classes), "max_classes": max_classes},
+        )
+        raise ReportTooLargeError(
+            f"Cobertura report has {len(all_classes)} classes, "
+            f"which exceeds the maximum of {max_classes}. "
+            "Upload a smaller report or increase parsers.cobertura.max_classes."
+        )
+
+    # Collect path-fixing data in the same pass as coverage to avoid a second
+    # full iteration of the class elements.
+    path_fixer = report_builder_session.path_fixer
+    source_path_list = get_sources_to_attempt(xml)
+    path_name_fixing = []
+
+    for _class in all_classes:
         filename = _class.attrib["filename"]
+        # Always collect path-fixing data to maintain parity with the original
+        # two-pass approach (including empty filenames which resolve to None).
+        fixed_name = path_fixer(filename, bases_to_try=source_path_list)
+        path_name_fixing.append((filename, fixed_name))
+
         if not filename:
             continue
         _file = report_builder_session.create_coverage_file(filename, do_fix_path=False)
@@ -198,16 +228,6 @@ def from_xml(xml: Element, report_builder_session: ReportBuilderSession) -> None
                 ),
             )
         report_builder_session.append(_file)
-
-    # path rename
-    path_fixer = report_builder_session.path_fixer
-    source_path_list = get_sources_to_attempt(xml)
-    path_name_fixing = []
-
-    for _class in xml.iter("class"):
-        filename = _class.attrib["filename"]
-        fixed_name = path_fixer(filename, bases_to_try=source_path_list)
-        path_name_fixing.append((filename, fixed_name))
 
     # paths with `X-packages` should be sorted to the end
     path_name_fixing.sort(
