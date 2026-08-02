@@ -1592,8 +1592,8 @@ class GithubWebhookHandlerTests(APITestCase):
         )
         assert response.status_code == status.HTTP_200_OK
 
-    def test_installation_with_null_account_returns_200_and_skips(self, mocker):
-        mock_log = mocker.patch("webhook_handlers.views.github.log")
+    @patch("webhook_handlers.views.github.log")
+    def test_installation_with_null_account_returns_200_and_skips(self, mock_log):
         owner_count_before = Owner.objects.count()
         installation_count_before = GithubAppInstallation.objects.count()
 
@@ -1625,9 +1625,8 @@ class GithubWebhookHandlerTests(APITestCase):
         assert mock_log.warning.call_args.kwargs["extra"]["installation_id"] == 987
         assert mock_log.warning.call_args.kwargs["extra"]["action"] == "created"
 
-    def test_installation_repositories_with_missing_account_returns_200(self, mocker):
-        mock_log = mocker.patch("webhook_handlers.views.github.log")
-
+    @patch("webhook_handlers.views.github.log")
+    def test_installation_repositories_with_missing_account_returns_200(self, mock_log):
         response = self._post_event_data(
             event=GitHubWebhookEvents.INSTALLATION_REPOSITORIES,
             data={
