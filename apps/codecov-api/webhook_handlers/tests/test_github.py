@@ -1591,3 +1591,61 @@ class GithubWebhookHandlerTests(APITestCase):
             },
         )
         assert response.status_code == status.HTTP_200_OK
+
+    def test_installation_with_null_account_returns_200_and_skips(self, mocker):
+        mock_log = mocker.patch("webhook_handlers.views.github.log")
+        owner_count_before = Owner.objects.count()
+        installation_count_before = GithubAppInstallation.objects.count()
+
+        response = self._post_event_data(
+            event=GitHubWebhookEvents.INSTALLATION,
+            data={
+                "action": "created",
+                "installation": {
+                    "id": 987,
+                    "account": None,
+                    "app_id": 332095,
+                    "repository_selection": "all",
+                },
+                "sender": {"type": "User"},
+            },
+            app_id=332095,
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        assert Owner.objects.count() == owner_count_before
+        assert GithubAppInstallation.objects.count() == installation_count_before
+        mock_log.warning.assert_called_once()
+        assert (
+            mock_log.warning.call_args.args[0]
+            == "Ignoring installation webhook with missing account"
+        )
+        assert str(mock_log.warning.call_args.kwargs["extra"]["target_id"]) == "332095"
+        assert mock_log.warning.call_args.kwargs["extra"]["app_id"] == 332095
+        assert mock_log.warning.call_args.kwargs["extra"]["installation_id"] == 987
+        assert mock_log.warning.call_args.kwargs["extra"]["action"] == "created"
+
+    def test_installation_repositories_with_missing_account_returns_200(self, mocker):
+        mock_log = mocker.patch("webhook_handlers.views.github.log")
+
+        response = self._post_event_data(
+            event=GitHubWebhookEvents.INSTALLATION_REPOSITORIES,
+            data={
+                "action": "added",
+                "installation": {
+                    "id": 987,
+                    "app_id": 2392721,
+                },
+                "repositories_added": [],
+            },
+            app_id=2392721,
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        mock_log.warning.assert_called_once()
+        assert str(mock_log.warning.call_args.kwargs["extra"]["target_id"]) == "2392721"
+        assert mock_log.warning.call_args.kwargs["extra"]["app_id"] == 2392721
+        assert (
+            mock_log.warning.call_args.kwargs["extra"]["github_webhook_event"]
+            == GitHubWebhookEvents.INSTALLATION_REPOSITORIES
+        )
