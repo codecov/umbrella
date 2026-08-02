@@ -111,7 +111,7 @@ def from_xml(xml: Element, report_builder_session: ReportBuilderSession) -> None
                 else:
                     # [groovy] embedded conditions
                     conditions = [
-                        "{number}:{type}".format(**_.attrib)
+                        f"{_.attrib['number']}:{_.attrib['type']}"
                         for _ in line.iter("condition")
                         if _.attrib.get("coverage") != "100%"
                     ]
