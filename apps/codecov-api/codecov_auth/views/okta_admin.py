@@ -40,9 +40,7 @@ class OktaAdminLoginView(OktaLoginMixin, StateMixin, View):
             return self._handle_callback(request, iss)
 
         # Stash the intended post-login destination before leaving for Okta.
-        request.session["okta_admin_next"] = request.GET.get(
-            "next", f"/{_ADMIN_URL}/"
-        )
+        request.session["okta_admin_next"] = request.GET.get("next", f"/{_ADMIN_URL}/")
         return self._redirect_to_consent(
             iss=iss,
             client_id=settings.OKTA_ADMIN_CLIENT_ID,
@@ -88,7 +86,9 @@ class OktaAdminLoginView(OktaLoginMixin, StateMixin, View):
                 iss, user_data.id_token, settings.OKTA_ADMIN_CLIENT_ID
             )
         except Exception:
-            log.warning("Okta admin login failed: id_token validation error", exc_info=True)
+            log.warning(
+                "Okta admin login failed: id_token validation error", exc_info=True
+            )
             return None
 
         okta_id = id_payload.sub

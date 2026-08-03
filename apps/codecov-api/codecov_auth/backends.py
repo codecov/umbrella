@@ -23,7 +23,5 @@ class OktaAdminBackend(ModelBackend):
             okta_user = OktaUser.objects.select_related("user").get(okta_id=okta_id)
             return okta_user.user
         except OktaUser.DoesNotExist:
-            log.debug(
-                "OktaAdminBackend: no OktaUser found for okta_id=%s", okta_id
-            )
+            log.debug("OktaAdminBackend: no OktaUser found for okta_id=%s", okta_id)
             return None
