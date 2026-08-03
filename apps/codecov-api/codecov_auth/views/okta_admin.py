@@ -73,7 +73,7 @@ class OktaAdminLoginView(OktaLoginMixin, StateMixin, View):
         current_user.save(update_fields=["is_staff"])
 
         self.remove_state(state)
-        login(request, current_user, backend="codecov_auth.backends.OktaAdminBackend")
+        login(request, current_user)
         next_url = request.session.pop("okta_admin_next", f"/{_ADMIN_URL}/")
         return redirect(next_url)
 
