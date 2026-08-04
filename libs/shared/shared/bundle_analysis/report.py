@@ -256,8 +256,9 @@ class BundleReport:
                 chunk_entry,
                 chunk_initial,
             ).order_by(ordering(getattr(Asset, ordering_column)))
+            bundle_info = self.info()
             return (
-                AssetReport(self.db_path, asset, self.info()) for asset in assets.all()
+                AssetReport(self.db_path, asset, bundle_info) for asset in assets.all()
             )
 
     def total_size(
