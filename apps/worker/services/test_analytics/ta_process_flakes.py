@@ -72,7 +72,11 @@ def handle_pass(curr_flakes: dict[bytes, Flake], test_id: bytes):
 
 def handle_failure(
     curr_flakes: dict[bytes, Flake], test_id: bytes, testrun: Testrun, repo_id: int
-):
+) -> bool:
+    """Process a test failure and update flake state.
+
+    Returns True if the testrun outcome was changed to 'flaky_fail'.
+    """
     existing_flake = curr_flakes.get(test_id)
 
     if existing_flake:
@@ -92,6 +96,8 @@ def handle_failure(
 
     if testrun.outcome != "flaky_fail":
         testrun.outcome = "flaky_fail"
+        return True
+    return False
 
 
 @sentry_sdk.trace
@@ -100,9 +106,15 @@ def process_single_upload(
     curr_flakes: dict[bytes, Flake],
     repo_id: int,
     testruns: list[Testrun] | None = None,
-) -> list[Testrun]:
+) -> set[bytes]:
+    """Process a single upload for flake detection.
+
+    Returns the set of test_ids that were modified (outcome set to 'flaky_fail').
+    """
     if testruns is None:
         testruns = list(get_testruns(upload))
+
+    modified_test_ids: set[bytes] = set()
 
     for testrun in testruns:
         test_id = bytes(testrun.test_id)
@@ -113,11 +125,13 @@ def process_single_upload(
 
                 handle_pass(curr_flakes, test_id)
             case "failure" | "flaky_fail" | "error":
-                handle_failure(curr_flakes, test_id, testrun, repo_id)
+                changed = handle_failure(curr_flakes, test_id, testrun, repo_id)
+                if changed:
+                    modified_test_ids.add(test_id)
             case _:
                 continue
 
-    return testruns
+    return modified_test_ids
 
 
 @sentry_sdk.trace
@@ -141,18 +155,43 @@ def process_flakes_for_commit(repo_id: int, commit_id: str):
 
     testruns_by_upload = get_testruns_for_uploads(uploads)
 
-    all_testruns: list[Testrun] = []
+    # Track modified test_ids by upload_id
+    modifications_by_upload: dict[int, set[bytes]] = {}
     for upload in uploads:
-        testruns = process_single_upload(
+        modified_test_ids = process_single_upload(
             upload, curr_flakes, repo_id, testruns=testruns_by_upload[upload.id]
         )
-        all_testruns.extend(testruns)
+        if modified_test_ids:
+            modifications_by_upload[upload.id] = modified_test_ids
         log.info(
             "process_flakes_for_commit: processed upload",
-            extra={"upload": upload.id},
+            extra={"upload": upload.id, "modified_count": len(modified_test_ids)},
         )
 
-    Testrun.objects.bulk_update(all_testruns, ["outcome"])
+    # Update testruns in batches by upload_id
+    total_updated = 0
+    for upload_id, modified_test_ids in modifications_by_upload.items():
+        updated_count = Testrun.objects.filter(
+            upload_id=upload_id,
+            test_id__in=modified_test_ids,
+            outcome__in=["failure", "error"],  # Don't update already-flaky or pass outcomes
+            timestamp__gte=timezone.now() - timedelta(days=1),  # Required for TimescaleDB chunk pruning
+        ).update(outcome="flaky_fail")
+        total_updated += updated_count
+
+        log.info(
+            "Updated testruns to flaky_fail",
+            extra={
+                "upload_id": upload_id,
+                "modified_test_ids_count": len(modified_test_ids),
+                "rows_updated": updated_count,
+            },
+        )
+
+    log.info(
+        "process_flakes_for_commit: completed testrun updates",
+        extra={"total_rows_updated": total_updated},
+    )
 
     log.info(
         "process_flakes_for_commit: bulk creating flakes",
