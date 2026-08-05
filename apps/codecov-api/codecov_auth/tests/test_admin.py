@@ -3,8 +3,9 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from django.contrib.admin.helpers import ACTION_CHECKBOX_NAME
-from django.contrib.admin.models import LogEntry
+from django.contrib.admin.models import CHANGE, LogEntry
 from django.contrib.admin.sites import AdminSite
+from django.contrib.contenttypes.models import ContentType
 from django.test import RequestFactory, TestCase
 from django.urls import reverse
 from django.utils import timezone
@@ -90,6 +91,34 @@ class OwnerAdminTest(TestCase):
             reverse("admin:codecov_auth_owner_change", args=[owner.pk])
         )
         self.assertEqual(response.status_code, 200)
+
+    def test_owner_admin_history_links_to_user_by_name(self):
+        owner = OwnerFactory()
+        LogEntry.objects.log_action(
+            user_id=self.staff_user.pk,
+            content_type_id=ContentType.objects.get_for_model(owner).pk,
+            object_id=owner.pk,
+            object_repr=str(owner),
+            action_flag=CHANGE,
+            change_message="Changed owner.",
+        )
+
+        response = self.client.get(
+            reverse("admin:codecov_auth_owner_history", args=[owner.pk])
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(
+            response,
+            (
+                f'<a href="{reverse("admin:codecov_auth_user_change", args=[self.staff_user.pk])}">'
+                f"{self.staff_user.name}</a>"
+            ),
+            html=True,
+        )
+        self.assertNotContains(
+            response, f"<td>{self.staff_user.external_id}</td>", html=True
+        )
 
     def test_owner_admin_github_app_installations_summary(self):
         owner = OwnerFactory()
