@@ -3,6 +3,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from django.contrib.admin.helpers import ACTION_CHECKBOX_NAME
+from django.contrib.admin.models import LogEntry
 from django.contrib.admin.sites import AdminSite
 from django.test import RequestFactory, TestCase
 from django.urls import reverse
@@ -14,6 +15,7 @@ from codecov_auth.admin import (
     AccountAdmin,
     GithubAppInstallationAdmin,
     InvoiceBillingAdmin,
+    LogEntryAdmin,
     OrgUploadTokenInline,
     OwnerAdmin,
     OwnerToBeDeletedAdmin,
@@ -54,6 +56,19 @@ from shared.django_apps.codecov_auth.tests.factories import (
 )
 from shared.django_apps.core.tests.factories import PullFactory, RepositoryFactory
 from shared.plan.constants import DEFAULT_FREE_PLAN, PlanName
+
+
+class LogEntryAdminTest(TestCase):
+    def test_user_link_displays_name(self):
+        user = UserFactory(name="Admin User", email="admin@example.com")
+        log_entry = LogEntry(user=user)
+        log_entry_admin = LogEntryAdmin(LogEntry, AdminSite())
+
+        result = log_entry_admin.user_link(log_entry)
+
+        assert "Admin User" in result
+        assert "admin@example.com" not in result
+        assert reverse("admin:codecov_auth_user_change", args=[user.pk]) in result
 
 
 class OwnerAdminTest(TestCase):
