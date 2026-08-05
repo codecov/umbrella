@@ -98,8 +98,10 @@ def process_single_upload(
         updated_count = Testrun.objects.filter(
             upload_id=upload_id,
             test_id__in=modified_test_ids,
-            outcome__in=["failure", "error"],  # Don't update already-flaky or pass outcomes
-            timestamp__gte=timezone.now() - timedelta(days=1),  # Required for TimescaleDB chunk pruning
+            # Don't update already-flaky or pass outcomes
+            outcome__in=["failure", "error"],
+            # Required for TimescaleDB chunk pruning
+            timestamp__gte=timezone.now() - timedelta(days=1),
         ).update(outcome="flaky_fail")
 
         log.info(
