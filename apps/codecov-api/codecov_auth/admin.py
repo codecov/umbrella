@@ -1328,8 +1328,16 @@ class LogEntryAdmin(admin.ModelAdmin):
         "action_flag",
         "change_message",
     )
-    list_display = ["__str__", "action_time", "user", "change_message"]
+    list_display = ["__str__", "action_time", "user_link", "change_message"]
+    list_select_related = ("user",)
     search_fields = ("object_repr", "change_message")
+
+    @admin.display(description="User", ordering="user__name")
+    def user_link(self, obj):
+        user = obj.user
+        label = user.name or user.email or user.pk
+        url = reverse("admin:codecov_auth_user_change", args=[user.pk])
+        return format_html('<a href="{}">{}</a>', url, label)
 
     # keep only view permission
     def has_add_permission(self, request):
