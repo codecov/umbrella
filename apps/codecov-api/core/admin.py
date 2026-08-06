@@ -777,6 +777,9 @@ class CommitAdmin(AdminMixin, admin.ModelAdmin):
     list_filter = ("state", CommitNotificationStatusFilter, "timestamp")
     list_select_related = ("repository", "repository__author")
     ordering = ("-id",)
+    # A non-empty value makes Django render the search bar; matching is
+    # constrained by get_search_results below.
+    search_fields = ("commitid", "repository_id")
     search_help_text = "Search by repoid (exact) or full commit SHA (exact)."
     readonly_fields = (
         "id",

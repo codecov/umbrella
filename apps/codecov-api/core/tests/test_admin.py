@@ -216,6 +216,12 @@ class CommitAdminTests(TestCase):
     def test_default_ordering_is_id_descending(self):
         self.assertEqual(self.commit_admin.ordering, ("-id",))
 
+    def test_search_is_enabled(self):
+        self.assertEqual(
+            self.commit_admin.search_fields,
+            ("commitid", "repository_id"),
+        )
+
     def test_has_no_delete_permission(self):
         """Test that delete permission is disabled."""
         request = MagicMock()
