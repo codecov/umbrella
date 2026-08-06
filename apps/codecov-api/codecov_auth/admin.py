@@ -8,8 +8,9 @@ from django.contrib import admin, messages
 from django.contrib.admin.helpers import ACTION_CHECKBOX_NAME
 from django.contrib.admin.models import LogEntry
 from django.db.models import Count, OuterRef, Q, Subquery
+from django.db.models.fields import BLANK_CHOICE_DASH
 from django.db.models.functions import Coalesce
-from django.forms import CheckboxInput, Textarea
+from django.forms import CheckboxInput, Select, Textarea
 from django.http import HttpRequest
 from django.shortcuts import redirect, render
 from django.urls import reverse
@@ -45,7 +46,6 @@ from shared.django_apps.codecov_auth.models import (
 )
 from shared.django_apps.codecov_auth.models import User as CodecovUser
 from shared.owner_data_export.config import EXPORT_DAYS_DEFAULT
-from shared.plan.constants import DEFAULT_FREE_PLAN
 from shared.plan.service import PlanService
 from utils.services import get_short_service_name
 
@@ -1111,18 +1111,12 @@ class OwnerAdmin(AdminMixin, admin.ModelAdmin):
 
     def get_form(self, request, obj=None, change=False, **kwargs):
         form = super().get_form(request, obj, change, **kwargs)
-        active_plans = list(
-            Plan.objects.filter(is_active=True).values_list("name", flat=True)
-        )
-
-        def put_free_plan_first(name: str) -> bool:
-            return name != DEFAULT_FREE_PLAN
-
-        active_plans.sort(key=put_free_plan_first)
-        form.base_fields["plan"] = forms.ChoiceField(
-            choices=[(name, name) for name in active_plans],
-            required=True,
-            label="Plan",
+        PLANS_CHOICES = [
+            (x, x)
+            for x in Plan.objects.filter(is_active=True).values_list("name", flat=True)
+        ]
+        form.base_fields["plan"].widget = Select(
+            choices=BLANK_CHOICE_DASH + PLANS_CHOICES
         )
         form.base_fields["uses_invoice"].widget = CheckboxInput()
 
