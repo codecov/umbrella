@@ -1,4 +1,3 @@
-from datetime import timedelta
 from typing import TypedDict
 
 import pytest
@@ -6,11 +5,7 @@ from django.utils import timezone
 
 from shared.django_apps.ta_timeseries.models import Testrun
 from shared.django_apps.test_analytics.models import Flake, TAUpload
-from tasks.detect_flakes import (
-    DetectFlakes,
-    handle_failure,
-    process_single_upload,
-)
+from tasks.detect_flakes import handle_failure, process_single_upload
 
 
 class TestrunData(TypedDict):
@@ -149,7 +144,8 @@ def test_process_single_upload_updates_only_modified(setup_test_data):
 
     # Verify outcomes were updated in the database
     updated_testruns = {
-        bytes(tr.test_id).decode(): tr.outcome for tr in Testrun.objects.all()
+        bytes(tr.test_id).decode(): tr.outcome
+        for tr in Testrun.objects.filter(upload_id=upload_id)
     }
 
     assert updated_testruns == {
@@ -185,7 +181,8 @@ def test_process_single_upload_no_updates_when_nothing_changed(setup_test_data):
 
     # Verify no outcomes changed
     updated_testruns = {
-        bytes(tr.test_id).decode(): tr.outcome for tr in Testrun.objects.all()
+        bytes(tr.test_id).decode(): tr.outcome
+        for tr in Testrun.objects.filter(upload_id=upload_id)
     }
 
     assert updated_testruns == {
@@ -216,13 +213,15 @@ def test_process_single_upload_skips_already_flaky(setup_test_data):
 
     # Verify outcomes
     updated_testruns = {
-        bytes(tr.test_id).decode(): tr.outcome for tr in Testrun.objects.all()
+        bytes(tr.test_id).decode(): tr.outcome
+        for tr in Testrun.objects.filter(upload_id=upload_id)
     }
 
     assert updated_testruns == {
-        "test1": "flaky_fail",  # Already flaky, but still processed
+        "test1": "flaky_fail",  # Already flaky, NOT updated by filter
         "test2": "flaky_fail",  # Updated from failure
     }
 
-    # Both should create flakes
+    # Both should create flakes in memory
     assert len(curr_flakes) == 2
+    # But only test2 was actually updated in DB (test1 was already flaky_fail)
