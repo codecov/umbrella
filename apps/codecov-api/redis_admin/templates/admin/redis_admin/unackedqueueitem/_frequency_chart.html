@@ -1,0 +1,209 @@
+{% load admin_urls %}
+
+{% comment %}
+Frequency chart for the unacked drill-down page.
+
+Shape (mirrors the celery_broker chart, with one extra
+`routing_key` column since the unacked HASH spans every queue):
+
+* `chart.routing_key` — the routing_key we drilled into.
+* `chart.total_visible` — total messages in the snapshot the
+  chart was computed from.
+* `chart.total_depth` — `HLEN(unacked)` at chart-build time.
+  When > `total_visible` we surface a "showing top N of M"
+  banner so operators know percentages are over the visible
+  window, not the whole HASH.
+* `chart.buckets` — list of view-model dicts shaped as
+  `{routing_key, task_name, repoid, repo_display,
+  repo_change_url, commitid, count, pct}`. Already sorted;
+  rendered top-to-bottom.
+* `chart.clear_by_filter_url` — base URL for the row-level
+  "Clear" form action; we GET it with `routing_key` /
+  `task_name` / `repoid` / `commitid` plus four display-only
+  count hints so the preview page can render an approximate
+  "will clear ~X messages (~Y%)" callout without an HSCAN
+  sweep on the GET render.
+* `chart.can_clear` — boolean toggling the "Clear" button
+  (superuser-only).
+{% endcomment %}
+
+<div class="module" id="celery-frequency-chart" style="margin-bottom: 16px;">
+  <h2>Top {{ chart.buckets|length }} (routing_key, repoid, commitid, task) tuples in
+    unacked</h2>
+  {% if chart.total_depth > chart.total_visible %}
+    <p class="help">
+      Showing top {{ chart.buckets|length }} of
+      {{ chart.total_visible }} sampled messages
+      (HASH depth: {{ chart.total_depth }}). Percentages are over
+      the sampled window, not the full HASH.
+    </p>
+  {% else %}
+    <p class="help">
+      Showing top {{ chart.buckets|length }} of
+      {{ chart.total_visible }} message(s).
+    </p>
+  {% endif %}
+  <table class="celery-frequency">
+    <thead>
+      <tr>
+        <th scope="col">routing key</th>
+        <th scope="col">repoid</th>
+        <th scope="col">commitid</th>
+        <th scope="col">task</th>
+        <th scope="col" class="num">count</th>
+        <th scope="col">share</th>
+        {% if chart.can_clear %}
+          <th scope="col">action</th>
+        {% endif %}
+      </tr>
+    </thead>
+    <tbody>
+      {% for bucket in chart.buckets %}
+        <tr>
+          <td>
+            {% if bucket.routing_key %}
+              <code>{{ bucket.routing_key }}</code>
+            {% else %}
+              —
+            {% endif %}
+          </td>
+          <td>
+            {% if bucket.repoid is not None %}
+              {% if bucket.repo_change_url %}
+                <a href="{{ bucket.repo_change_url }}" title="repoid={{ bucket.repoid }}">{{ bucket.repo_display|default:bucket.repoid }}</a>
+              {% else %}
+                <span title="repoid={{ bucket.repoid }}">{{ bucket.repo_display|default:bucket.repoid }}</span>
+              {% endif %}
+            {% else %}
+              —
+            {% endif %}
+          </td>
+          <td>
+            {% if bucket.commitid %}
+              <span title="{{ bucket.commitid }}">{{ bucket.commitid|slice:":7" }}</span>
+            {% else %}
+              —
+            {% endif %}
+          </td>
+          <td>
+            {% if bucket.task_name %}
+              <span class="celery-task-cell" title="{{ bucket.task_name }}">{{ bucket.task_name }}</span>
+            {% else %}
+              —
+            {% endif %}
+          </td>
+          <td class="num">{{ bucket.count }}</td>
+          <td>
+            <div class="celery-bar-track" aria-label="{{ bucket.pct|floatformat:1 }}% of sampled messages">
+              <div class="celery-bar-fill" style="width: {{ bucket.pct|floatformat:1 }}%;"></div>
+              <span class="celery-bar-pct">{{ bucket.pct|floatformat:1 }}%</span>
+            </div>
+          </td>
+          {% if chart.can_clear %}
+            <td class="celery-actions">
+              {% comment %}
+              Single "Clear" button per row. The form GETs the
+              `clear_by_filter` preview page rather than POSTing,
+              same pattern as the celery_broker chart: the four
+              `bucket_*` / `total_*` hints below are display-only
+              (non-secret, idempotent, bookmarkable) and the
+              preview page does ZERO Redis I/O on its GET render.
+              {% endcomment %}
+              <form method="get" action="{{ chart.clear_by_filter_url }}" class="celery-action-form">
+                {% if bucket.routing_key %}
+                  <input type="hidden" name="routing_key" value="{{ bucket.routing_key }}">
+                {% elif chart.routing_key %}
+                  <input type="hidden" name="routing_key" value="{{ chart.routing_key }}">
+                {% endif %}
+                {% if bucket.task_name %}
+                  <input type="hidden" name="task_name" value="{{ bucket.task_name }}">
+                {% endif %}
+                {% if bucket.repoid is not None %}
+                  <input type="hidden" name="repoid" value="{{ bucket.repoid }}">
+                {% endif %}
+                {% if bucket.commitid %}
+                  <input type="hidden" name="commitid" value="{{ bucket.commitid }}">
+                {% endif %}
+                <input type="hidden" name="bucket_count" value="{{ bucket.count }}">
+                <input type="hidden" name="bucket_pct" value="{{ bucket.pct }}">
+                <input type="hidden" name="total_depth" value="{{ chart.total_depth }}">
+                <input type="hidden" name="total_visible" value="{{ chart.total_visible }}">
+                <button type="submit" class="button celery-clear-queue-btn">
+                  Clear&hellip;
+                </button>
+              </form>
+            </td>
+          {% endif %}
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<style>
+  /* Reuse the celery_broker chart's theme-safe styles. We share
+     the `#celery-frequency-chart` ID with the celery_broker
+     chart fragment so a single static stylesheet covers both
+     surfaces; rules below are scoped under that ID. */
+  #celery-frequency-chart table.celery-frequency {
+    width: 100%;
+    border-collapse: collapse;
+  }
+  #celery-frequency-chart table.celery-frequency th,
+  #celery-frequency-chart table.celery-frequency td {
+    padding: 4px 8px;
+    border-bottom: 1px solid var(--border-color, var(--hairline-color, #ccc));
+    vertical-align: middle;
+  }
+  #celery-frequency-chart table.celery-frequency th.num,
+  #celery-frequency-chart table.celery-frequency td.num {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+  #celery-frequency-chart table.celery-frequency td.celery-actions {
+    white-space: nowrap;
+  }
+  #celery-frequency-chart .celery-action-form {
+    display: inline-flex;
+    margin: 0;
+  }
+  #celery-frequency-chart .celery-action-form button {
+    margin: 0;
+  }
+  #celery-frequency-chart table.celery-frequency .celery-task-cell {
+    display: inline-block;
+    max-width: 28em;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    vertical-align: bottom;
+  }
+  #celery-frequency-chart .celery-bar-track {
+    position: relative;
+    height: 14px;
+    width: 100%;
+    min-width: 120px;
+    background: var(--darkened-bg, var(--body-bg, transparent));
+    border: 1px solid var(--border-color, var(--hairline-color, #ccc));
+    border-radius: 2px;
+  }
+  #celery-frequency-chart .celery-bar-fill {
+    position: absolute;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    background: var(--primary, currentColor);
+    opacity: 0.65;
+    border-radius: 2px;
+  }
+  #celery-frequency-chart .celery-bar-pct {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    padding: 0 6px;
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+  }
+</style>

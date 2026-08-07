@@ -12,6 +12,8 @@ api test suite rather than as standalone unit tests.
 
 from __future__ import annotations
 
+import json as _json
+
 import fakeredis
 import pytest
 from django.contrib.admin.models import LogEntry
@@ -21,6 +23,9 @@ from redis_admin import conn as redis_admin_conn
 from redis_admin.admin import FamilyFilter, LockFamilyFilter, QueueFamilyFilter
 from redis_admin.families import (
     _resolve_celery_queue_names as _celery_queue_names,  # noqa: PLC2701
+)
+from redis_admin.tests.test_unacked_queue import (
+    _build_envelope as _build_unacked_envelope,  # noqa: PLC2701
 )
 from shared.django_apps.codecov_auth.tests.factories import UserFactory
 from shared.django_apps.core.tests.factories import OwnerFactory, RepositoryFactory
@@ -1472,3 +1477,105 @@ class RedisAdminSuperuserOnlyDeletionTest(TestCase):
         # 403 / 404 / redirect — anything but a successful delete.
         assert response.status_code in (302, 403, 404)
         assert self.redis.exists("uploads/1/aaa") == 1
+
+
+class UnackedQueueAdminSmokeTest(TestCase):
+    """End-to-end smoke coverage for the Kombu unacked drill-down admin.
+
+    Mirrors `CeleryBrokerQueueAdminSmokeTest` but for the
+    `unacked` HASH + `unacked_index` ZSET layout. Verifies the
+    summary mode renders a single row with `HLEN`, the detail
+    mode (with `routing_key__exact`) flips to per-message rows,
+    and the generic `RedisQueueAdmin` excludes the `unacked`
+    family from its sidebar dropdown (it has its own admin
+    surface, like `celery_broker`).
+    """
+
+    def setUp(self):
+        self._build_envelope = _build_unacked_envelope
+        self._json = _json
+        self.redis = fakeredis.FakeStrictRedis()
+        self._orig_get_connection = redis_admin_conn.get_connection
+        redis_admin_conn.get_connection = lambda kind="default": self.redis  # type: ignore[assignment]
+        self.user = UserFactory(is_staff=True, is_superuser=True)
+        self.client = Client()
+        self.client.force_login(self.user)
+
+    def tearDown(self):
+        redis_admin_conn.get_connection = self._orig_get_connection  # type: ignore[assignment]
+
+    def _push_unacked(
+        self,
+        delivery_tag: str,
+        *,
+        routing_key: str = "celery",
+        envelope=None,
+        deadline: float | None = None,
+    ):
+        triple = [envelope or self._build_envelope(), "", routing_key]
+        self.redis.hset("unacked", delivery_tag, self._json.dumps(triple))
+        if deadline is not None:
+            self.redis.zadd("unacked_index", {delivery_tag: deadline})
+
+    def test_changelist_summary_mode_renders_one_row_with_hlen_depth(self):
+        # No `routing_key__exact` filter → summary mode: one row
+        # carrying `HLEN(unacked)` as `depth`. The drill-in link
+        # also surfaces so the operator can step into per-message
+        # rows.
+        self._push_unacked("tag-1", envelope=self._build_envelope(kwargs={"repoid": 1}))
+        self._push_unacked("tag-2", envelope=self._build_envelope(kwargs={"repoid": 2}))
+
+        response = self.client.get("/admin/redis_admin/unackedqueueitem/")
+
+        assert response.status_code == 200
+        body = response.content.decode("utf-8", errors="replace")
+        # The single summary row's `routing_key_summary` cell.
+        assert "unacked (HASH)" in body
+        # Drill-in link with the depth count baked into its label.
+        assert "view 2 unacked message(s)" in body or "view 2 unacked" in body
+
+    def test_changelist_detail_mode_filters_to_routing_key(self):
+        self._push_unacked(
+            "celery-1",
+            routing_key="celery",
+            envelope=self._build_envelope(
+                task="app.tasks.notify.NotifyTask",
+                kwargs={"repoid": 7, "commitid": "abcdef0123"},
+            ),
+        )
+        self._push_unacked(
+            "notify-1",
+            routing_key="notify",
+            envelope=self._build_envelope(
+                task="app.tasks.bundle.Processor",
+                kwargs={"repoid": 8},
+            ),
+        )
+
+        response = self.client.get(
+            "/admin/redis_admin/unackedqueueitem/?routing_key__exact=celery"
+        )
+
+        assert response.status_code == 200
+        body = response.content.decode("utf-8", errors="replace")
+        # Per-message detail row for the matching routing_key.
+        assert "app.tasks.notify.NotifyTask" in body
+        # Short commit prefix renders.
+        assert "abcdef0" in body
+        # The unrelated routing_key's task is filtered out.
+        assert "app.tasks.bundle.Processor" not in body
+
+    def test_redisqueue_admin_hides_unacked_family(self):
+        # `RedisQueueAdmin.get_queryset` calls
+        # `family_exclude("celery_broker", "unacked")` so the
+        # generic queue changelist's sidebar / row set never
+        # surfaces the unacked HASH — it has its own admin
+        # surface, like `celery_broker`.
+        self._push_unacked("tag-1")
+
+        response = self.client.get("/admin/redis_admin/redisqueue/")
+
+        assert response.status_code == 200
+        body = response.content.decode("utf-8", errors="replace")
+        # No `unacked` row on the generic changelist.
+        assert "/admin/redis_admin/redisqueue/unacked/change/" not in body
