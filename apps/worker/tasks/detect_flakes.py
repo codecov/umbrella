@@ -43,7 +43,11 @@ def handle_pass(curr_flakes: dict[bytes, Flake], test_id: bytes):
 
 def handle_failure(
     curr_flakes: dict[bytes, Flake], test_id: bytes, testrun: Testrun, repo_id: int
-):
+) -> bool:
+    """Process a test failure and update flake state.
+
+    Returns True if the testrun outcome was changed to 'flaky_fail'.
+    """
     existing_flake = curr_flakes.get(test_id)
 
     if existing_flake:
@@ -63,6 +67,8 @@ def handle_failure(
 
     if testrun.outcome != "flaky_fail":
         testrun.outcome = "flaky_fail"
+        return True
+    return False
 
 
 @sentry_sdk.trace
@@ -70,6 +76,7 @@ def process_single_upload(
     upload_id: int, curr_flakes: dict[bytes, Flake], repo_id: int
 ):
     testruns = get_testruns(upload_id)
+    modified_test_ids: set[bytes] = set()
 
     for testrun in testruns:
         test_id = bytes(testrun.test_id)
@@ -80,11 +87,31 @@ def process_single_upload(
 
                 handle_pass(curr_flakes, test_id)
             case "failure" | "flaky_fail" | "error":
-                handle_failure(curr_flakes, test_id, testrun, repo_id)
+                changed = handle_failure(curr_flakes, test_id, testrun, repo_id)
+                if changed:
+                    modified_test_ids.add(test_id)
             case _:
                 continue
 
-    Testrun.objects.bulk_update(testruns, ["outcome"])
+    # Only update testruns that were actually modified
+    if modified_test_ids:
+        updated_count = Testrun.objects.filter(
+            upload_id=upload_id,
+            test_id__in=modified_test_ids,
+            # Don't update already-flaky or pass outcomes
+            outcome__in=["failure", "error"],
+            # Required for TimescaleDB chunk pruning
+            timestamp__gte=timezone.now() - timedelta(days=1),
+        ).update(outcome="flaky_fail")
+
+        log.info(
+            "Updated testruns to flaky_fail",
+            extra={
+                "upload_id": upload_id,
+                "modified_test_ids_count": len(modified_test_ids),
+                "rows_updated": updated_count,
+            },
+        )
 
 
 @sentry_sdk.trace

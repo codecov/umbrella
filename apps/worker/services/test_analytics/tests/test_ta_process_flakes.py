@@ -308,3 +308,35 @@ def test_testrun_outcome_updates(setup_test_data):
         "test2": "flaky_fail",  # Updated from error
         "test3": "flaky_fail",  # Already flaky_fail, unchanged
     }
+
+
+def test_testrun_outcome_updates_only_failures_and_errors(setup_test_data):
+    """Test that only failure and error outcomes are updated to flaky_fail."""
+    result = setup_test_data(
+        uploads=[
+            {
+                "state": "processed",
+                "testruns": [
+                    {"test_id": "test1", "outcome": "failure"},
+                    {"test_id": "test2", "outcome": "error"},
+                    {"test_id": "test3", "outcome": "pass"},
+                    {"test_id": "test4", "outcome": "skip"},
+                ],
+            }
+        ],
+        existing_flakes=[],
+    )
+
+    process_flakes_for_repo(result["repoid"])
+
+    testruns = {
+        bytes(testrun.test_id).decode(): testrun.outcome
+        for testrun in Testrun.objects.all()
+    }
+
+    assert testruns == {
+        "test1": "flaky_fail",  # Updated from failure
+        "test2": "flaky_fail",  # Updated from error
+        "test3": "pass",  # Not updated
+        "test4": "skip",  # Not updated
+    }
