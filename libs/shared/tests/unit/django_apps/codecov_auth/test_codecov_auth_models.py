@@ -3,7 +3,7 @@ from unittest.mock import patch
 
 import pytest
 from django.db import IntegrityError
-from django.forms import ValidationError
+from django.forms import ValidationError, modelform_factory
 from django.test import TestCase, TransactionTestCase
 from pytest import LogCaptureFixture
 
@@ -37,6 +37,12 @@ from shared.django_apps.core.tests.factories import RepositoryFactory
 from shared.plan.constants import DEFAULT_FREE_PLAN, PlanName
 from shared.utils.test_utils import mock_config_helper
 from tests.helper import mock_all_plans_and_tiers
+
+
+def test_owner_plan_is_required_in_model_forms():
+    owner_form = modelform_factory(Owner, fields=["plan"])
+
+    assert owner_form.base_fields["plan"].required is True
 
 
 class TestOwnerModel(TestCase):

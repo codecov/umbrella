@@ -417,7 +417,7 @@ class Owner(ExportModelOperationsMixin("codecov_auth.owner"), models.Model):
     staff = models.BooleanField(null=True, default=False)
     cache = models.JSONField(null=True)
     # Really an ENUM in db
-    plan = models.TextField(null=True, default=DEFAULT_FREE_PLAN, blank=True)
+    plan = models.TextField(null=True, default=DEFAULT_FREE_PLAN, blank=False)
     plan_provider = models.TextField(
         null=True, choices=PlanProviders.choices, blank=True
     )  # postgres enum containing only "github"
