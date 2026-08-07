@@ -19,8 +19,11 @@ from graphql_api.helpers.connection import Connection, queryset_to_connection_sy
 from graphql_api.types.comparison.comparison import (
     FirstPullRequest,
     MissingBaseCommit,
+    MissingBaseReport,
     MissingHeadCommit,
+    MissingHeadReport,
 )
+from shared.bundle_analysis import MissingBaseReportError, MissingHeadReportError
 from graphql_api.types.enums import OrderingDirection, PullRequestState
 from services.bundle_analysis import BundleAnalysisComparison
 from services.comparison import ComparisonReport, PullRequestComparison
@@ -124,16 +127,22 @@ def resolve_bundle_analysis_compare_with_base(
     # Store the created SQLite DB path in info.context
     # when the request is fully handled, have the file deleted
     if isinstance(bundle_analysis_comparison, BundleAnalysisComparison):
-        info.context[
-            "request"
-        ].bundle_analysis_base_report_db_path = (
-            bundle_analysis_comparison.comparison.base_report.db_path
-        )
-        info.context[
-            "request"
-        ].bundle_analysis_head_report_db_path = (
-            bundle_analysis_comparison.comparison.head_report.db_path
-        )
+        try:
+            info.context[
+                "request"
+            ].bundle_analysis_base_report_db_path = (
+                bundle_analysis_comparison.comparison.base_report.db_path
+            )
+        except MissingBaseReportError:
+            return MissingBaseReport()
+        try:
+            info.context[
+                "request"
+            ].bundle_analysis_head_report_db_path = (
+                bundle_analysis_comparison.comparison.head_report.db_path
+            )
+        except MissingHeadReportError:
+            return MissingHeadReport()
 
     return bundle_analysis_comparison
 
