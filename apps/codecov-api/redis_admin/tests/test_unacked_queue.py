@@ -36,6 +36,7 @@ from django.test import RequestFactory
 
 from redis_admin import conn as redis_admin_conn
 from redis_admin import services as redis_admin_services
+from redis_admin import settings as redis_admin_settings
 from redis_admin.admin import UnackedQueueAdmin
 from redis_admin.families import (
     FAMILIES,
@@ -302,8 +303,9 @@ def test_unacked_queryset_detail_mode_filters_by_routing_key(
 ):
     """`routing_key__exact=<queue>` flips into per-message mode.
     Only rows whose decoded triple's routing_key matches survive.
-    The other queues' messages stay in the HASH but are filtered
-    out post-materialise.
+    The other queues' messages stay in the HASH but are skipped
+    during the HSCAN walk (routing_key scope is applied before
+    the display cap counts a row).
     """
 
     _push_unacked(
@@ -334,6 +336,45 @@ def test_unacked_queryset_detail_mode_filters_by_routing_key(
     assert rows[0].repoid == 1
     assert rows[0].commitid == "abcdef0123"
     assert rows[0].pk_token == "unacked#tag-notify-1"
+
+
+def test_unacked_queryset_routing_key_scope_survives_display_cap(
+    patched_broker, monkeypatch
+):
+    """Minority routing_key must still surface when the HASH is
+    dominated by other queues past DISPLAY_LIMIT.
+
+    Regression for the Bugbot finding where `_materialise` counted
+    every HSCAN field toward the display cap *before* routing_key
+    filtering — a 100-entry notify slice buried under DISPLAY_LIMIT
+    celery rows would render an empty changelist.
+    """
+
+    monkeypatch.setattr(redis_admin_settings, "CELERY_BROKER_DISPLAY_LIMIT", 3)
+    # Keep scan budget above the HASH size so we don't trip the
+    # SCAN_LIMIT early-exit in this unit test.
+    monkeypatch.setattr(redis_admin_settings, "CELERY_BROKER_SCAN_LIMIT", 100)
+
+    for i in range(5):
+        _push_unacked(
+            patched_broker,
+            delivery_tag=f"celery-{i}",
+            routing_key="celery",
+            envelope=_build_envelope(task="task.celery"),
+        )
+    for i in range(2):
+        _push_unacked(
+            patched_broker,
+            delivery_tag=f"notify-{i}",
+            routing_key="notify",
+            envelope=_build_envelope(task="task.notify"),
+        )
+
+    qs = UnackedQueueQuerySet(UnackedQueueItem).filter(routing_key__exact="notify")
+    rows = list(qs)
+
+    assert sorted(r.delivery_tag for r in rows) == ["notify-0", "notify-1"]
+    assert all(r.routing_key == "notify" for r in rows)
 
 
 def test_unacked_queryset_detail_mode_resolves_visibility_deadline(

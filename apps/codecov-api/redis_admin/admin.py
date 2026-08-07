@@ -2590,6 +2590,7 @@ class PublicBotUsageAdmin(admin.ModelAdmin):
         )
         return super().changelist_view(request, extra_context=extra_context)
 
+
 # ---- Kombu unacked drill-down admin ---------------------------------------
 #
 # Per-message admin surface for Kombu's unacked HASH (`unacked` +

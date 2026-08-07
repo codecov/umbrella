@@ -2323,19 +2323,32 @@ class UnackedQueueQuerySet:
         if not redis.exists(self._unacked_key):
             return []
         cap = redis_admin_settings.CELERY_BROKER_DISPLAY_LIMIT
+        scan_budget = redis_admin_settings.CELERY_BROKER_SCAN_LIMIT
         scan_count = redis_admin_settings.SCAN_COUNT
         rows: list = []
-        # Walk via HSCAN — bounded by `CELERY_BROKER_DISPLAY_LIMIT`
-        # so a 100k-deep unacked HASH doesn't materialise every row
-        # into Python on a single page render.
+        scanned = 0
+        # Walk via HSCAN. Unlike celery_broker (one LIST per queue),
+        # the unacked HASH mixes every routing_key — so apply the
+        # routing_key scope *during* the walk and only count matching
+        # rows toward `cap`. Otherwise a minority queue buried under
+        # DISPLAY_LIMIT unrelated entries would render an empty
+        # changelist while the frequency chart (SCAN_LIMIT-bounded)
+        # correctly showed hundreds. Hard-cap fields examined at
+        # SCAN_LIMIT so a rare routing_key in a huge HASH can't
+        # turn one page render into a full-keyspace walk.
         for raw_field, raw_value in redis.hscan_iter(
             self._unacked_key, count=scan_count
         ):
+            scanned += 1
+            if scanned > scan_budget:
+                break
             if len(rows) >= cap:
                 break
             tag = _decode_value(raw_field)
             decoded = _decode_value(raw_value)
             envelope_str, exchange, routing_key = _decode_unacked_value(decoded)
+            if self.routing_key is not None and (routing_key or "") != self.routing_key:
+                continue
             if envelope_str is None:
                 meta = CeleryEnvelopeMeta()
             else:
@@ -2362,10 +2375,11 @@ class UnackedQueueQuerySet:
     _REQUEST_CACHE_ATTR: str = "_unacked_hscan_cache"
 
     def _request_cache_key(self) -> tuple[str, bool, int]:
-        # `view_all` rides on the cache key so a routing_key-scoped
-        # render and a `view_all=1` render don't share a snapshot:
-        # the routing_key path narrows in `_matches_filters` after
-        # caching, while `view_all=1` keeps every row.
+        # Cache key includes routing_key because `_materialise` now
+        # scopes the HSCAN walk to that routing_key (matching rows
+        # only count toward DISPLAY_LIMIT). `view_all` still rides
+        # along so a scoped render and a `view_all=1` render never
+        # share a snapshot.
         return (
             self.routing_key or "",
             self.view_all,

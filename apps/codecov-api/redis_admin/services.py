@@ -1922,7 +1922,6 @@ def _streaming_unacked_clear(
 
             chunk_processed = len(chunk_buffer)
             chunk_hdel_before = matches_hdel
-            chunk_zrem_before = matches_zrem
             chunk_found_before = matches_found
 
             chunk_targets: list[str] = []
