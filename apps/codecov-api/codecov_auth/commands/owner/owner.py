@@ -4,6 +4,7 @@ from .interactors.cancel_trial import CancelTrialInteractor
 from .interactors.create_api_token import CreateApiTokenInteractor
 from .interactors.create_stripe_setup_intent import CreateStripeSetupIntentInteractor
 from .interactors.create_user_token import CreateUserTokenInteractor
+from .interactors.delete_owner import DeleteOwnerInteractor
 from .interactors.delete_session import DeleteSessionInteractor
 from .interactors.fetch_owner import FetchOwnerInteractor
 from .interactors.get_is_current_user_an_admin import GetIsCurrentUserAnAdminInteractor
@@ -35,6 +36,9 @@ class OwnerCommands(BaseCommand):
 
     def delete_session(self, sessionid: int):
         return self.get_interactor(DeleteSessionInteractor).execute(sessionid)
+
+    def delete_owner(self, username: str):
+        return self.get_interactor(DeleteOwnerInteractor).execute(username)
 
     def create_user_token(self, name, token_type=None):
         return self.get_interactor(CreateUserTokenInteractor).execute(name, token_type)
