@@ -2,7 +2,7 @@ import orjson
 import sentry_sdk
 import zstandard
 
-from shared.helpers.redis import get_redis_connection
+from shared.helpers.redis import get_redis_connection, get_redis_primary_connection
 from shared.reports.resources import Report
 
 from .metrics import INTERMEDIATE_REPORT_SIZE
@@ -46,7 +46,7 @@ def save_intermediate_report(upload_id: int, report: Report):
     zstd_report_json, zstd_chunks = emit_size_metrics(report_json, chunks)
 
     report_key = intermediate_report_key(upload_id)
-    redis = get_redis_connection()
+    redis = get_redis_primary_connection()
     mapping = {
         "report_json": zstd_report_json,
         "chunks": zstd_chunks,
@@ -63,7 +63,7 @@ def cleanup_intermediate_reports(
     upload_ids: list[int],
 ):
     keys = [intermediate_report_key(upload_id) for upload_id in upload_ids]
-    redis = get_redis_connection()
+    redis = get_redis_primary_connection()
     redis.delete(*keys)
     return
 
