@@ -76,6 +76,50 @@ class UploadFlow(BaseFlow):
 
 
 @failure_events(
+    "TOO_MANY_RETRIES",
+    "PROCESSOR_LOCK_ERROR",
+    "NOTIFY_LOCK_ERROR",
+    "NOTIFY_ALL_ERRORED",
+    "UNCAUGHT_RETRY_EXCEPTION",
+    "CELERY_FAILURE",
+    "CELERY_TIMEOUT",
+)
+@success_events(
+    "NOTIFIED",
+    "SKIPPING_NOTIFICATION",
+)
+@subflows(
+    (
+        "ba_processing_duration",
+        "BUNDLE_ANALYSIS_BEGIN",
+        "PROCESSING_COMPLETE",
+    ),
+    (
+        "ba_notification_latency",
+        "BUNDLE_ANALYSIS_BEGIN",
+        "NOTIFIED",
+    ),
+)
+@reliability_counters
+class BundleAnalysisFlow(BaseFlow):
+    BUNDLE_ANALYSIS_BEGIN = auto()
+    PROCESSING_BEGIN = auto()
+    PROCESSING_COMPLETE = auto()
+    NOTIFIED = auto()
+    SKIPPING_NOTIFICATION = auto()
+    TOO_MANY_RETRIES = auto()
+    PROCESSOR_LOCK_ERROR = auto()
+    NOTIFY_LOCK_ERROR = auto()
+    NOTIFY_ALL_ERRORED = auto()
+    UNCAUGHT_RETRY_EXCEPTION = auto()
+    CELERY_FAILURE = auto()
+    CELERY_TIMEOUT = auto()
+
+    # Sentinel checkpoint - not directly used
+    FINAL = auto()
+
+
+@failure_events(
     "TEST_RESULTS_ERROR", "UNCAUGHT_RETRY_EXCEPTION", "CELERY_FAILURE", "CELERY_TIMEOUT"
 )
 @success_events("TEST_RESULTS_NOTIFY")
