@@ -159,7 +159,11 @@ class StandardNotifier(AbstractBaseNotifier):
     def generate_compare_dict(self, comparison: Comparison):
         head_full_commit = comparison.head
         base_full_commit = comparison.project_coverage_base
-        if comparison.has_project_coverage_base_report():
+        if (
+            comparison.has_project_coverage_base_report()
+            and head_full_commit.report.totals.coverage is not None
+            and base_full_commit.report.totals.coverage is not None
+        ):
             difference = Decimal(head_full_commit.report.totals.coverage) - Decimal(
                 base_full_commit.report.totals.coverage
             )
