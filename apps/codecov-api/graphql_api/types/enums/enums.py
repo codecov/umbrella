@@ -33,6 +33,7 @@ class TestResultsOrderingParameter(enum.Enum):
     COMMITS_WHERE_FAIL = "commits_where_fail"
     RUNS_FAILED = "runs_failed"
     UPDATED_AT = "updated_at"
+    TOTAL_FAIL_COUNT = "total_fail_count"
 
 
 class PathContentDisplayType(enum.Enum):
