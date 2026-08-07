@@ -1,0 +1,49 @@
+{% extends "admin/login.html" %}
+{% load i18n %}
+
+{% block extrastyle %}
+{{ block.super }}
+<style>
+  #login-form .submit-row input[type="submit"],
+  .okta-admin-login-button {
+    display: inline-block;
+    padding: 10px 20px;
+    background: #0070f3;
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+    text-decoration: none;
+    font-size: 0.9em;
+    font-weight: bold;
+    cursor: pointer;
+  }
+
+  #login-form .submit-row input[type="submit"]:hover,
+  .okta-admin-login-button:hover {
+    background: #0060df;
+    color: #fff;
+  }
+
+  .okta-admin-login-divider {
+    margin-top: 1.5em;
+    text-align: center;
+    padding: 0 1em;
+  }
+
+  .okta-admin-login-divider p {
+    color: #666;
+    font-size: 0.9em;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+{{ block.super }}
+<div class="okta-admin-login-divider">
+  <p>{% trans "— or —" %}</p>
+  <a href="/login/okta-admin?next={{ request.GET.next|default:request.path }}"
+     class="okta-admin-login-button">
+    {% trans "Login with Okta" %}
+  </a>
+</div>
+{% endblock %}
