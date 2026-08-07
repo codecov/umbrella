@@ -185,8 +185,9 @@ def process_flakes_for_commit(repo_id: int, commit_id: str):
             "Updated testruns to flaky_fail",
             extra={
                 "upload_id": upload_id,
-                "modified_test_ids_count": len(modified_test_ids),
+                "processed_count": len(modified_test_ids),
                 "rows_updated": updated_count,
+                "already_flaky_count": len(modified_test_ids) - updated_count,
             },
         )
 
