@@ -58,15 +58,16 @@ ARG APP_DIR
 
 # Patch stale OS packages carried by the base image (this is the scanned stage)
 # and avoid pulling optional codec recommends (libheif/libde265/tiff) that have
-# no Debian fix and are unused at runtime.
+# no Debian fix and are unused at runtime. Purge libexpat1: Bookworm has no fix
+# for CVE-2026-45186, and CPython pyexpat embeds its own copy (does not link it).
 RUN apt-get update \
     && apt-get -y upgrade \
     && apt-get install -y --no-install-recommends \
     libxml2-dev \
     libxslt-dev \
     libpq-dev \
-    libexpat1 \
     make \
+    && apt-get purge -y --auto-remove libexpat1 \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=build /wheels/ /wheels/
