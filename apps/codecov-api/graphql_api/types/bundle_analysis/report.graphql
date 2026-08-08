@@ -7,4 +7,6 @@ type BundleAnalysisReport {
   bundleData: BundleData!
   bundle(name: String!, filters: BundleAnalysisReportFilters): BundleReport
   isCached: Boolean!
+  loadTimeTotal: Float! @deprecated(reason: "Use bundleData { loadTime { threeG } } instead")
+  total_load_time: Float! @deprecated(reason: "Use bundleData { loadTime { threeG } } instead")
 }
