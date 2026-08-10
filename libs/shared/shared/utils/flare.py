@@ -8,7 +8,7 @@ class Dict(dict):
         if index in ("__l", "__h"):
             return super().__getitem__(index)
         found = self.get(index)
-        if not found:
+        if not found or not isinstance(found, Dict):
             found = self[index] = Dict(__l=0, __h=0)
         return found
 
