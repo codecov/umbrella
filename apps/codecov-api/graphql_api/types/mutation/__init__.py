@@ -7,6 +7,7 @@ from .create_stripe_setup_intent import gql_create_stripe_setup_intent
 from .create_user_token import gql_create_user_token
 from .delete_component_measurements import gql_delete_component_measurements
 from .delete_flag import gql_delete_flag
+from .delete_owner import gql_delete_owner
 from .delete_session import gql_delete_session
 from .encode_secret_string import gql_encode_secret_string
 from .erase_repository import gql_erase_repository
@@ -63,3 +64,4 @@ mutation = mutation + gql_store_event_metrics
 mutation = mutation + gql_save_okta_config
 mutation = mutation + gql_set_upload_token_required
 mutation = mutation + gql_update_bundle_cache_config
+mutation = mutation + gql_delete_owner
