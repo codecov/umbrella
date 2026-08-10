@@ -32,9 +32,9 @@ class SetYamlOnOwnerMutationTest(GraphQLTestHelper, TestCase):
         f.set_result(self.owner)
         command_mock.return_value = f
         input = {
-            "username": self.owner.username,
+            "ownerUsername": self.owner.username,
             "yaml": "codecov:\n  require_ci_to_pass: true",
         }
         data = self.gql_request(query, owner=self.owner, variables={"input": input})
-        command_mock.assert_called_once_with(input["username"], input["yaml"])
+        command_mock.assert_called_once_with(input["ownerUsername"], input["yaml"])
         assert data["setYamlOnOwner"]["owner"]["username"] == self.owner.username

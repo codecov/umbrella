@@ -1,4 +1,4 @@
 input SetYamlOnOwnerInput {
-  username: String!
+  ownerUsername: String!
   yaml: String!
 }
