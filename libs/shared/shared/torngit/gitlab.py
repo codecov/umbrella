@@ -30,6 +30,20 @@ log = logging.getLogger(__name__)
 METRICS_PREFIX = "services.torngit.gitlab"
 
 
+def _safe_json(res):
+    """Attempt to parse an httpx Response as JSON, falling back to the raw text.
+
+    GitLab sometimes returns plain-text bodies for error responses (e.g. 429
+    rate-limit replies).  Calling res.json() directly in those cases raises a
+    JSONDecodeError before we even get to raise TorngitClientGeneralError,
+    which means the caller's ``except TorngitError`` guard never fires.
+    """
+    try:
+        return res.json()
+    except json.JSONDecodeError:
+        return res.text
+
+
 GITLAB_API_CALL_COUNTER = Counter(
     "git_provider_api_calls_gitlab",
     "Number of times gitlab called this endpoint",
@@ -462,7 +476,7 @@ class Gitlab(TorngitBaseAdapter):
                     raise TorngitServer5xxCodeError("Gitlab is having 5xx issues")
                 elif (
                     res.status_code == 401
-                    and res.json().get("error") == "invalid_token"
+                    and _safe_json(res).get("error") == "invalid_token"
                 ):
                     # Refresh token and retry
                     log.debug("Token is invalid. Refreshing")
@@ -472,7 +486,7 @@ class Gitlab(TorngitBaseAdapter):
                 elif res.status_code >= 400:
                     message = f"Gitlab API: {res.status_code}"
                     raise TorngitClientGeneralError(
-                        res.status_code, response_data=res.json(), message=message
+                        res.status_code, response_data=_safe_json(res), message=message
                     )
                 else:
                     # Success case
