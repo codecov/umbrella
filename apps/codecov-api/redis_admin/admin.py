@@ -2994,8 +2994,8 @@ class UnackedQueueAdmin(admin.ModelAdmin):
         Returns `None` when the chart should not render (no
         buckets, broker outage). Mirrors
         `CeleryBrokerQueueAdmin._build_frequency_chart_context`
-        but aggregates over the full HASH (then filters to
-        `routing_key` matches) rather than a per-queue LRANGE.
+        but aggregates the shared unacked HASH scoped to
+        `routing_key` rather than a per-queue LRANGE.
 
         We construct the queryset under the routing_key scope so
         the queryset's cached path picks up the materialised rows

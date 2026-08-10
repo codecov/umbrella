@@ -1875,6 +1875,7 @@ def _stream_unacked_frequency_aggregate(
     *,
     top: int = _FREQUENCY_TOP_DEFAULT,
     unacked_key: str = _UNACKED_KEY,
+    routing_key: str | None = None,
 ) -> tuple[list[UnackedFrequencyBucket], int]:
     """Streaming `(routing_key, task_name, repoid, commitid)` aggregator.
 
@@ -1885,50 +1886,57 @@ def _stream_unacked_frequency_aggregate(
     `total_sampled` is the full sampled count (used as the `pct`
     denominator) and `buckets` is the top-N list.
 
+    When `routing_key` is set (detail-mode drill-down), non-matching
+    HASH values are skipped so the chart only shows buckets for the
+    scoped queue — same contract as the changelist materialise walk.
+
     Mirrors `_stream_frequency_aggregate` for the celery_broker
     chart, but iterates via HSCAN (HASH) instead of LRANGE (LIST)
     and groups by an additional `routing_key` axis since the
     unacked HASH spans every queue.
     """
 
-    cap = redis_admin_settings.CELERY_BROKER_SCAN_LIMIT
+    scan_budget = redis_admin_settings.CELERY_BROKER_SCAN_LIMIT
     counter: Counter[tuple[str | None, str | None, int | None, str | None]] = Counter()
     total = 0
+    scanned = 0
 
     if not redis.exists(unacked_key):
         return [], 0
 
     scan_count = redis_admin_settings.SCAN_COUNT
     for _raw_field, raw_value in redis.hscan_iter(unacked_key, count=scan_count):
-        if total >= cap:
+        scanned += 1
+        if scanned > scan_budget:
             break
         decoded = _decode_value(raw_value)
-        envelope_str, _exchange, routing_key = _decode_unacked_value(decoded)
+        envelope_str, _exchange, decoded_routing_key = _decode_unacked_value(decoded)
         # Normalise empty-string routing_key to None so the
         # all-axes-empty drop below catches both `routing_key=""`
         # (Kombu writes the empty string when no exchange/queue
         # is named) and `routing_key=None` (decoder fallback).
-        if not routing_key:
-            routing_key = None
+        if not decoded_routing_key:
+            decoded_routing_key = None
+        if routing_key is not None and (decoded_routing_key or "") != routing_key:
+            continue
         if envelope_str is None:
-            if routing_key is None:
+            if decoded_routing_key is None:
                 total += 1
                 continue
-            counter[(routing_key, None, None, None)] += 1
+            counter[(decoded_routing_key, None, None, None)] += 1
             total += 1
             continue
         meta = parse_celery_envelope(envelope_str)
         if (
-            routing_key is None
+            decoded_routing_key is None
             and meta.task is None
             and meta.repoid is None
             and meta.commitid is None
         ):
             total += 1
             continue
-        counter[(routing_key, meta.task, meta.repoid, meta.commitid)] += 1
+        counter[(decoded_routing_key, meta.task, meta.repoid, meta.commitid)] += 1
         total += 1
-
     if not counter or total == 0:
         return [], 0
 
@@ -2510,9 +2518,11 @@ class UnackedQueueQuerySet:
         1. Cached path: if the per-request HSCAN snapshot is
            already populated, aggregate over those rows. Bounded
            by `CELERY_BROKER_DISPLAY_LIMIT`.
-        2. Streaming path: streams the full HASH via
+        2. Streaming path: streams the HASH via
            `_stream_unacked_frequency_aggregate` (bounded by
-           `CELERY_BROKER_SCAN_LIMIT`).
+           `CELERY_BROKER_SCAN_LIMIT`), scoped to this queryset's
+           `routing_key` when set so a notify drill-down chart
+           does not mix in uploads/celery buckets.
 
         Buckets where every axis is `None` are dropped so the
         chart's row click can't produce an empty-scope clear.
@@ -2572,7 +2582,10 @@ class UnackedQueueQuerySet:
         if not redis.exists(self._unacked_key):
             return []
         buckets, _total = _stream_unacked_frequency_aggregate(
-            redis, top=top, unacked_key=self._unacked_key
+            redis,
+            top=top,
+            unacked_key=self._unacked_key,
+            routing_key=self.routing_key,
         )
         return buckets
 

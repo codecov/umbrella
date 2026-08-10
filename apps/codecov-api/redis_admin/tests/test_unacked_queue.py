@@ -591,6 +591,50 @@ def test_unacked_frequency_chart_aggregates_by_task_repo_commit(
     ]
 
 
+def test_unacked_frequency_chart_scopes_streaming_path_to_routing_key(
+    patched_broker,
+):
+    """Calvin review on PR #911: the streaming frequency path must
+    honour `routing_key` so a notify drill-down chart does not
+    still list celery/uploads buckets from the shared HASH.
+    """
+
+    for i in range(3):
+        _push_unacked(
+            patched_broker,
+            delivery_tag=f"notify-{i}",
+            routing_key="notify",
+            envelope=_build_envelope(
+                task="app.tasks.notify.NotifyTask",
+                kwargs={"repoid": 1, "commitid": "aaaa"},
+            ),
+        )
+    for i in range(5):
+        _push_unacked(
+            patched_broker,
+            delivery_tag=f"celery-{i}",
+            routing_key="celery",
+            envelope=_build_envelope(
+                task="app.tasks.bundle.Processor",
+                kwargs={"repoid": 2, "commitid": "bbbb"},
+            ),
+        )
+
+    scoped, scoped_total = _stream_unacked_frequency_aggregate(
+        patched_broker, routing_key="notify"
+    )
+    assert scoped_total == 3
+    assert [(b.routing_key, b.count) for b in scoped] == [
+        ("notify", 3),
+    ]
+
+    qs = UnackedQueueQuerySet(UnackedQueueItem, routing_key="notify")
+    buckets = qs.frequency_by_routing_task_repo_commit()
+    assert [(b.routing_key, b.task_name, b.count) for b in buckets] == [
+        ("notify", "app.tasks.notify.NotifyTask", 3),
+    ]
+
+
 def test_unacked_frequency_chart_pcts_sum_to_100_with_unparseable_envelopes(
     patched_broker,
 ):
