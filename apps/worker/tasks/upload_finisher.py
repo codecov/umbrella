@@ -6,6 +6,7 @@ from enum import Enum
 import sentry_sdk
 from asgiref.sync import async_to_sync
 from celery.exceptions import Retry, SoftTimeLimitExceeded
+from kombu.exceptions import OperationalError as KombuOperationalError
 
 from app import celery_app
 from celery_config import notify_error_task_name
@@ -401,6 +402,13 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
         except Retry:
             raise
 
+        except KombuOperationalError as e:
+            log.warning(
+                "run_impl: broker connection error in upload finisher, retrying",
+                extra={"upload_ids": upload_ids, "error": str(e)},
+            )
+            raise self.retry(exc=e, countdown=60)
+
         except SoftTimeLimitExceeded:
             log.warning("run_impl: soft time limit exceeded")
             self._call_upload_breadcrumb_task(
@@ -689,7 +697,14 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                     }
                     notify_kwargs = UploadFlow.save_to_kwargs(notify_kwargs)
                     task = self.app.tasks[notify_task_name].apply_async(
-                        kwargs=notify_kwargs
+                        kwargs=notify_kwargs,
+                        retry=True,
+                        retry_policy={
+                            "max_retries": 3,
+                            "interval_start": 0.2,
+                            "interval_step": 0.2,
+                            "interval_max": 1.0,
+                        },
                     )
                     self._call_upload_breadcrumb_task(
                         commit_sha=commitid,
@@ -727,7 +742,14 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                                         "repoid": repoid,
                                         "pullid": pull.pullid,
                                         "should_send_notifications": False,
-                                    }
+                                    },
+                                    retry=True,
+                                    retry_policy={
+                                        "max_retries": 3,
+                                        "interval_start": 0.2,
+                                        "interval_step": 0.2,
+                                        "interval_max": 1.0,
+                                    },
                                 )
                                 compared_to = pull.get_comparedto_commit()
                                 if compared_to:
@@ -738,7 +760,14 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                                     self.app.tasks[
                                         compute_comparison_task_name
                                     ].apply_async(
-                                        kwargs={"comparison_id": comparison.id}
+                                        kwargs={"comparison_id": comparison.id},
+                                        retry=True,
+                                        retry_policy={
+                                            "max_retries": 3,
+                                            "interval_start": 0.2,
+                                            "interval_step": 0.2,
+                                            "interval_max": 1.0,
+                                        },
                                     )
                 case ShouldCallNotifyResult.DO_NOT_NOTIFY:
                     notifications_called = False
