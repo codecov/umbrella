@@ -327,7 +327,17 @@ class StripeWebhookHandler(APIView):
             },
         )
         # add the subscription_id and customer_id to the owner
-        owner = Owner.objects.get(ownerid=subscription.metadata.get("obo_organization"))
+        obo_organization = subscription.metadata.get("obo_organization")
+        if not obo_organization:
+            log.warning(
+                "Subscription created, but missing obo_organization in metadata",
+                extra={
+                    "stripe_customer_id": subscription.customer,
+                    "stripe_subscription_id": subscription.id,
+                },
+            )
+            return
+        owner = Owner.objects.get(ownerid=obo_organization)
         owner.stripe_subscription_id = subscription.id
         owner.stripe_customer_id = subscription.customer
         owner.save()
