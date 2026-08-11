@@ -19,6 +19,11 @@ from shared.torngit.exceptions import TorngitClientError
 impacted_file_bindable = ObjectType("ImpactedFile")
 
 
+@impacted_file_bindable.field("name")
+def resolve_name(impacted_file: ImpactedFile, info) -> str:
+    return impacted_file.file_name
+
+
 @impacted_file_bindable.field("fileName")
 def resolve_file_name(impacted_file: ImpactedFile, info) -> str:
     return impacted_file.file_name
@@ -46,6 +51,11 @@ def resolve_base_coverage(impacted_file: ImpactedFile, info) -> ReportTotals:
 
 @impacted_file_bindable.field("patchCoverage")
 def resolve_patch_coverage(impacted_file: ImpactedFile, info) -> ReportTotals:
+    return impacted_file.patch_coverage
+
+
+@impacted_file_bindable.field("patchTotals")
+def resolve_patch_totals(impacted_file: ImpactedFile, info) -> ReportTotals:
     return impacted_file.patch_coverage
 
 
