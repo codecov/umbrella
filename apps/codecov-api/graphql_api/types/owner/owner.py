@@ -13,6 +13,7 @@ from graphql import GraphQLResolveInfo
 
 import services.activation as activation
 import shared.rate_limits as rate_limits
+from shared.bots.exceptions import NoConfiguredAppsAvailable
 import timeseries.helpers as timeseries_helpers
 from codecov_auth.constants import OWNER_YAML_TO_STRING_KEY
 from codecov_auth.helpers import current_user_part_of_org
@@ -386,9 +387,12 @@ def resolve_is_github_rate_limited(
     if owner.service != SERVICE_GITHUB and owner.service != SERVICE_GITHUB_ENTERPRISE:
         return False
     redis_connection = get_redis_connection()
-    rate_limit_redis_key = rate_limits.determine_entity_redis_key(
-        owner=owner, repository=None
-    )
+    try:
+        rate_limit_redis_key = rate_limits.determine_entity_redis_key(
+            owner=owner, repository=None
+        )
+    except NoConfiguredAppsAvailable:
+        return True
     return rate_limits.determine_if_entity_is_rate_limited(
         redis_connection, rate_limit_redis_key
     )
