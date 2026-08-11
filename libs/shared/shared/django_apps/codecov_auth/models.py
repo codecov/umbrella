@@ -949,7 +949,7 @@ class OrganizationLevelToken(
     ExportModelOperationsMixin("codecov_auth.organization_level_token"),
     BaseCodecovModel,
 ):
-    owner = models.ForeignKey(
+    owner = models.OneToOneField(
         "Owner",
         db_column="ownerid",
         related_name="organization_tokens",
