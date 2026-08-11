@@ -1022,6 +1022,78 @@ class TestOwnerType(GraphQLTestHelper, TestCase):
         data = self.gql_request(query, owner=current_org, provider="bb")
         assert data["owner"]["isGithubRateLimited"] == False
 
+    def test_has_github_app_with_default_installation(self):
+        current_org = OwnerFactory(username="app-installed-org", service="github")
+        GithubAppInstallationFactory(owner=current_org)
+
+        query = f"""{{
+            owner(username: "{current_org.username}") {{
+                hasGithubApp
+            }}
+        }}
+        """
+
+        data = self.gql_request(query, owner=current_org)
+        assert data["owner"]["hasGithubApp"] == True
+
+    def test_has_github_app_ignores_deprecated_integration_id(self):
+        """integration_id is no longer written on install, so it must not be the source of truth."""
+        current_org = OwnerFactory(
+            username="legacy-integration-org", service="github", integration_id=None
+        )
+        GithubAppInstallationFactory(owner=current_org)
+
+        query = f"""{{
+            owner(username: "{current_org.username}") {{
+                hasGithubApp
+            }}
+        }}
+        """
+
+        data = self.gql_request(query, owner=current_org)
+        assert data["owner"]["hasGithubApp"] == True
+
+    def test_has_github_app_without_installation(self):
+        current_org = OwnerFactory(username="no-app-org", service="github")
+
+        query = f"""{{
+            owner(username: "{current_org.username}") {{
+                hasGithubApp
+            }}
+        }}
+        """
+
+        data = self.gql_request(query, owner=current_org)
+        assert data["owner"]["hasGithubApp"] == False
+
+    def test_has_github_app_with_only_non_default_installation(self):
+        current_org = OwnerFactory(username="ai-only-org", service="github")
+        GithubAppInstallationFactory(owner=current_org, name="ai-features")
+
+        query = f"""{{
+            owner(username: "{current_org.username}") {{
+                hasGithubApp
+            }}
+        }}
+        """
+
+        data = self.gql_request(query, owner=current_org)
+        assert data["owner"]["hasGithubApp"] == False
+
+    def test_has_github_app_not_part_of_org(self):
+        other_org = OwnerFactory(username="other-org", service="github")
+        GithubAppInstallationFactory(owner=other_org)
+
+        query = f"""{{
+            owner(username: "{other_org.username}") {{
+                hasGithubApp
+            }}
+        }}
+        """
+
+        data = self.gql_request(query, owner=self.owner)
+        assert data["owner"]["hasGithubApp"] is None
+
     def test_ai_features_enabled(self):
         # Mock the module-level constant directly
         with patch("graphql_api.types.owner.owner.AI_FEATURES_GH_APP_ID", 12345):

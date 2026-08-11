@@ -8,6 +8,7 @@ type Owner {
   externalId: String
   hashOwnerid: String
   hasActiveRepos: Boolean
+  hasGithubApp: Boolean
   hasPrivateRepos: Boolean
   hasPublicRepos: Boolean
   invoice(invoiceId: String!): Invoice
