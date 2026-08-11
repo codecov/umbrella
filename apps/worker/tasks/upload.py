@@ -255,6 +255,31 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
         *args: Any,
         **kwargs: Any,
     ):
+        try:
+            return self._run_impl_inner(
+                db_session, repoid, commitid, report_type, *args, **kwargs
+            )
+        except SoftTimeLimitExceeded:
+            log.warning(
+                "Upload task hit soft time limit; aborting gracefully to allow "
+                "Redis result-backend connections to close before hard timeout.",
+                extra={
+                    "repoid": repoid,
+                    "commitid": commitid,
+                    "report_type": report_type,
+                },
+            )
+            raise
+
+    def _run_impl_inner(
+        self,
+        db_session: Session,
+        repoid: int,
+        commitid: str,
+        report_type: str = "coverage",
+        *args: Any,
+        **kwargs: Any,
+    ):
         # DEBUG: Log that upload task is actually running
         log.info(
             "UPLOAD TASK STARTED - Upload task is running",
