@@ -123,6 +123,10 @@ def rewrite_or_delete_upload(
     elif isinstance(report_info.raw_report, VersionOneParsedRawReport):
         # only a version 1 report needs to be "rewritten readable"
 
-        archive_service.write_file(
-            archive_url, report_info.raw_report.content().getvalue()
-        )
+        # Skip rewriting for Shelter paths: they are managed externally and may
+        # contain characters (e.g. `::::`) that are invalid for GCS/MinIO write
+        # operations.
+        if not archive_url.startswith("shelter/"):
+            archive_service.write_file(
+                archive_url, report_info.raw_report.content().getvalue()
+            )
