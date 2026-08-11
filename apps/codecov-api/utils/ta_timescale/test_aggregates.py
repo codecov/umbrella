@@ -37,6 +37,13 @@ def get_repo_aggregates_via_ca(
         or 0
     )
 
+    flaky_test_count = (
+        test_data.filter(flaky_fail_count__gt=0).aggregate(
+            flaky_test_count=Count("computed_name", distinct=True)
+        )["flaky_test_count"]
+        or 0
+    )
+
     slow_test_num = _calculate_slow_test_num(unique_test_count)
 
     slow_tests = (
@@ -59,7 +66,7 @@ def get_repo_aggregates_via_ca(
 
     slowest_tests_duration = result["slowest_tests_duration"] or 0.0
 
-    return daily_aggregates, slowest_tests_duration, slow_test_num
+    return daily_aggregates, slowest_tests_duration, slow_test_num, flaky_test_count
 
 
 get_test_result_aggregates_histogram = Histogram(
@@ -82,10 +89,10 @@ def get_test_results_aggregates(
     comparison_start_date = start_date - interval_duration
     comparison_end_date = start_date
 
-    curr_aggregates, curr_slow_test_duration, curr_slow_test_num = (
+    curr_aggregates, curr_slow_test_duration, curr_slow_test_num, curr_flaky_test_count = (
         get_repo_aggregates_via_ca(repoid, branch, start_date, end_date)
     )
-    past_aggregates, past_slow_test_duration, past_slow_test_num = (
+    past_aggregates, past_slow_test_duration, past_slow_test_num, _ = (
         get_repo_aggregates_via_ca(
             repoid,
             branch,
@@ -99,6 +106,7 @@ def get_test_results_aggregates(
         skips=int(curr_aggregates["skips"] or 0),
         total_slow_tests=curr_slow_test_num,
         slowest_tests_duration=curr_slow_test_duration or 0.0,
+        flaky_tests=curr_flaky_test_count,
         total_duration_percent_change=_pct_change(
             curr_aggregates["total_duration"], past_aggregates["total_duration"]
         ),
