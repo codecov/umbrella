@@ -386,6 +386,13 @@ def resolve_bundle_report_info(
     return BundleReportInfo(bundle_report.info)
 
 
+@bundle_report_bindable.field("outputPath")
+def resolve_bundle_report_output_path(
+    bundle_report: BundleReport, info: GraphQLResolveInfo
+) -> str | None:
+    return bundle_report.output_path
+
+
 @bundle_report_info_bindable.field("version")
 def resolve_bundle_report_info_version(
     bundle_report_info: BundleReportInfo, info: GraphQLResolveInfo
