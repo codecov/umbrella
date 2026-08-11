@@ -40,7 +40,7 @@ from .flake_aggregates import flake_aggregates, flake_aggregates_bindable
 from .impacted_file import (
     impacted_file,
     impacted_file_bindable,
-    impacted_files_result_bindable,
+    impacted_files_bindable,
 )
 from .invoice import invoice, invoice_bindable
 from .line_comparison import line_comparison, line_comparison_bindable
@@ -166,7 +166,7 @@ bindables = [
     flag_bindable,
     flag_comparison_bindable,
     impacted_file_bindable,
-    impacted_files_result_bindable,
+    impacted_files_bindable,
     indication_range_bindable,
     invoice_bindable,
     line_comparison_bindable,

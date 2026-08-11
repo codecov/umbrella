@@ -16,8 +16,6 @@ type ImpactedFile {
 
 type ImpactedFiles {
   results: [ImpactedFile]
+  files: [ImpactedFile] @deprecated(reason: "Use results instead")
+  isUnknownFlags: Boolean!
 }
-
-union ImpactedFilesResult =
-    ImpactedFiles
-  | UnknownFlags
