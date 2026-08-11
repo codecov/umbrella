@@ -59,3 +59,16 @@ class DeleteOwnerMutationTest(GraphQLTestHelper, TestCase):
 
         assert data["deleteOwner"]["error"]["__typename"] == "UnauthorizedError"
         delete_owner_mock.assert_not_called()
+
+    @patch(
+        "codecov_auth.commands.owner.interactors.delete_owner.TaskService.delete_owner"
+    )
+    def test_mutation_validation_error_for_active_subscription(self, delete_owner_mock):
+        self.owner.plan = "users-pr-inappm"
+        self.owner.stripe_subscription_id = "sub_123"
+        self.owner.save()
+        input = {"username": self.owner.username}
+        data = self.gql_request(query, owner=self.owner, variables={"input": input})
+
+        assert data["deleteOwner"]["error"]["__typename"] == "ValidationError"
+        delete_owner_mock.assert_not_called()

@@ -1,4 +1,8 @@
-union DeleteOwnerError = UnauthenticatedError | UnauthorizedError | NotFoundError
+union DeleteOwnerError =
+  | UnauthenticatedError
+  | UnauthorizedError
+  | NotFoundError
+  | ValidationError
 
 type DeleteOwnerPayload {
   error: DeleteOwnerError
