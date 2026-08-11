@@ -399,8 +399,12 @@ class BundleAnalysisReport:
                 BundleAnalysisMigration(
                     db_session, schema_version, SCHEMA_VERSION
                 ).migrate()
-        except OperationalError:
-            # schema does not exist
+        except OperationalError as e:
+            # schema does not exist — only fall back to full schema creation when
+            # the error indicates a missing table, not a mid-migration failure
+            # (e.g. "table X already exists" from a partial migration).
+            if "already exists" in str(e).lower():
+                raise
             try:
                 con = sqlite3.connect(self.db_path)
                 con.executescript(SCHEMA)
