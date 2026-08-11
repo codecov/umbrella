@@ -28,6 +28,7 @@ from shared.torngit.exceptions import (
     TorngitClientError,
     TorngitError,
     TorngitObjectNotFoundError,
+    TorngitServerFailureError,
 )
 from shared.torngit.response_types import ProviderPull
 from shared.typings.torngit import (
@@ -185,6 +186,12 @@ def possibly_update_commit_from_provider_info(
             "Could not update commit with info because it was not found at the provider"
         )
         return False
+    except TorngitServerFailureError:
+        log.warning(
+            "Could not update commit with info due to a provider server failure",
+            extra={"commit": commit.commitid, "repoid": commit.repoid},
+        )
+        raise
     log.debug("Not updating commit because it already seems to be populated")
     return False
 
