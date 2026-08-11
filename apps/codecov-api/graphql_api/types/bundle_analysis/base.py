@@ -260,6 +260,20 @@ def resolve_asset(
     return bundle_report.asset(name)
 
 
+@bundle_report_bindable.field("sizeTotal")
+def resolve_bundle_report_size_total(
+    bundle_report: BundleReport, info: GraphQLResolveInfo
+) -> int:
+    return bundle_report.size_total
+
+
+@bundle_report_bindable.field("loadTimeTotal")
+def resolve_bundle_report_load_time_total(
+    bundle_report: BundleReport, info: GraphQLResolveInfo
+) -> int:
+    return BundleData(bundle_report.size_total).load_time.three_g
+
+
 @bundle_report_bindable.field("bundleData")
 def resolve_bundle_data(
     bundle_report: BundleReport, info: GraphQLResolveInfo
