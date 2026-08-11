@@ -145,3 +145,12 @@ def resolve_bitbucket_server_url(_, info):
 
     if settings.BITBUCKET_SERVER_CLIENT_ID:
         return settings.BITBUCKET_SERVER_URL
+
+
+@config_bindable.field("bitbucketURL")
+def resolve_bitbucket_url(_, info):
+    if not settings.IS_ENTERPRISE:
+        return None
+
+    if settings.BITBUCKET_SERVER_CLIENT_ID:
+        return settings.BITBUCKET_SERVER_URL
