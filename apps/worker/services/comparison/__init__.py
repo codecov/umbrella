@@ -13,7 +13,7 @@ from services.repository import get_repo_provider_service
 from shared.reports.changes import run_comparison_using_rust
 from shared.reports.types import Change, ReportTotals
 from shared.torngit.base import TorngitBaseAdapter
-from shared.torngit.exceptions import TorngitClientGeneralError
+from shared.torngit.exceptions import TorngitClientGeneralError, TorngitServerFailureError
 from shared.utils.sessions import SessionType
 
 log = logging.getLogger(__name__)
@@ -197,7 +197,7 @@ class ComparisonProxy:
                     branch_response = async_to_sync(self.repository_service.get_branch)(
                         branch_to_get
                     )
-                except TorngitClientGeneralError:
+                except (TorngitClientGeneralError, TorngitServerFailureError):
                     log.warning(
                         "Unable to fetch base branch from Git provider",
                         extra={
