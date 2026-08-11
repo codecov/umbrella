@@ -293,8 +293,10 @@ def resolve_flags(
 
             flag_ids = [edge["node"].pk for edge in connection.edges]
 
+            branch = node.args.get("branch")
+
             info.context["flag_measurements"] = flag_measurements(
-                parent.repository, flag_ids, interval, after, before
+                parent.repository, flag_ids, interval, after, before, branch=branch
             )
         else:
             info.context["flag_measurements"] = {}
