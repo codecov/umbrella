@@ -131,6 +131,9 @@ compute_comparison_task_name = (
 compute_component_comparison_task_name = (
     f"app.tasks.{TaskConfigGroup.compute_comparison.value}.ComputeComponentComparison"
 )
+compute_flag_comparison_task_name = (
+    f"app.tasks.{TaskConfigGroup.compute_comparison.value}.ComputeFlagComparison"
+)
 
 commit_update_task_name = (
     f"app.tasks.{TaskConfigGroup.commit_update.value}.CommitUpdate"
