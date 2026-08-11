@@ -376,10 +376,13 @@ class BundleAnalysisComparison:
         """
         Returns a list of changes across the bundles in the base and head reports.
         """
-        base_bundle_reports = {
-            bundle_report.name: bundle_report
-            for bundle_report in self.base_report.bundle_reports()
-        }
+        try:
+            base_bundle_reports = {
+                bundle_report.name: bundle_report
+                for bundle_report in self.base_report.bundle_reports()
+            }
+        except MissingBaseReportError:
+            base_bundle_reports = {}
         head_bundle_reports = {
             bundle_report.name: bundle_report
             for bundle_report in self.head_report.bundle_reports()
@@ -429,9 +432,12 @@ class BundleAnalysisComparison:
 
         Percentage is returned as a float 0-100, rounded to 2 decimal places
         """
-        base_size = sum(
-            report.total_size() for report in self.base_report.bundle_reports()
-        )
+        try:
+            base_size = sum(
+                report.total_size() for report in self.base_report.bundle_reports()
+            )
+        except MissingBaseReportError:
+            base_size = 0
         if base_size == 0:
             return 100.0
         return round((self.total_size_delta / base_size) * 100, 2)
@@ -442,7 +448,10 @@ class BundleAnalysisComparison:
         More detailed comparison (about asset changes) for a particular bundle that
         exists both in the base and head reports.
         """
-        base_bundle_report = self.base_report.bundle_report(bundle_name)
+        try:
+            base_bundle_report = self.base_report.bundle_report(bundle_name)
+        except MissingBaseReportError:
+            base_bundle_report = None
         head_bundle_report = self.head_report.bundle_report(bundle_name)
         if base_bundle_report is None or head_bundle_report is None:
             raise MissingBundleError()
