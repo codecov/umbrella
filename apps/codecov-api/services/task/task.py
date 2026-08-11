@@ -231,7 +231,12 @@ class TaskService:
                 )
             )
 
-        return chain(*chain_to_call).apply_async()
+        try:
+            return chain(*chain_to_call).apply_async()
+        except Exception as e:
+            from codecov.commands.exceptions import ServiceUnavailable
+
+            raise ServiceUnavailable() from e
 
     def sync_plans(self, sender=None, account=None, action=None):
         self._create_signature(

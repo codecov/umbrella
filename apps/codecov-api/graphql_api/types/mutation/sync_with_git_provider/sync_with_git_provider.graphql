@@ -1,4 +1,4 @@
-union SyncWithGitProviderError = UnauthenticatedError
+union SyncWithGitProviderError = UnauthenticatedError | ServiceUnavailableError
 
 type SyncWithGitProviderPayload {
   me: Me
