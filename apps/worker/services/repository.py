@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
+import httpx
 import sentry_sdk
 from asgiref.sync import async_to_sync
 from sqlalchemy.exc import IntegrityError
@@ -663,6 +664,13 @@ def fetch_commit_yaml_and_possibly_store(
     except TorngitClientError:
         log.warning(
             "Unable to use yaml from commit because it cannot be fetched",
+            extra={"repoid": repository.repoid, "commit": commit.commitid},
+            exc_info=True,
+        )
+        commit_yaml = None
+    except httpx.TimeoutException:
+        log.warning(
+            "Unable to fetch yaml from provider due to a network timeout",
             extra={"repoid": repository.repoid, "commit": commit.commitid},
             exc_info=True,
         )
