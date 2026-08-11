@@ -32,6 +32,7 @@ def configure_sentry_scope(query_name: str | None) -> None:
 
 
 @query_bindable.field("me")
+@query_bindable.field("currentUser")
 @sync_to_async
 def resolve_me(_: Any, info: GraphQLResolveInfo) -> Owner | None:
     configure_sentry_scope(query_name(info))

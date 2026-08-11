@@ -2,6 +2,7 @@ scalar DateTime
 
 type Query {
   me: Me
+  currentUser: Me @deprecated(reason: "Use 'me' instead")
   owner(username: String!): Owner
   config: Config!
 }
