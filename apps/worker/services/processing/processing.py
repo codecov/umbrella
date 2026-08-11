@@ -10,6 +10,7 @@ from database.models.core import Commit
 from database.models.reports import Upload
 from helpers.reports import delete_archive_setting
 from services.report import ProcessingError, RawReportInfo, ReportService
+from shared.upload.constants import UploadErrorCode
 from services.report.parser.types import VersionOneParsedRawReport
 from shared.api_archive.archive import ArchiveService
 from shared.celery_config import upload_finisher_task_name
@@ -30,7 +31,7 @@ def process_upload(
     commit_sha: str,
     commit_yaml: UserYaml,
     arguments: UploadArguments,
-) -> ProcessingResult:
+) -> ProcessingResult | None:
     upload_id = arguments["upload_id"]
 
     commit = (
@@ -38,7 +39,19 @@ def process_upload(
         .filter(Commit.repoid == repo_id, Commit.commitid == commit_sha)
         .first()
     )
-    assert commit
+    if commit is None:
+        log.warning(
+            "Commit not found in database for upload processing",
+            extra={"repo_id": repo_id, "commit_sha": commit_sha},
+        )
+        on_processing_error(
+            ProcessingError(
+                code=UploadErrorCode.COMMIT_NOT_FOUND,
+                params={"repo_id": repo_id, "commit_sha": commit_sha},
+                is_retryable=True,
+            )
+        )
+        return None
 
     upload = db_session.query(Upload).filter_by(id_=upload_id).first()
     assert upload
