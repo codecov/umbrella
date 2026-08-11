@@ -28,6 +28,10 @@ class OktaAdminLoginView(OktaLoginMixin, StateMixin, View):
     to the admin URL (or the `next` param supplied in the initial request).
     """
 
+    # StateMixin keys the OAuth state on this. Kept distinct from OktaLoginView's
+    # "okta" so an admin login can't consume a dashboard login's state.
+    service = "okta_admin"
+
     def get(self, request: HttpRequest) -> HttpResponse:
         iss = settings.OKTA_ISS
         if not iss:
