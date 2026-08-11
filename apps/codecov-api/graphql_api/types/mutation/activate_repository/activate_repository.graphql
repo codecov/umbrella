@@ -1,0 +1,5 @@
+union ActivateRepositoryError = UnauthenticatedError | ValidationError | UnauthorizedError
+
+type ActivateRepositoryPayload {
+  error: ActivateRepositoryError
+}

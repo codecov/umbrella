@@ -4,6 +4,10 @@ from .activate_measurements import (
     error_activate_measurements,
     resolve_activate_measurements,
 )
+from .activate_repository import (
+    error_activate_repository,
+    resolve_activate_repository,
+)
 from .cancel_trial import error_cancel_trial, resolve_cancel_trial
 from .create_api_token import error_create_api_token, resolve_create_api_token
 from .create_stripe_setup_intent import (
@@ -103,6 +107,7 @@ mutation_bindable.field("cancelTrial")(resolve_cancel_trial)
 mutation_bindable.field("deleteComponentMeasurements")(
     resolve_delete_component_measurements
 )
+mutation_bindable.field("activateRepository")(resolve_activate_repository)
 mutation_bindable.field("eraseRepository")(resolve_erase_repository)
 mutation_bindable.field("updateRepository")(resolve_update_repository)
 mutation_bindable.field("updateSelfHostedSettings")(resolve_update_self_hosted_settings)
@@ -140,6 +145,7 @@ mutation_resolvers = [
     error_save_terms_agreement,
     error_start_trial,
     error_cancel_trial,
+    error_activate_repository,
     error_erase_repository,
     error_update_repository,
     error_update_self_hosted_settings,
