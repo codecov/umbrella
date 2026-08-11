@@ -1,6 +1,7 @@
 type ComponentComparison {
     id: String!
     name: String!
+    headName: String! @deprecated(reason: "Use 'name' instead")
     baseTotals: CoverageTotals
     headTotals: CoverageTotals
     patchTotals: CoverageTotals
