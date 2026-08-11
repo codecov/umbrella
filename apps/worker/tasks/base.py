@@ -6,6 +6,7 @@ from datetime import datetime
 import sentry_sdk
 from celery._state import get_current_task
 from celery.exceptions import MaxRetriesExceededError, SoftTimeLimitExceeded
+from kombu.exceptions import OperationalError
 from celery.worker.request import Request
 from django.db import InterfaceError, close_old_connections
 from sqlalchemy.exc import (
@@ -727,18 +728,47 @@ class BaseCodecovTask(celery_app.Task):
         """
         Queue a task to create an upload breadcrumb.
         """
+        breadcrumb_kwargs = {
+            "commit_sha": commit_sha,
+            "repo_id": repo_id,
+            "breadcrumb_data": BreadcrumbData(
+                milestone=milestone, error=error, error_text=error_text
+            ),
+            "upload_ids": upload_ids,
+            "sentry_trace_id": current_sentry_trace_id(),
+        }
         try:
             self.app.tasks[upload_breadcrumb_task_name].apply_async(
-                kwargs={
+                kwargs=breadcrumb_kwargs
+            )
+        except OperationalError:
+            log.warning(
+                "Failed to queue upload breadcrumb task due to broker unavailability, falling back to synchronous execution",
+                extra={
                     "commit_sha": commit_sha,
                     "repo_id": repo_id,
-                    "breadcrumb_data": BreadcrumbData(
-                        milestone=milestone, error=error, error_text=error_text
-                    ),
+                    "milestone": milestone,
                     "upload_ids": upload_ids,
-                    "sentry_trace_id": current_sentry_trace_id(),
-                }
+                    "error": error,
+                    "error_text": error_text,
+                },
             )
+            try:
+                self.app.tasks[upload_breadcrumb_task_name].apply(
+                    kwargs=breadcrumb_kwargs
+                )
+            except Exception:
+                log.exception(
+                    "Failed to create upload breadcrumb task synchronously",
+                    extra={
+                        "commit_sha": commit_sha,
+                        "repo_id": repo_id,
+                        "milestone": milestone,
+                        "upload_ids": upload_ids,
+                        "error": error,
+                        "error_text": error_text,
+                    },
+                )
         except Exception:
             log.exception(
                 "Failed to queue upload breadcrumb task",
