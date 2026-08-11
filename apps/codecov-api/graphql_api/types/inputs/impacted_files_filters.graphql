@@ -1,6 +1,7 @@
 input ImpactedFilesFilters {
   ordering: ImpactedFilesOrdering
   hasUnintendedChanges: Boolean
+  hasUncoveredLines: Boolean
   flags: [String!]
   components: [String!]
 }
