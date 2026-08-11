@@ -6,6 +6,7 @@ from enum import Enum
 import sentry_sdk
 from asgiref.sync import async_to_sync
 from celery.exceptions import Retry, SoftTimeLimitExceeded
+from kombu.exceptions import OperationalError as KombuOperationalError
 
 from app import celery_app
 from celery_config import notify_error_task_name
@@ -415,6 +416,13 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                 "upload_ids": upload_ids,
             }
 
+        except KombuOperationalError as e:
+            log.warning(
+                "run_impl: Redis broker unavailable, retrying upload finisher",
+                extra={"upload_ids": upload_ids, "error": repr(e)},
+            )
+            raise self.retry(exc=e, countdown=60)
+
         except Exception as e:
             log.exception("run_impl: unexpected error in upload finisher")
             sentry_sdk.capture_exception(e)
@@ -689,7 +697,14 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                     }
                     notify_kwargs = UploadFlow.save_to_kwargs(notify_kwargs)
                     task = self.app.tasks[notify_task_name].apply_async(
-                        kwargs=notify_kwargs
+                        kwargs=notify_kwargs,
+                        retry=True,
+                        retry_policy={
+                            "max_retries": 3,
+                            "interval_start": 1,
+                            "interval_step": 1,
+                            "interval_max": 5,
+                        },
                     )
                     self._call_upload_breadcrumb_task(
                         commit_sha=commitid,
