@@ -361,8 +361,30 @@ class BaseCeleryConfig:
     # Task visibility timeout for broker transport
     # Uses TASK_VISIBILITY_TIMEOUT_SECONDS constant
     # Can be overridden via: setup.tasks.celery.visibility_timeout config
+    #
+    # socket_keepalive: enables TCP keepalive probes on Redis connections so the OS
+    # detects and tears down dead connections (e.g. after a Redis restart or network
+    # disruption) before they are used for a task ack or command.
+    #
+    # health_check_interval: redis-py will send a PING on idle connections every N
+    # seconds, proactively discovering stale connections before a task operation fails.
+    # A value of 25 seconds is recommended by the redis-py docs.
     broker_transport_options = {
         "visibility_timeout": TASK_VISIBILITY_TIMEOUT_SECONDS,
+        "socket_keepalive": bool(
+            get_config(
+                "setup", "tasks", "celery", "broker_socket_keepalive", default=True
+            )
+        ),
+        "health_check_interval": int(
+            get_config(
+                "setup",
+                "tasks",
+                "celery",
+                "broker_health_check_interval",
+                default=25,
+            )
+        ),
     }
     result_extended = True
     task_default_queue = get_config(
