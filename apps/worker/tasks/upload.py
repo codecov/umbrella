@@ -13,6 +13,7 @@ from celery import chain, chord
 from celery.exceptions import SoftTimeLimitExceeded
 from django.conf import settings
 from redis import Redis
+from redis.exceptions import ReadOnlyError
 from sqlalchemy.orm import Session
 
 from app import celery_app
@@ -336,7 +337,7 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
             commitid=commitid,
             report_type=upload_context.report_type,
             lock_timeout=self.get_lock_timeout(DEFAULT_LOCK_TIMEOUT_SECONDS),
-            blocking_timeout=None,
+            blocking_timeout=60,
             redis_connection=upload_context.redis_connection,
         )
 
@@ -427,6 +428,17 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
                 repo_id=repoid,
                 milestone=milestone,
                 error=Errors.TASK_TIMED_OUT,
+            )
+            retry_countdown = 20 * 2**self.request.retries
+            self.retry(
+                max_retries=3,
+                countdown=retry_countdown,
+                kwargs=upload_context.kwargs_for_retry(kwargs),
+            )
+        except ReadOnlyError:
+            log.warning(
+                "Redis is in read-only mode (possible failover). Retrying upload task.",
+                extra=upload_context.log_extra(),
             )
             retry_countdown = 20 * 2**self.request.retries
             self.retry(
