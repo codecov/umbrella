@@ -25,6 +25,7 @@ type Commit {
   coverageStatus: CommitStatus
   coverageAnalytics: CommitCoverageAnalytics
   bundleAnalysis: CommitBundleAnalysis
+  bundleAnalysisReport: BundleAnalysisReportResult @deprecated(reason: "Use bundleAnalysis.bundleAnalysisReport instead")
   latestUploadError: LatestUploadError
 }
 
