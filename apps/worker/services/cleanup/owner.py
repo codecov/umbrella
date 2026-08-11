@@ -13,10 +13,52 @@ log = logging.getLogger(__name__)
 CLEAR_ARRAY_FIELDS = ["plan_activated_users", "organizations", "admins"]
 
 
-def cleanup_owner(owner_id: int) -> CleanupSummary:
-    log.info("Started/Continuing Owner cleanup", extra={"ownerid": owner_id})
+def cleanup_owner_repo(owner_id: int, repoid: int) -> CleanupSummary:
+    """
+    Cleans up a single repository belonging to an owner.
+    Called once per repo so each invocation stays within the task time limit.
+    """
+    log.info(
+        "Cleaning up repository for owner",
+        extra={"ownerid": owner_id, "repoid": repoid},
+    )
+    repo_query = Repository.objects.filter(repoid=repoid, author_id=owner_id)
+    with cleanup_context() as context:
+        cleanup_queryset(repo_query, context)
+        summary = context.summary
+    log.info(
+        "Repository cleanup finished",
+        extra={"ownerid": owner_id, "repoid": repoid, "summary": summary},
+    )
+    return summary
 
-    clear_owner_references(owner_id)
+
+def cleanup_owner(owner_id: int, refs_cleared: bool = False) -> CleanupSummary:
+    """
+    Cleans up an owner.  To avoid hitting the Celery hard-timeout when an owner
+    has many repositories, this function only cleans one repository per call.
+    The caller (DeleteOwnerTask) is responsible for re-enqueuing itself until
+    all repositories are gone, then calling this function a final time with no
+    repositories remaining so the owner record itself is removed.
+    """
+    log.info(
+        "Started/Continuing Owner cleanup",
+        extra={"ownerid": owner_id, "refs_cleared": refs_cleared},
+    )
+
+    if not refs_cleared:
+        clear_owner_references(owner_id)
+
+    # Process one repository at a time to stay within the task time limit.
+    next_repo = Repository.objects.filter(author_id=owner_id).first()
+    if next_repo is not None:
+        log.info(
+            "Owner still has repositories; cleaning one and rescheduling",
+            extra={"ownerid": owner_id, "repoid": next_repo.repoid},
+        )
+        return cleanup_owner_repo(owner_id, next_repo.repoid)
+
+    # All repositories cleaned — now remove the owner record itself.
     owner_query = Owner.objects.filter(ownerid=owner_id)
     with cleanup_context() as context:
         cleanup_queryset(owner_query, context)
