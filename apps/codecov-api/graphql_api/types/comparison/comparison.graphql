@@ -11,6 +11,7 @@ type Comparison {
   changeCoverage: Float
   flagComparisons(filters: FlagComparisonFilters): [FlagComparison]
   componentComparisons(filters: ComponentsFilters): [ComponentComparison!]
+  components(filters: ComponentsFilters): [ComponentComparison!] @deprecated(reason: "Use componentComparisons instead")
   hasDifferentNumberOfHeadAndBaseReports: Boolean!
   flagComparisonsCount: Int!
   componentComparisonsCount: Int!
