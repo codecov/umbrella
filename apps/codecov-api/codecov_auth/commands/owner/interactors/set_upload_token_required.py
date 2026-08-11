@@ -31,7 +31,7 @@ class SetUploadTokenRequiredInteractor(BaseInteractor):
     def execute(self, input: dict[str, bool]):
         typed_input = SetUploadTokenRequiredInput(
             upload_token_required=input.get("upload_token_required"),
-            org_username=input.get("org_username"),
+            org_username=input.get("org_username") or input.get("owner"),
         )
 
         owner_obj = Owner.objects.filter(
