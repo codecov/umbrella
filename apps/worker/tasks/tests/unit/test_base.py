@@ -41,6 +41,12 @@ def mock_self_app(mocker, celery_app):
     mock_app = celery_app
     mock_app.tasks[upload_breadcrumb_task_name] = mocker.MagicMock()
 
+    mock_conn = mocker.MagicMock()
+    mock_conn_ctx = mocker.MagicMock()
+    mock_conn_ctx.__enter__ = mocker.MagicMock(return_value=mock_conn)
+    mock_conn_ctx.__exit__ = mocker.MagicMock(return_value=False)
+    mock_app.connection_or_connect = mocker.MagicMock(return_value=mock_conn_ctx)
+
     return mocker.patch.object(
         BaseCodecovTask,
         "app",
@@ -320,6 +326,7 @@ class TestBaseCodecovTask:
         mock_repo = mocker.MagicMock()
         assert task.get_repo_provider_service(mock_repo, commit=mock_commit) is None
         task.retry.assert_called_with(countdown=120)
+        mock_conn = mock_self_app.connection_or_connect.return_value.__enter__.return_value
         mock_self_app.tasks[upload_breadcrumb_task_name].apply_async.assert_has_calls(
             [
                 call(
@@ -331,7 +338,8 @@ class TestBaseCodecovTask:
                         ),
                         "upload_ids": [],
                         "sentry_trace_id": None,
-                    }
+                    },
+                    connection=mock_conn,
                 ),
                 call(
                     kwargs={
@@ -342,7 +350,8 @@ class TestBaseCodecovTask:
                         ),
                         "upload_ids": [],
                         "sentry_trace_id": None,
-                    }
+                    },
+                    connection=mock_conn,
                 ),
             ]
         )
@@ -379,6 +388,7 @@ class TestBaseCodecovTask:
             error_code=CommitErrorTypes.REPO_BOT_INVALID.value,
             error_params={"repoid": 5},
         )
+        mock_conn = mock_self_app.connection_or_connect.return_value.__enter__.return_value
         mock_self_app.tasks[
             upload_breadcrumb_task_name
         ].apply_async.assert_called_once_with(
@@ -390,7 +400,8 @@ class TestBaseCodecovTask:
                 ),
                 "upload_ids": [],
                 "sentry_trace_id": None,
-            }
+            },
+            connection=mock_conn,
         )
 
     def test_get_repo_provider_service_torngit_client_error(
@@ -406,6 +417,7 @@ class TestBaseCodecovTask:
         mock_commit = mocker.MagicMock()
         mock_commit.commitid = "abc123"
         task.get_repo_provider_service(mock_repo, commit=mock_commit)
+        mock_conn = mock_self_app.connection_or_connect.return_value.__enter__.return_value
         mock_self_app.tasks[
             upload_breadcrumb_task_name
         ].apply_async.assert_called_once_with(
@@ -417,7 +429,8 @@ class TestBaseCodecovTask:
                 ),
                 "upload_ids": [],
                 "sentry_trace_id": None,
-            }
+            },
+            connection=mock_conn,
         )
 
     def test_call_upload_breadcrumb_task_exception(self, mocker, mock_self_app):
@@ -434,6 +447,7 @@ class TestBaseCodecovTask:
         mock_commit.commitid = "abc123"
         # Ensure the exception from _call_upload_breadcrumb_task does not propagate
         task.get_repo_provider_service(mock_repo, commit=mock_commit)
+        mock_conn = mock_self_app.connection_or_connect.return_value.__enter__.return_value
         mock_self_app.tasks[
             upload_breadcrumb_task_name
         ].apply_async.assert_called_once_with(
@@ -446,7 +460,8 @@ class TestBaseCodecovTask:
                 ),
                 "upload_ids": [],
                 "sentry_trace_id": None,
-            }
+            },
+            connection=mock_conn,
         )
 
 
