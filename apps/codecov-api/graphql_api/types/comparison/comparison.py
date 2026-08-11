@@ -36,6 +36,26 @@ def resolve_state(comparison: ComparisonReport, info: GraphQLResolveInfo) -> str
     return comparison.commit_comparison.state
 
 
+@comparison_bindable.field("files")
+@sync_to_async
+def resolve_files(
+    comparison_report: ComparisonReport, info: GraphQLResolveInfo, filters=None
+):
+    command: CompareCommands = info.context["executor"].get_command("compare")
+    comparison: Comparison = info.context.get("comparison", None)
+
+    if filters and comparison:
+        flags = filters.get("flags", [])
+        if flags and set(flags).isdisjoint(
+            set(comparison.head_report.get_flag_names())
+        ):
+            return UnknownFlags()
+
+    return {
+        "results": command.fetch_impacted_files(comparison_report, comparison, filters)
+    }
+
+
 @comparison_bindable.field("impactedFiles")
 @sync_to_async
 def resolve_impacted_files(
