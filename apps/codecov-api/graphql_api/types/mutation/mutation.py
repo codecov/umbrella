@@ -46,6 +46,7 @@ from .save_terms_agreement import (
     error_save_terms_agreement,
     resolve_save_terms_agreement,
 )
+from .set_upload_token import error_set_upload_token, resolve_set_upload_token
 from .set_upload_token_required import (
     error_set_upload_token_required,
     resolve_set_upload_token_required,
@@ -115,6 +116,7 @@ mutation_bindable.field("storeEventMetric")(resolve_store_event_metrics)
 
 mutation_bindable.field("saveOktaConfig")(resolve_save_okta_config)
 mutation_bindable.field("setUploadTokenRequired")(resolve_set_upload_token_required)
+mutation_bindable.field("setUploadToken")(resolve_set_upload_token)
 mutation_bindable.field("updateBundleCacheConfig")(resolve_update_bundle_cache_config)
 
 mutation_resolvers = [
@@ -149,4 +151,5 @@ mutation_resolvers = [
     error_save_okta_config,
     error_set_upload_token_required,
     error_update_bundle_cache_config,
+    error_set_upload_token,
 ]

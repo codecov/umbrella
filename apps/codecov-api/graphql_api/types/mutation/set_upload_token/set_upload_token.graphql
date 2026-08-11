@@ -1,0 +1,5 @@
+union SetUploadTokenError = UnauthenticatedError | UnauthorizedError | ValidationError
+
+type SetUploadTokenPayload {
+  error: SetUploadTokenError
+}
