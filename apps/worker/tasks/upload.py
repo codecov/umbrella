@@ -843,7 +843,6 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
             upload_processor_task.s(
                 repoid=commit.repoid,
                 commitid=commit.commitid,
-                commit_yaml=commit_yaml,
                 arguments=arguments,
             )
             for arguments in argument_list
@@ -852,7 +851,6 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
         finisher_kwargs = {
             "repoid": commit.repoid,
             "commitid": commit.commitid,
-            "commit_yaml": commit_yaml,
         }
         finisher_kwargs = UploadFlow.save_to_kwargs(finisher_kwargs)
         finish_parallel_sig = upload_finisher_task.signature(kwargs=finisher_kwargs)
