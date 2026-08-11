@@ -43,4 +43,7 @@ type Mutation {
   saveOktaConfig(input: SaveOktaConfigInput!): SaveOktaConfigPayload
   setUploadTokenRequired(input: SetUploadTokenRequiredInput!): SetUploadTokenRequiredPayload
   updateBundleCacheConfig(input: UpdateBundleCacheConfigInput!): UpdateBundleCacheConfigPayload
+  regenerateUploadToken(
+    input: RegenerateUploadTokenInput!
+  ): RegenerateUploadTokenPayload @deprecated(reason: "Use regenerateRepositoryUploadToken instead")
 }
