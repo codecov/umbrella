@@ -1,6 +1,7 @@
 from unittest.mock import patch
 
 import pytest
+from asgiref.sync import sync_to_async
 from django.test import TestCase
 
 from codecov.commands.exceptions import (
@@ -42,6 +43,20 @@ class DeleteOwnerInteractorTest(TestCase):
         service = current_owner.service if current_owner else "github"
         return DeleteOwnerInteractor(current_owner, service).execute(username)
 
+    @sync_to_async
+    def _update_current_owner(self, **attrs):
+        for key, value in attrs.items():
+            setattr(self.current_owner, key, value)
+        self.current_owner.save()
+
+    @sync_to_async
+    def _setup_account_stripe_billing(self):
+        account = AccountFactory()
+        self.current_owner.account = account
+        self.current_owner.plan = PlanName.CODECOV_PRO_MONTHLY.value
+        self.current_owner.save()
+        StripeBillingFactory(account=account, is_active=True)
+
     async def test_when_unauthenticated_raises(self):
         with pytest.raises(Unauthenticated):
             await self.execute(None, self.current_owner.username)
@@ -73,30 +88,32 @@ class DeleteOwnerInteractorTest(TestCase):
         )
 
     async def test_when_invoice_billed_raises(self):
-        self.current_owner.uses_invoice = True
-        self.current_owner.save()
+        await self._update_current_owner(uses_invoice=True)
         with pytest.raises(ValidationError):
             await self.execute(self.current_owner, self.current_owner.username)
 
     async def test_when_github_marketplace_paid_raises(self):
-        self.current_owner.plan = PlanName.USERS_PR_INAPPM.value
-        self.current_owner.plan_provider = "github"
-        self.current_owner.save()
+        await self._update_current_owner(
+            plan=PlanName.CODECOV_PRO_MONTHLY.value,
+            plan_provider="github",
+        )
         with pytest.raises(ValidationError):
             await self.execute(self.current_owner, self.current_owner.username)
 
     async def test_when_stripe_subscription_raises(self):
-        self.current_owner.plan = PlanName.USERS_PR_INAPPM.value
-        self.current_owner.stripe_subscription_id = "sub_123"
-        self.current_owner.save()
+        await self._update_current_owner(
+            plan=PlanName.CODECOV_PRO_MONTHLY.value,
+            stripe_subscription_id="sub_123",
+        )
         with pytest.raises(ValidationError):
             await self.execute(self.current_owner, self.current_owner.username)
 
     @patch("codecov_auth.commands.owner.interactors.delete_owner.TaskService")
     async def test_when_free_plan_allows_deletion(self, task_service_mock):
-        self.current_owner.plan = PlanName.USERS_DEVELOPER.value
-        self.current_owner.stripe_subscription_id = None
-        self.current_owner.save()
+        await self._update_current_owner(
+            plan=PlanName.USERS_DEVELOPER.value,
+            stripe_subscription_id=None,
+        )
         await self.execute(self.current_owner, self.current_owner.username)
         task_service_mock.return_value.delete_owner.assert_called_once_with(
             ownerid=self.current_owner.ownerid
@@ -104,11 +121,7 @@ class DeleteOwnerInteractorTest(TestCase):
 
     @patch("codecov_auth.commands.owner.interactors.delete_owner.TaskService")
     async def test_when_account_stripe_billing_raises(self, task_service_mock):
-        account = AccountFactory()
-        self.current_owner.account = account
-        self.current_owner.plan = PlanName.USERS_PR_INAPPM.value
-        self.current_owner.save()
-        StripeBillingFactory(account=account, is_active=True)
+        await self._setup_account_stripe_billing()
         with pytest.raises(ValidationError):
             await self.execute(self.current_owner, self.current_owner.username)
         task_service_mock.return_value.delete_owner.assert_not_called()

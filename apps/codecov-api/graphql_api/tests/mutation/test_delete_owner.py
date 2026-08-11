@@ -5,6 +5,7 @@ from django.test import TestCase
 
 from graphql_api.tests.helper import GraphQLTestHelper
 from shared.django_apps.core.tests.factories import OwnerFactory
+from shared.plan.constants import PlanName
 
 query = """
 mutation($input: DeleteOwnerInput!) {
@@ -39,36 +40,32 @@ class DeleteOwnerMutationTest(GraphQLTestHelper, TestCase):
         data = self.gql_request(query, variables={"input": input})
         assert data["deleteOwner"]["error"]["__typename"] == "UnauthenticatedError"
 
-    @patch(
-        "codecov_auth.commands.owner.interactors.delete_owner.TaskService.delete_owner"
-    )
-    def test_mutation_deletes_personal_account(self, delete_owner_mock):
+    @patch("codecov_auth.commands.owner.interactors.delete_owner.TaskService")
+    def test_mutation_deletes_personal_account(self, task_service_mock):
         input = {"username": self.owner.username}
         data = self.gql_request(query, owner=self.owner, variables={"input": input})
 
-        assert data["deleteOwner"]["error"] is None
-        delete_owner_mock.assert_called_once_with(ownerid=self.owner.ownerid)
+        assert data["deleteOwner"] is None
+        task_service_mock.return_value.delete_owner.assert_called_once_with(
+            ownerid=self.owner.ownerid
+        )
 
-    @patch(
-        "codecov_auth.commands.owner.interactors.delete_owner.TaskService.delete_owner"
-    )
-    def test_mutation_unauthorized_for_other_owner(self, delete_owner_mock):
+    @patch("codecov_auth.commands.owner.interactors.delete_owner.TaskService")
+    def test_mutation_unauthorized_for_other_owner(self, task_service_mock):
         other_owner = OwnerFactory(username="someone-else", service="github")
         input = {"username": other_owner.username}
         data = self.gql_request(query, owner=self.owner, variables={"input": input})
 
         assert data["deleteOwner"]["error"]["__typename"] == "UnauthorizedError"
-        delete_owner_mock.assert_not_called()
+        task_service_mock.return_value.delete_owner.assert_not_called()
 
-    @patch(
-        "codecov_auth.commands.owner.interactors.delete_owner.TaskService.delete_owner"
-    )
-    def test_mutation_validation_error_for_active_subscription(self, delete_owner_mock):
-        self.owner.plan = "users-pr-inappm"
+    @patch("codecov_auth.commands.owner.interactors.delete_owner.TaskService")
+    def test_mutation_validation_error_for_active_subscription(self, task_service_mock):
+        self.owner.plan = PlanName.CODECOV_PRO_MONTHLY.value
         self.owner.stripe_subscription_id = "sub_123"
         self.owner.save()
         input = {"username": self.owner.username}
         data = self.gql_request(query, owner=self.owner, variables={"input": input})
 
         assert data["deleteOwner"]["error"]["__typename"] == "ValidationError"
-        delete_owner_mock.assert_not_called()
+        task_service_mock.return_value.delete_owner.assert_not_called()
