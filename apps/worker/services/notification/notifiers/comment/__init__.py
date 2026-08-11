@@ -80,6 +80,13 @@ class CommentNotifier(MessageMixin, AbstractBaseNotifier):
         comparison: ComparisonProxy,
         status_or_checks_helper_text: dict[str, str] | None = None,
     ) -> NotificationResult:
+        # Pre-load the github_app_installations relationship while the DB connection
+        # is still fresh. This prevents a stale-connection OperationalError when
+        # _possibly_write_install_app later accesses this lazy-loaded attribute after
+        # external GitHub API calls have idled (and potentially caused the server to
+        # close) the underlying psycopg2 connection.
+        _ = comparison.head.commit.repository.author.github_app_installations
+
         # TODO: remove this when we don't need it anymore
         # this line is measuring how often we try to comment on a PR that is closed
         if comparison.pull is not None and comparison.pull.state != "open":
