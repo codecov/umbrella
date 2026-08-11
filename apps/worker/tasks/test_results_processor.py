@@ -4,7 +4,7 @@ import logging
 
 from app import celery_app
 from services.processing.types import UploadArguments
-from services.test_analytics.ta_processor import ta_processor
+from services.test_analytics.ta_processor import get_ta_processing_info, ta_processor
 from shared.celery_config import test_results_processor_task_name
 from tasks.base import BaseCodecovTask
 
@@ -25,6 +25,7 @@ class TestResultsProcessorTask(BaseCodecovTask, name=test_results_processor_task
         arguments_list: list[UploadArguments],
         **kwargs,
     ) -> bool:
+        ta_proc_info = get_ta_processing_info(repoid, commitid, commit_yaml)
         for argument in arguments_list:
             ta_processor(
                 repoid=repoid,
@@ -32,6 +33,7 @@ class TestResultsProcessorTask(BaseCodecovTask, name=test_results_processor_task
                 commit_yaml=commit_yaml,
                 argument=argument,
                 update_state=True,
+                ta_proc_info=ta_proc_info,
             )
         return True
 
