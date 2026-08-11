@@ -509,6 +509,10 @@ schema = {
                 "type": "dict",
                 "schema": {"partials_as_hits": {"type": "boolean"}},
             },
+            "scoverage": {
+                "type": "dict",
+                "schema": {"partials_as_hits": {"type": "boolean"}},
+            },
             "cobertura": {
                 "type": "dict",
                 "schema": {
