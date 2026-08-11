@@ -471,6 +471,7 @@ async def resolve_commit_bundle_analysis_compare_with_parent(
 
 
 @commit_bundle_analysis_bindable.field("bundleAnalysisReport")
+@commit_bundle_analysis_bindable.field("report")
 @sync_to_async
 @sentry_sdk.trace
 def resolve_commit_bundle_analysis_report(commit: Commit, info) -> BundleAnalysisReport:
