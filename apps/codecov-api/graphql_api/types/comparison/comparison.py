@@ -169,7 +169,8 @@ def resolve_patch_totals(
     if coverage is not None:
         # we always return `coverage` as a percentage but it's stored
         # in the database as 0 <= value <= 1
-        coverage *= 100
+        # coerce to float to handle cases where the DB stores the value as a string
+        coverage = float(coverage) * 100
 
     return {**totals, "coverage": coverage}
 
