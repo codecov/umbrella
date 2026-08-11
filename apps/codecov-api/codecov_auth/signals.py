@@ -4,7 +4,16 @@ from django.db.models.signals import post_save
 from django.dispatch import receiver
 
 from codecov_auth.models import OrganizationLevelToken, Owner, OwnerProfile
+from core.models import Repository
 from utils.shelter import ShelterPubsub
+
+
+def _sync_owner_repos_to_shelter(owner_id: int) -> None:
+    shelter = ShelterPubsub.get_instance()
+    for repoid in Repository.objects.filter(author_id=owner_id).values_list(
+        "repoid", flat=True
+    ):
+        shelter.publish({"type": "repo", "sync": "one", "id": repoid})
 
 
 @receiver(post_save, sender=Owner)
@@ -51,3 +60,5 @@ def update_owner(
             "id": instance.ownerid,
         }
         ShelterPubsub.get_instance().publish(data)
+        if not created and instance.tracker.has_changed("username"):
+            _sync_owner_repos_to_shelter(instance.ownerid)
