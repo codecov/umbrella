@@ -45,5 +45,6 @@ type Owner {
   aiFeaturesEnabled: Boolean!
   aiEnabledRepos: [String]
   uploadTokenRequired: Boolean
+  externalId: String
   activatedUserCount: Int
 }
