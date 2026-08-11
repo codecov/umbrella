@@ -1,0 +1,5 @@
+union DeleteOwnerError = UnauthenticatedError | UnauthorizedError | NotFoundError
+
+type DeleteOwnerPayload {
+  error: DeleteOwnerError
+}
