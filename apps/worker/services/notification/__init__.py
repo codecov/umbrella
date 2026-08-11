@@ -18,6 +18,7 @@ from services.decoration import Decoration
 from services.license import is_properly_licensed
 from services.notification.commit_notifications import (
     create_or_update_commit_notification_from_notification_result,
+    fetch_commit_notifications_for_comparison,
 )
 from services.notification.notifiers import (
     StatusType,
@@ -277,8 +278,19 @@ class NotificationService:
             if notifier.is_enabled()
         )
 
+        # Pre-fetch all CommitNotification rows for the head commit in a single
+        # query so that notify_individual_notifier does not issue one SELECT per
+        # notifier (N+1 pattern).
+        preloaded_commit_notifications = fetch_commit_notifications_for_comparison(
+            comparison
+        )
+
         results = [
-            self.notify_individual_notifier(notifier, comparison)
+            self.notify_individual_notifier(
+                notifier,
+                comparison,
+                preloaded_commit_notifications=preloaded_commit_notifications,
+            )
             for notifier in status_or_checks_notifiers
         ]
 
@@ -303,6 +315,7 @@ class NotificationService:
                 notifier,
                 comparison,
                 status_or_checks_helper_text=status_or_checks_helper_text,
+                preloaded_commit_notifications=preloaded_commit_notifications,
             )
             for notifier in all_other_notifiers
         )
@@ -319,6 +332,7 @@ class NotificationService:
         notifier: AbstractBaseNotifier,
         comparison: ComparisonProxy,
         status_or_checks_helper_text: dict[str, str] | None = None,
+        preloaded_commit_notifications: dict | None = None,
     ) -> tuple[AbstractBaseNotifier, NotificationResult | None]:
         commit = comparison.head.commit
         base_commit = comparison.project_coverage_base.commit
@@ -356,7 +370,10 @@ class NotificationService:
                 # only running if there is no result (indicating some exception)
                 # or there was an actual attempt
                 create_or_update_commit_notification_from_notification_result(
-                    comparison, notifier, res
+                    comparison,
+                    notifier,
+                    res,
+                    preloaded_commit_notifications=preloaded_commit_notifications,
                 )
 
 
