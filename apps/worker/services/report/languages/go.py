@@ -1,3 +1,4 @@
+import logging
 from collections import defaultdict
 from io import BytesIO
 from itertools import groupby
@@ -10,6 +11,12 @@ from services.report.languages.helpers import Region, SourceLocation
 from services.report.report_builder import ReportBuilderSession
 from shared.utils import merge
 from shared.utils.merge import LineType, line_type, partials_to_line
+
+log = logging.getLogger(__name__)
+
+# Maximum number of coverage entries to process from a single Go report.
+# Protects against pathologically large reports that would exceed the task time limit.
+MAX_GO_COVERAGE_ENTRIES = 5_000_000
 
 
 class GoProcessor(BaseLanguageProcessor):
@@ -81,11 +88,20 @@ def process_bytes_into_files(string: bytes) -> dict[str, dict[int, set]]:
     """
 
     files: dict[str, dict[int, set]] = {}
+    entry_count = 0
 
     for encoded_line in BytesIO(string):
         line = encoded_line.decode(errors="replace").rstrip("\n")
         if not line or line.startswith("mode: "):
             continue
+
+        entry_count += 1
+        if entry_count > MAX_GO_COVERAGE_ENTRIES:
+            log.warning(
+                "Go coverage report exceeds maximum entry limit (%d), truncating",
+                MAX_GO_COVERAGE_ENTRIES,
+            )
+            break
 
         split = line.split(":", 1)
         # File outline e.g., "github.com/nfisher/rsqf/rsqf.go:19: calcP 100.0%"
@@ -143,46 +159,81 @@ def combine_partials(partials):
      in:  1   1        (1, 3, 1)
     out:  1 1 1 0 0
     out:  1   1 0+     (1, 3, 1), (4, None, 0)
+
+    Uses a sweep-line algorithm over interval endpoints to avoid O(column_range)
+    expansion, giving O(n log n) complexity where n = number of partials.
     """
     # only 1 partial: return same
     if len(partials) == 1:
         return list(partials)
 
-    columns = defaultdict(list)
-    # fill in the partials WITH end values: (_, X, _)
-    for sc, ec, cov in partials:
-        if ec is not None:
-            for c in range(sc or 0, ec):
-                columns[c].append(cov)
+    # Separate bounded (ec is not None) and unbounded (ec is None) partials.
+    bounded = [(sc or 0, ec, cov) for sc, ec, cov in partials if ec is not None]
+    unbounded = [(sc or 0, cov) for sc, ec, cov in partials if ec is None]
 
-    # get the last column number (+1 for exclusiveness)
-    lc = (
-        max(columns.keys()) if columns else max([sc or 0 for (sc, ec, cov) in partials])
-    ) + 1
-    # hits for (lc, None, eol)
-    eol = []
+    # Compute lc: one past the maximum column seen in bounded partials.
+    if bounded:
+        lc = max(ec for _, ec, _ in bounded) + 1
+    elif unbounded:
+        lc = max(sc for sc, _ in unbounded) + 1
+    else:
+        return None
 
-    # fill in the partials WITHOUT end values: (_, None, _)
-    for sc, ec, cov in partials:
-        if ec is None:
-            for c in range(sc or 0, lc):
-                columns[c].append(cov)
-            eol.append(cov)
+    eol = [cov for _, cov in unbounded] if unbounded else []
 
-    columns = [(c, merge.merge_all(cov)) for c, cov in columns.items()]
+    # Build sweep events: at each endpoint record which coverages start/end.
+    # We collect all distinct boundary columns, then for each segment between
+    # consecutive boundaries compute the merged coverage.
+    events: dict[int, list] = defaultdict(list)
+    for sc, ec, cov in bounded:
+        events[sc].append(("start", cov))
+        events[ec].append(("end", cov))
+    for sc, cov in unbounded:
+        events[sc].append(("start", cov))
+        events[lc].append(("end", cov))
 
-    # sum all the line hits && sort and group lines based on hits
-    columns = groupby(sorted(columns), lambda c: c[1])
+    sorted_cols = sorted(events.keys())
 
+    active: list = []
+    segments: list[tuple[int, int, object]] = []  # (sc, ec, merged_cov)
+    prev_col = None
+
+    for col in sorted_cols:
+        # Close the previous segment if we have active coverages
+        if prev_col is not None and active:
+            merged = merge.merge_all(list(active))
+            segments.append((prev_col, col, merged))
+
+        # Process events at this column
+        for kind, cov in events[col]:
+            if kind == "start":
+                active.append(cov)
+            else:
+                try:
+                    active.remove(cov)
+                except ValueError:
+                    pass
+
+        prev_col = col
+
+    if not segments:
+        return None
+
+    # Merge consecutive segments with the same coverage into output partials
     results = []
-    for cov, cols in columns:
-        # unpack iter
-        cols = list(cols)
-        # sc from first column
-        # ec from last (or +1 if singular)
-        results.append([cols[0][0], (cols[-1] if cols else cols[0])[0] + 1, cov])
+    for sc, ec, cov in segments:
+        if results and results[-1][2] == cov and results[-1][1] == sc:
+            # extend the previous segment
+            results[-1][1] = ec
+        else:
+            results.append([sc, ec, cov])
 
-    # remove duds
+    # Convert internal lc sentinel back to None for unbounded end
+    for r in results:
+        if r[1] == lc and eol:
+            r[1] = None
+
+    # remove duds: first partial [0, 1, x] is noise
     if results:
         fp = results[0]
         if fp[0] == 0 and fp[1] == 1:
@@ -192,14 +243,13 @@ def combine_partials(partials):
 
         # if there is eol data
         if eol:
-            eol = merge.merge_all(eol)
-            # if the last partial ec == lc && same hits
+            eol_cov = merge.merge_all(eol)
             lr = results[-1]
-            if lr[1] == lc and lr[2] == eol:
-                # then replace the last partial with no end
-                results[-1] = [lr[0], None, eol]
+            if lr[1] is None and lr[2] == eol_cov:
+                pass  # already correct
+            elif lr[1] == lc and lr[2] == eol_cov:
+                results[-1] = [lr[0], None, eol_cov]
             else:
-                # else append a new eol partial
-                results.append([lc, None, eol])
+                results.append([lc, None, eol_cov])
 
     return results or None
