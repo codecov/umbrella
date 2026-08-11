@@ -188,8 +188,15 @@ class ComputeComparisonTask(BaseCodecovTask, name=compute_comparison_task_name):
             .all()
         }
 
+        base_report_flags = (
+            comparison_proxy.comparison.project_coverage_base.report.flags
+        )
+        diff = comparison_proxy.get_diff()
+
         for flag_name in flag_names:
-            totals = self.get_flag_comparison_totals(flag_name, comparison_proxy)
+            totals = self.get_flag_comparison_totals(
+                flag_name, head_report_flags, base_report_flags, diff
+            )
             repositoryflag = repository_flags_by_name[flag_name]
             flag_comparison_entry = compare_flags_by_repo_flag_id.get(repositoryflag.id)
 
@@ -217,14 +224,12 @@ class ComputeComparisonTask(BaseCodecovTask, name=compute_comparison_task_name):
     def get_flag_comparison_totals(
         self,
         flag_name: str,
-        comparison_proxy: ComparisonProxy,
+        head_report_flags: dict,
+        base_report_flags: dict,
+        diff,
     ):
-        flag_head_report = comparison_proxy.comparison.head.report.flags.get(flag_name)
-        flag_base_report = (
-            comparison_proxy.comparison.project_coverage_base.report.flags.get(
-                flag_name
-            )
-        )
+        flag_head_report = head_report_flags.get(flag_name)
+        flag_base_report = base_report_flags.get(flag_name)
         head_totals = None if not flag_head_report else flag_head_report.totals.asdict()
         base_totals = None if not flag_base_report else flag_base_report.totals.asdict()
         totals = {
@@ -232,7 +237,6 @@ class ComputeComparisonTask(BaseCodecovTask, name=compute_comparison_task_name):
             "base_totals": base_totals,
             "patch_totals": None,
         }
-        diff = comparison_proxy.get_diff()
         if diff:
             patch_totals = flag_head_report.apply_diff(diff)
             if patch_totals:
