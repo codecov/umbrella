@@ -38,6 +38,7 @@ type CommitCoverageAnalytics {
   components(filters: ComponentsFilters): [Component!]!
   coverageFile(path: String!, flags: [String], components: [String]): File
   flagNames: [String]
+  flags: [Flag!]!
   totals: CoverageTotals
 }
 

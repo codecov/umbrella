@@ -378,6 +378,16 @@ def resolve_coverage_flags(commit: Commit, info: GraphQLResolveInfo) -> list[str
     return commit.full_report.get_flag_names() if commit.full_report else []
 
 
+@commit_coverage_analytics_bindable.field("flags")
+@sync_to_async
+@sentry_sdk.trace
+def resolve_coverage_flags_objects(
+    commit: Commit, info: GraphQLResolveInfo
+) -> list[dict]:
+    flag_names = commit.full_report.get_flag_names() if commit.full_report else []
+    return [{"name": name} for name in flag_names]
+
+
 @commit_coverage_analytics_bindable.field("coverageFile")
 @sync_to_async
 @sentry_sdk.trace
