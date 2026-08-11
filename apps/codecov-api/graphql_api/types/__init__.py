@@ -45,6 +45,7 @@ from .impacted_file import (
 from .invoice import invoice, invoice_bindable
 from .line_comparison import line_comparison, line_comparison_bindable
 from .me import me, me_bindable, tracking_metadata_bindable
+from .notification import notification, notification_bindable
 from .measurement import measurement, measurement_bindable
 from .mutation import mutation, mutation_resolvers
 from .okta_config import okta_config, okta_config_bindable
@@ -113,6 +114,7 @@ types = [
     me,
     measurement,
     mutation,
+    notification,
     owner,
     path_content,
     plan_representation,
@@ -172,6 +174,7 @@ bindables = [
     line_comparison_bindable,
     me_bindable,
     measurement_bindable,
+    notification_bindable,
     owner_bindable,
     path_content_bindable,
     path_content_file_bindable,
