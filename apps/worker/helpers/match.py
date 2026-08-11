@@ -1,7 +1,8 @@
 import re
 
 
-def match(patterns: list[str] | None, string: str) -> bool:
+def match(patterns: list[str] | None, string: str | None) -> bool:
+    string = string or ""
     if patterns is None or string in patterns:
         return True
 
