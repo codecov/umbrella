@@ -4,6 +4,12 @@ type Query {
   me: Me
   owner(username: String!): Owner
   config: Config!
+  pull(
+    provider: String!
+    owner: String!
+    repo: String!
+    pullId: Int!
+  ): Pull
 }
 
 type PageInfo {
