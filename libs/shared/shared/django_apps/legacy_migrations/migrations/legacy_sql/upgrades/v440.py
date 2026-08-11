@@ -260,9 +260,12 @@ def run_sql(schema_editor):
                 where repoid = new.repoid
                 and branch = new.branch;
             if not found then
-                insert into branches (repoid, updatestamp, branch, head, authors)
-                values (new.repoid, new.timestamp, new.branch, new.commitid,
-                        case when new.author is not null then array[new.author] else null end);
+                begin
+                    insert into branches (repoid, updatestamp, branch, head, authors)
+                    values (new.repoid, new.timestamp, new.branch, new.commitid,
+                            case when new.author is not null then array[new.author] else null end);
+                exception when unique_violation then
+                end;
             end if;
             end if;
 
