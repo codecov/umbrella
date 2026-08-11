@@ -2,9 +2,9 @@ import json
 import logging
 
 from google.cloud import pubsub_v1
-from sqlalchemy import event, inspect
+from sqlalchemy import event, inspect, select
 
-from database.models.core import Repository
+from database.models.core import Owner, Repository
 from helpers.environment import is_enterprise
 from shared.config import get_config
 
@@ -26,8 +26,7 @@ def _get_pubsub_publisher():
     return _pubsub_publisher
 
 
-def _sync_repo(repository: Repository):
-    log.info(f"Signal triggered for repository {repository.repoid}")
+def _publish_shelter_sync(sync_type: str, entity_id: int) -> None:
     try:
         pubsub_project_id = get_config("setup", "shelter", "pubsub_project_id")
         pubsub_topic_id = get_config("setup", "shelter", "sync_repo_topic_id")
@@ -39,15 +38,34 @@ def _sync_repo(repository: Repository):
                 topic_path,
                 json.dumps(
                     {
-                        "type": "repo",
+                        "type": sync_type,
                         "sync": "one",
-                        "id": repository.repoid,
+                        "id": entity_id,
                     }
                 ).encode("utf-8"),
             )
-        log.info(f"Message published for repository {repository.repoid}")
+        log.info(
+            "Message published for shelter sync",
+            extra={"sync_type": sync_type, "entity_id": entity_id},
+        )
     except Exception as e:
-        log.warning(f"Failed to publish message for repo {repository.repoid}: {e}")
+        log.warning(
+            "Failed to publish shelter sync message",
+            extra={"sync_type": sync_type, "entity_id": entity_id, "error": e},
+        )
+
+
+def _sync_repo(repository: Repository):
+    log.info(f"Signal triggered for repository {repository.repoid}")
+    _publish_shelter_sync("repo", repository.repoid)
+
+
+def _sync_owner(owner: Owner):
+    log.info(
+        "Signal triggered for owner",
+        extra={"ownerid": owner.ownerid},
+    )
+    _publish_shelter_sync("owner", owner.ownerid)
 
 
 @event.listens_for(Repository, "after_insert")
@@ -83,3 +101,34 @@ def after_update_repo(mapper, connection, target: Repository):
                     log.info("After update signal", extra={"repoid": target.repoid})
                     _sync_repo(target)
                     break
+
+
+@event.listens_for(Owner, "after_update")
+def after_update_owner(mapper, connection, target: Owner):
+    if not _is_shelter_enabled():
+        log.debug("Shelter is not enabled, skipping after_update signal")
+        return
+
+    state = inspect(target)
+
+    for attr in state.attrs:
+        if attr.key != "username":
+            continue
+        history = attr.history
+        if history.has_changes() and history.deleted and history.added:
+            old_value = history.deleted[0]
+            new_value = history.added[0]
+            if old_value != new_value:
+                log.info(
+                    "After owner username update signal",
+                    extra={"ownerid": target.ownerid},
+                )
+                _sync_owner(target)
+                repoids = connection.execute(
+                    select(Repository.repoid).where(
+                        Repository.ownerid == target.ownerid
+                    )
+                ).scalars()
+                for repoid in repoids:
+                    _publish_shelter_sync("repo", repoid)
+                break
