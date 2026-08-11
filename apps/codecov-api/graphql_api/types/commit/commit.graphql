@@ -10,6 +10,7 @@ type Commit {
   yaml: String
   yamlState: YamlStates
   ciPassed: Boolean
+  ci_passed: Boolean @deprecated(reason: "Use 'ciPassed' instead")
   compareWithParent: ComparisonResult
   uploads(
     first: Int
