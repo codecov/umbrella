@@ -260,6 +260,16 @@ def resolve_asset(
     return bundle_report.asset(name)
 
 
+@bundle_report_bindable.field("size")
+def resolve_bundle_report_size(
+    bundle_report: BundleReport, info: GraphQLResolveInfo
+) -> BundleSize:
+    return BundleSize(
+        gzip=bundle_report.gzip_size_total,
+        uncompress=bundle_report.size_total,
+    )
+
+
 @bundle_report_bindable.field("bundleData")
 def resolve_bundle_data(
     bundle_report: BundleReport, info: GraphQLResolveInfo
