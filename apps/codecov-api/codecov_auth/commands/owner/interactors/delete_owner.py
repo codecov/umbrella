@@ -2,9 +2,29 @@ from asgiref.sync import sync_to_async
 
 from codecov.commands.base import BaseInteractor
 from codecov.commands.exceptions import NotFound, Unauthenticated, ValidationError
-from codecov_auth.models import Owner, PlanProviders, StripeBilling
+from codecov_auth.models import Owner, Plan, PlanProviders, StripeBilling
 from services.task import TaskService
+from shared.plan.constants import DEFAULT_FREE_PLAN, PlanName
 from shared.plan.service import PlanService
+
+_FREE_PLAN_NAMES = frozenset(
+    {
+        DEFAULT_FREE_PLAN,
+        PlanName.USERS_DEVELOPER.value,
+        PlanName.FREE_PLAN_NAME.value,
+        PlanName.BASIC_PLAN_NAME.value,
+    }
+)
+
+
+def _is_on_free_plan(owner: Owner) -> bool:
+    try:
+        return PlanService(current_org=owner).is_free_plan
+    except ValueError:
+        plan = Plan.objects.filter(name=owner.plan).first()
+        if plan is not None:
+            return not plan.paid_plan
+        return owner.plan in _FREE_PLAN_NAMES
 
 
 def _validate_owner_can_be_deleted(owner: Owner) -> None:
@@ -14,8 +34,7 @@ def _validate_owner_can_be_deleted(owner: Owner) -> None:
     if owner.root_organization is not None:
         return
 
-    plan_service = PlanService(current_org=owner)
-    if plan_service.is_free_plan:
+    if _is_on_free_plan(owner):
         return
 
     if owner.plan_provider == PlanProviders.GITHUB:
