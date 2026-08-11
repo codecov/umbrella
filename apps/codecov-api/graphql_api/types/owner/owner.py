@@ -17,6 +17,7 @@ import timeseries.helpers as timeseries_helpers
 from codecov_auth.constants import OWNER_YAML_TO_STRING_KEY
 from codecov_auth.helpers import current_user_part_of_org
 from codecov_auth.models import (
+    GITHUB_APP_INSTALLATION_DEFAULT_NAME,
     SERVICE_GITHUB,
     SERVICE_GITHUB_ENTERPRISE,
     GithubAppInstallation,
@@ -247,6 +248,18 @@ async def resolve_is_only_using_sentry_app(
     owner: Owner, info: GraphQLResolveInfo
 ) -> bool:
     return await sync_to_async(is_owner_only_using_sentry_app)(owner.ownerid)
+
+
+@owner_bindable.field("hasGithubApp")
+@sync_to_async
+@require_part_of_org
+def resolve_has_github_app(owner: Owner, info: GraphQLResolveInfo) -> bool:
+    # Deliberately ignores the deprecated Owner.integration_id, which is no longer
+    # written on install and is null for every owner that installed the app after
+    # the GithubAppInstallation cutover.
+    return GithubAppInstallation.objects.filter(
+        owner=owner, name=GITHUB_APP_INSTALLATION_DEFAULT_NAME
+    ).exists()
 
 
 @owner_bindable.field("externalId")
