@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
+import httpx
 import sentry_sdk
 from asgiref.sync import async_to_sync
 from sqlalchemy.exc import IntegrityError
@@ -183,6 +184,16 @@ def possibly_update_commit_from_provider_info(
     except TorngitObjectNotFoundError:
         log.warning(
             "Could not update commit with info because it was not found at the provider"
+        )
+        return False
+    except TorngitClientError:
+        log.warning(
+            "Could not update commit with info because the provider returned an error"
+        )
+        return False
+    except httpx.TimeoutException:
+        log.warning(
+            "Could not update commit with info because the request to the provider timed out"
         )
         return False
     log.debug("Not updating commit because it already seems to be populated")
