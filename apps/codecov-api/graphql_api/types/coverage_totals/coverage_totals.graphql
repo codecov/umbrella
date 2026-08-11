@@ -8,4 +8,8 @@ type CoverageTotals {
   partialsCount: Int
 
   coverage: Float @deprecated(reason: "Use `percentCovered`")
+  lines: Int @deprecated(reason: "Use `lineCount`")
+  coveredLines: Int @deprecated(reason: "Use `hitsCount`")
+  missedLines: Int @deprecated(reason: "Use `missesCount`")
+  partialLines: Int @deprecated(reason: "Use `partialsCount`")
 }
