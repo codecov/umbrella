@@ -15,8 +15,9 @@ from shared.api_archive.archive import ArchiveService
 from shared.celery_config import upload_finisher_task_name
 from shared.yaml import UserYaml
 
+from .finisher_gate import try_acquire_finisher_gate
 from .intermediate import save_intermediate_report
-from .state import ProcessingState, should_trigger_postprocessing
+from .state import ProcessingState
 from .types import ProcessingResult, UploadArguments
 
 log = logging.getLogger(__name__)
@@ -71,13 +72,9 @@ def process_upload(
             save_intermediate_report(upload_id, processing_result.report)
         state.mark_upload_as_processed(upload_id)
 
-        # Check if all uploads are now processed and trigger finisher if needed
-        # This handles the case where a processor task retries outside of a chord
-        # (e.g., from visibility timeout or task_reject_on_worker_lost)
-        upload_numbers = state.get_upload_numbers()
-        if should_trigger_postprocessing(upload_numbers):
+        if try_acquire_finisher_gate(repo_id, commit_sha):
             log.info(
-                "All uploads processed, triggering finisher",
+                "Acquired finisher gate — triggering finisher",
                 extra={
                     "repo_id": repo_id,
                     "commit_sha": commit_sha,
@@ -90,6 +87,15 @@ def process_upload(
                     "commitid": commit_sha,
                     "commit_yaml": commit_yaml.to_dict(),
                 }
+            )
+        else:
+            log.info(
+                "Did not acquire finisher gate",
+                extra={
+                    "repo_id": repo_id,
+                    "commit_sha": commit_sha,
+                    "upload_id": upload_id,
+                },
             )
 
         rewrite_or_delete_upload(archive_service, commit_yaml, report_info)
