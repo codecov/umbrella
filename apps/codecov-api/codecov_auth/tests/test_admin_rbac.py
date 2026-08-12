@@ -8,12 +8,14 @@ hidden, and custom action views denied).
 import pytest
 from django.contrib import admin
 from django.test import RequestFactory, TestCase
+from django.urls import reverse
 
 from codecov_auth.admin import StaffRoleListFilter
 from codecov_auth.models import Owner, User
 from redis_admin.models import RedisQueue
-from shared.django_apps.codecov_auth.tests.factories import UserFactory
+from shared.django_apps.codecov_auth.tests.factories import OwnerFactory, UserFactory
 from shared.django_apps.core.tests.factories import CommitFactory, RepositoryFactory
+from shared.plan.constants import DEFAULT_FREE_PLAN
 from utils.test_utils import Client
 
 
@@ -183,6 +185,16 @@ class ViewerHttpTest(TestCase):
         response = self.client.get("/admin/codecov_auth/owner/add/")
 
         # Viewers are read-only: any add page is denied.
+        assert response.status_code == 403
+
+    def test_viewer_denied_owner_impersonate_custom_view(self):
+        viewer = UserFactory(is_staff=True, staff_role="viewer")
+        self.client.force_login(viewer)
+        owner = OwnerFactory(plan=DEFAULT_FREE_PLAN, username="viewer-target")
+
+        response = self.client.get(
+            reverse("admin:codecov_auth_owner_impersonate", args=[owner.pk])
+        )
         assert response.status_code == 403
 
     def test_viewer_denied_reprocess_custom_view(self):
