@@ -25,6 +25,14 @@ def is_viewer(request: HttpRequest) -> bool:
     return get_staff_role(request) == User.StaffRole.VIEWER
 
 
+def can_impersonate(request: HttpRequest) -> bool:
+    """True for staff Members and Admins (not Viewers / non-staff)."""
+    return get_staff_role(request) in (
+        User.StaffRole.MEMBER,
+        User.StaffRole.ADMIN,
+    )
+
+
 def deny_viewers(request: HttpRequest) -> None:
     """Block Viewers from custom admin views.
 
@@ -32,6 +40,12 @@ def deny_viewers(request: HttpRequest) -> None:
     of any custom (``get_urls``) view that triggers a write.
     """
     if is_viewer(request):
+        raise PermissionDenied
+
+
+def require_impersonation_permission(request: HttpRequest) -> None:
+    """Block anyone who is not a staff Member or Admin from impersonating."""
+    if not can_impersonate(request):
         raise PermissionDenied
 
 

@@ -241,6 +241,12 @@ class ImpersonationTests(TestCase):
         with pytest.raises(PermissionDenied):
             self.client.get("/")
 
+    def test_impersonation_viewer_staff_denied(self):
+        viewer = UserFactory(is_staff=True, staff_role="viewer")
+        self.client.force_login(user=viewer)
+        with pytest.raises(PermissionDenied):
+            self.client.get("/")
+
     def test_impersonation_invalid_user(self):
         self.client.cookies = SimpleCookie({"staff_user": 9999})
         self.client.force_login(user=self.staff_user)

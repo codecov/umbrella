@@ -18,7 +18,12 @@ from django.urls import path, reverse
 from django.utils import timezone
 from django.utils.html import format_html, format_html_join
 
-from codecov.admin import AdminMixin, deny_viewers, get_staff_role, is_viewer
+from codecov.admin import (
+    AdminMixin,
+    can_impersonate,
+    get_staff_role,
+    require_impersonation_permission,
+)
 from codecov.commands.exceptions import ValidationError
 from codecov_auth.helpers import History
 from codecov_auth.models import OrganizationLevelToken, Owner, SentryUser, Session, User
@@ -126,6 +131,7 @@ def _impersonate_owner_response(request, owner: Owner):
 
 
 def impersonate_owner(self, request, queryset):
+    require_impersonation_permission(request)
     if queryset.count() != 1:
         self.message_user(
             request, "You must impersonate exactly one Owner.", level=messages.ERROR
@@ -1146,8 +1152,8 @@ class OwnerAdmin(AdminMixin, admin.ModelAdmin):
         ]
 
     def impersonate_view(self, request, object_id):
-        # Match changelist action RBAC: Viewers have no admin actions.
-        deny_viewers(request)
+        # Members and Admins only — Viewers (and non-staff) cannot impersonate.
+        require_impersonation_permission(request)
         obj = self.get_object(request, unquote(object_id))
         if obj is None:
             raise Http404(
@@ -1157,7 +1163,7 @@ class OwnerAdmin(AdminMixin, admin.ModelAdmin):
 
     def change_view(self, request, object_id, form_url="", extra_context=None):
         extra_context = extra_context or {}
-        extra_context["show_impersonate"] = not is_viewer(request)
+        extra_context["show_impersonate"] = can_impersonate(request)
         return super().change_view(request, object_id, form_url, extra_context)
 
     def get_form(self, request, obj=None, change=False, **kwargs):

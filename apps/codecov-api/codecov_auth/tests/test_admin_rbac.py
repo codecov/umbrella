@@ -197,6 +197,38 @@ class ViewerHttpTest(TestCase):
         )
         assert response.status_code == 403
 
+    def test_member_can_impersonate_owner_from_detail(self):
+        member = UserFactory(is_staff=True, staff_role="member")
+        self.client.force_login(member)
+        owner = OwnerFactory(
+            service="github",
+            plan=DEFAULT_FREE_PLAN,
+            username="member-impersonate-target",
+        )
+
+        response = self.client.get(
+            reverse("admin:codecov_auth_owner_impersonate", args=[owner.pk])
+        )
+        assert response.status_code == 302
+        assert "/gh/member-impersonate-target" in response.url
+        assert response.cookies.get("staff_user").value == str(owner.pk)
+
+    def test_admin_can_impersonate_owner_from_detail(self):
+        admin_user = UserFactory(is_staff=True, is_superuser=True)
+        self.client.force_login(admin_user)
+        owner = OwnerFactory(
+            service="gitlab",
+            plan=DEFAULT_FREE_PLAN,
+            username="admin-impersonate-target",
+        )
+
+        response = self.client.get(
+            reverse("admin:codecov_auth_owner_impersonate", args=[owner.pk])
+        )
+        assert response.status_code == 302
+        assert "/gl/admin-impersonate-target" in response.url
+        assert response.cookies.get("staff_user").value == str(owner.pk)
+
     def test_viewer_denied_reprocess_custom_view(self):
         viewer = UserFactory(is_staff=True, staff_role="viewer")
         self.client.force_login(viewer)
