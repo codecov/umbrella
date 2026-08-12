@@ -10,7 +10,23 @@ from codecov_auth.models import User
 from shared.django_apps.rollouts.models import FeatureFlag, FeatureFlagVariant
 
 # App labels whose models are hidden entirely from Viewer-level staff.
-VIEWER_RESTRICTED_APP_LABELS = {"redis_admin"}
+VIEWER_RESTRICTED_APP_LABELS = {
+    "admin",  # Administration (LogEntry)
+    "auth",  # Authentication and Authorization
+    "billing",  # Billing
+    "compare",  # Compare
+    "redis_admin",
+    "timeseries",  # Timeseries
+}
+
+# Individual models hidden from Viewers (within otherwise-visible apps).
+VIEWER_RESTRICTED_MODELS = {
+    ("codecov_auth", "invoicebilling"),
+    ("codecov_auth", "ownerexport"),
+    ("codecov_auth", "sentryuser"),
+    ("codecov_auth", "stripebilling"),
+    ("codecov_auth", "tier"),
+}
 
 
 def get_staff_role(request: HttpRequest) -> "User.StaffRole":
@@ -52,12 +68,15 @@ def require_impersonation_permission(request: HttpRequest) -> None:
 class RBACAdminMixin:
     """Enforces the Viewer RBAC level on every registered ``ModelAdmin``.
 
-    Viewers get read-only access, no actions, and no visibility into Redis queue
-    models. Members and Admins fall through to the wrapped admin's own logic.
+    Viewers get read-only access, no actions, and no visibility into restricted
+    apps/models. Members and Admins fall through to the wrapped admin's own logic.
     """
 
     def _viewer_restricted_model(self) -> bool:
-        return self.model._meta.app_label in VIEWER_RESTRICTED_APP_LABELS
+        meta = self.model._meta
+        if meta.app_label in VIEWER_RESTRICTED_APP_LABELS:
+            return True
+        return (meta.app_label, meta.model_name) in VIEWER_RESTRICTED_MODELS
 
     def has_view_permission(self, request: HttpRequest, obj=None) -> bool:
         if is_viewer(request) and self._viewer_restricted_model():

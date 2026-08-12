@@ -492,10 +492,11 @@ class InvoiceBillingAdmin(AdminMixin, admin.ModelAdmin):
 
     def get_form(self, request, obj=None, **kwargs):
         form = super().get_form(request, obj, **kwargs)
-        field = form.base_fields["account"]
-        field.widget.can_add_related = False
-        field.widget.can_change_related = False
-        field.widget.can_delete_related = False
+        field = form.base_fields.get("account")
+        if field:
+            field.widget.can_add_related = False
+            field.widget.can_change_related = False
+            field.widget.can_delete_related = False
         return form
 
 
@@ -535,10 +536,11 @@ class StripeBillingAdmin(AdminMixin, admin.ModelAdmin):
 
     def get_form(self, request, obj=None, **kwargs):
         form = super().get_form(request, obj, **kwargs)
-        field = form.base_fields["account"]
-        field.widget.can_add_related = False
-        field.widget.can_change_related = False
-        field.widget.can_delete_related = False
+        field = form.base_fields.get("account")
+        if field:
+            field.widget.can_add_related = False
+            field.widget.can_change_related = False
+            field.widget.can_delete_related = False
         return form
 
 
@@ -1168,23 +1170,31 @@ class OwnerAdmin(AdminMixin, admin.ModelAdmin):
 
     def get_form(self, request, obj=None, change=False, **kwargs):
         form = super().get_form(request, obj, change, **kwargs)
-        PLANS_CHOICES = [
-            (x, x)
-            for x in Plan.objects.filter(is_active=True).values_list("name", flat=True)
-        ]
-        form.base_fields["plan"].widget = Select(
-            choices=BLANK_CHOICE_DASH + PLANS_CHOICES
-        )
-        form.base_fields["uses_invoice"].widget = CheckboxInput()
+        # Viewers get every field as readonly, which leaves the form with no
+        # editable `base_fields` to customize.
+        plan_field = form.base_fields.get("plan")
+        if plan_field:
+            PLANS_CHOICES = [
+                (x, x)
+                for x in Plan.objects.filter(is_active=True).values_list(
+                    "name", flat=True
+                )
+            ]
+            plan_field.widget = Select(choices=BLANK_CHOICE_DASH + PLANS_CHOICES)
 
-        is_superuser = request.user.is_superuser
-        if not is_superuser:
-            form.base_fields["staff"].disabled = True
+        uses_invoice_field = form.base_fields.get("uses_invoice")
+        if uses_invoice_field:
+            uses_invoice_field.widget = CheckboxInput()
 
-        field = form.base_fields["account"]
-        field.widget.can_add_related = False
-        field.widget.can_change_related = False
-        field.widget.can_delete_related = False
+        staff_field = form.base_fields.get("staff")
+        if staff_field and not request.user.is_superuser:
+            staff_field.disabled = True
+
+        field = form.base_fields.get("account")
+        if field:
+            field.widget.can_add_related = False
+            field.widget.can_change_related = False
+            field.widget.can_delete_related = False
 
         # workaround for when a model field has null=True without blank=True
         for field_name in [

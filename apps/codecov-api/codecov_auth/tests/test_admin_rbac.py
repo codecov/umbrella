@@ -7,15 +7,27 @@ hidden, and custom action views denied).
 
 import pytest
 from django.contrib import admin
+from django.contrib.admin.models import LogEntry
+from django.contrib.auth.models import Group
 from django.test import RequestFactory, TestCase
 from django.urls import reverse
 
+from billing.models import StripeBilling as BillingAppStripeBilling
 from codecov_auth.admin import StaffRoleListFilter
 from codecov_auth.models import Owner, User
+from compare.models import CommitComparison
 from redis_admin.models import RedisQueue
+from shared.django_apps.codecov_auth.models import (
+    InvoiceBilling,
+    OwnerExport,
+    SentryUser,
+    StripeBilling,
+    Tier,
+)
 from shared.django_apps.codecov_auth.tests.factories import OwnerFactory, UserFactory
 from shared.django_apps.core.tests.factories import CommitFactory, RepositoryFactory
 from shared.plan.constants import DEFAULT_FREE_PLAN
+from timeseries.models import Dataset
 from utils.test_utils import Client
 
 
@@ -144,6 +156,37 @@ def test_viewer_cannot_see_redis_models_but_member_can():
 
 
 @pytest.mark.django_db
+def test_viewer_cannot_see_restricted_apps_and_models():
+    viewer = UserFactory(is_staff=True, staff_role="viewer")
+    member = UserFactory(is_staff=True, staff_role="member")
+    request_viewer = _request_for(viewer)
+    request_member = _request_for(member)
+
+    restricted_models = [
+        LogEntry,
+        Group,
+        BillingAppStripeBilling,
+        InvoiceBilling,
+        OwnerExport,
+        SentryUser,
+        StripeBilling,
+        Tier,
+        CommitComparison,
+        Dataset,
+    ]
+    for model in restricted_models:
+        model_admin = admin.site._registry[model]
+        assert model_admin.has_view_permission(request_viewer) is False, model
+        assert model_admin.has_module_permission(request_viewer) is False, model
+        assert model_admin.has_view_permission(request_member) is True, model
+
+    # Owners remain visible (read-only) for Viewers.
+    owner_admin = admin.site._registry[Owner]
+    assert owner_admin.has_view_permission(request_viewer) is True
+    assert owner_admin.has_module_permission(request_viewer) is True
+
+
+@pytest.mark.django_db
 def test_viewer_gets_all_fields_readonly():
     viewer = UserFactory(is_staff=True, staff_role="viewer")
     owner_admin = admin.site._registry[Owner]
@@ -177,6 +220,23 @@ class ViewerHttpTest(TestCase):
 
         # Members retain the historical staff access to the Redis admin.
         assert response.status_code == 200
+
+    def test_viewer_can_open_owner_change_page(self):
+        viewer = UserFactory(is_staff=True, staff_role="viewer")
+        self.client.force_login(viewer)
+        owner = OwnerFactory(plan=DEFAULT_FREE_PLAN, username="viewer-readonly")
+
+        response = self.client.get(
+            reverse("admin:codecov_auth_owner_change", args=[owner.pk])
+        )
+
+        # Every field is readonly for Viewers, so the form has no editable
+        # `base_fields` for `get_form` to customize.
+        assert response.status_code == 200
+        assert (
+            reverse("admin:codecov_auth_owner_impersonate", args=[owner.pk]).encode()
+            not in response.content
+        )
 
     def test_viewer_cannot_open_owner_add_page(self):
         viewer = UserFactory(is_staff=True, staff_role="viewer")
