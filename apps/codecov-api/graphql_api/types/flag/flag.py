@@ -43,8 +43,14 @@ def resolve_percent_change(flag: RepositoryFlag, info) -> float:
 
 @flag_bindable.field("measurements")
 def resolve_measurements(
-    flag: RepositoryFlag, info, interval: Interval, after: datetime, before: datetime
+    flag: RepositoryFlag,
+    info,
+    interval: Interval | None = None,
+    after: datetime = None,
+    before: datetime = None,
 ) -> Iterable[MeasurementSummary]:
+    if interval is None:
+        interval = Interval.INTERVAL_1_DAY
     measurements = info.context["flag_measurements"].get(flag.pk, [])
     if len(measurements) == 0:
         return []
