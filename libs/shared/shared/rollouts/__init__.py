@@ -6,6 +6,7 @@ from functools import cached_property
 import mmh3
 from asgiref.sync import sync_to_async
 from cachetools.func import lru_cache, ttl_cache
+from django.db import OperationalError
 
 from shared.config import get_config
 from shared.django_apps.rollouts.models import FeatureFlag, FeatureFlagVariant
@@ -142,7 +143,13 @@ class Feature:
             self._fetch_and_set_from_db.cache_clear()
 
         # Will only run and refresh values from the database every ~5 minutes due to TTL cache
-        self._fetch_and_set_from_db()
+        try:
+            self._fetch_and_set_from_db()
+        except OperationalError:
+            log.warning(
+                "Failed to fetch feature flag from database due to connection error; using cached/default value",
+                extra={"feature_flag": self.name},
+            )
 
         return self._check_value(identifier, default)
 
@@ -288,6 +295,8 @@ class Feature:
         This function will have its cache invalidated when `_fetch_and_set_from_db()` pulls new data so that
         variant values can be returned using the most up-to-date values from the database.
         """
+        if self.feature_flag is None:
+            return default
         return self._check_value_impl(identifier, default)
 
     def _check_value_no_lru(self, identifier, default):
