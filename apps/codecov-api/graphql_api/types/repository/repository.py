@@ -21,6 +21,10 @@ from graphql_api.helpers.mutation import is_called_from_sentry_app
 from graphql_api.helpers.requested_fields import selected_fields
 from graphql_api.types.coverage_analytics.coverage_analytics import (
     CoverageAnalyticsProps,
+    resolve_components_measurements_active,
+    resolve_components_measurements_backfilled,
+    resolve_flags_measurements_active,
+    resolve_flags_measurements_backfilled,
 )
 from graphql_api.types.enums import OrderingDirection
 from graphql_api.types.enums.enum_types import PullRequestState
@@ -343,6 +347,42 @@ def resolve_coverage_analytics(
     repository: Repository, info: GraphQLResolveInfo
 ) -> CoverageAnalyticsProps:
     return CoverageAnalyticsProps(repository=repository)
+
+
+@repository_bindable.field("flagsMeasurementsActive")
+async def resolve_repository_flags_measurements_active(
+    repository: Repository, info: GraphQLResolveInfo
+) -> bool:
+    return await resolve_flags_measurements_active(
+        CoverageAnalyticsProps(repository=repository), info
+    )
+
+
+@repository_bindable.field("flagsMeasurementsBackfilled")
+async def resolve_repository_flags_measurements_backfilled(
+    repository: Repository, info: GraphQLResolveInfo
+) -> bool:
+    return await resolve_flags_measurements_backfilled(
+        CoverageAnalyticsProps(repository=repository), info
+    )
+
+
+@repository_bindable.field("componentsMeasurementsActive")
+async def resolve_repository_components_measurements_active(
+    repository: Repository, info: GraphQLResolveInfo
+) -> bool:
+    return await resolve_components_measurements_active(
+        CoverageAnalyticsProps(repository=repository), info
+    )
+
+
+@repository_bindable.field("componentsMeasurementsBackfilled")
+async def resolve_repository_components_measurements_backfilled(
+    repository: Repository, info: GraphQLResolveInfo
+) -> bool:
+    return await resolve_components_measurements_backfilled(
+        CoverageAnalyticsProps(repository=repository), info
+    )
 
 
 @repository_bindable.field("testAnalytics")
