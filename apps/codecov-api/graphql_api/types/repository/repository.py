@@ -22,6 +22,7 @@ from graphql_api.helpers.requested_fields import selected_fields
 from graphql_api.types.coverage_analytics.coverage_analytics import (
     CoverageAnalyticsProps,
 )
+from timeseries.models import Dataset, MeasurementName
 from graphql_api.types.enums import OrderingDirection
 from graphql_api.types.enums.enum_types import PullRequestState
 from graphql_api.types.errors.errors import NotFoundError, OwnerNotActivatedError
@@ -354,3 +355,61 @@ def resolve_test_analytics(
     resolve_test_analytics defines the data that will get passed to the testAnalytics resolvers
     """
     return repository
+
+
+@repository_bindable.field("flagsMeasurementsActive")
+@sync_to_async
+def resolve_flags_measurements_active(
+    repository: Repository, info: GraphQLResolveInfo
+) -> bool:
+    if not settings.TIMESERIES_ENABLED:
+        return False
+    return Dataset.objects.filter(
+        name=MeasurementName.FLAG_COVERAGE.value,
+        repository_id=repository.pk,
+    ).exists()
+
+
+@repository_bindable.field("flagsMeasurementsBackfilled")
+@sync_to_async
+def resolve_flags_measurements_backfilled(
+    repository: Repository, info: GraphQLResolveInfo
+) -> bool:
+    if not settings.TIMESERIES_ENABLED:
+        return False
+    dataset = Dataset.objects.filter(
+        name=MeasurementName.FLAG_COVERAGE.value,
+        repository_id=repository.pk,
+    ).first()
+    if not dataset:
+        return False
+    return dataset.is_backfilled()
+
+
+@repository_bindable.field("componentsMeasurementsActive")
+@sync_to_async
+def resolve_components_measurements_active(
+    repository: Repository, info: GraphQLResolveInfo
+) -> bool:
+    if not settings.TIMESERIES_ENABLED:
+        return False
+    return Dataset.objects.filter(
+        name=MeasurementName.COMPONENT_COVERAGE.value,
+        repository_id=repository.pk,
+    ).exists()
+
+
+@repository_bindable.field("componentsMeasurementsBackfilled")
+@sync_to_async
+def resolve_components_measurements_backfilled(
+    repository: Repository, info: GraphQLResolveInfo
+) -> bool:
+    if not settings.TIMESERIES_ENABLED:
+        return False
+    dataset = Dataset.objects.filter(
+        name=MeasurementName.COMPONENT_COVERAGE.value,
+        repository_id=repository.pk,
+    ).first()
+    if not dataset:
+        return False
+    return dataset.is_backfilled()
