@@ -195,6 +195,7 @@ _COMMIT_UPLOAD_STATUS_FIELDS = (
 )
 
 _COMMIT_SHA_EXACT = re.compile(r"^[0-9a-fA-F]{40}$")
+_COMMIT_REPO_AND_SHA = re.compile(r"^(?P<repoid>\d+)\s+(?P<sha>[0-9a-fA-F]{40})$")
 
 
 def _empty_commit_changelist_counts():
@@ -780,7 +781,10 @@ class CommitAdmin(AdminMixin, admin.ModelAdmin):
     # A non-empty value makes Django render the search bar; matching is
     # constrained by get_search_results below.
     search_fields = ("commitid", "repository_id")
-    search_help_text = "Search by repoid (exact) or full commit SHA (exact)."
+    search_help_text = (
+        "Search by repoid, full commit SHA, or both: "
+        "'<repoid> <full SHA>' (preferred; uses the unique index)."
+    )
     readonly_fields = (
         "id",
         "commitid",
@@ -859,11 +863,22 @@ class CommitAdmin(AdminMixin, admin.ModelAdmin):
         if not term:
             return queryset, False
 
+        # Prefer exact equality (not iexact) so Postgres can use btree indexes
+        # the same way a raw `WHERE commitid = …` does.
+        if m := _COMMIT_REPO_AND_SHA.match(term):
+            return (
+                queryset.filter(
+                    repository_id=int(m["repoid"]),
+                    commitid=m["sha"].lower(),
+                ),
+                False,
+            )
+
         if term.isdigit():
             return queryset.filter(repository_id=int(term)), False
 
         if _COMMIT_SHA_EXACT.match(term):
-            return queryset.filter(commitid__iexact=term), False
+            return queryset.filter(commitid=term.lower()), False
 
         return queryset.none(), False
 
