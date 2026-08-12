@@ -261,6 +261,9 @@ def resolve_flags(
     info: GraphQLResolveInfo,
     filters: Mapping = None,
     ordering_direction: OrderingDirection = OrderingDirection.ASC,
+    interval: Interval | str | None = None,
+    after_date: datetime | str | None = None,
+    before_date: datetime | str | None = None,
     **kwargs,
 ):
     queryset = flags_for_repo(parent.repository, filters)
@@ -274,27 +277,41 @@ def resolve_flags(
     # We fetch the measurements in this resolver since there are multiple child
     # flag resolvers that depend on this data.  Additionally, we're able to fetch
     # measurements for all the flags being returned at once.
-    # Use the lookahead to make sure we don't overfetch measurements that we don't
-    # need.
+    # Top-level interval/afterDate/beforeDate args take precedence over lookahead
+    # args from the nested measurements field.
     node = lookahead(info, ("edges", "node", "measurements"))
-    if node:
+    resolved_interval = interval
+    resolved_after = after_date
+    resolved_before = before_date
+
+    if node and resolved_interval is None:
+        resolved_interval = node.args.get("interval")
+        resolved_after = node.args.get("after")
+        resolved_before = node.args.get("before")
+
+    if resolved_interval is not None:
         if settings.TIMESERIES_ENABLED:
             # TODO: is there a way to have these automatically casted at a
             # lower level (i.e. based on the schema)?
-            interval = node.args["interval"]
-            if isinstance(interval, str):
-                interval = Interval[interval]
-            after = node.args["after"]
-            if isinstance(after, str):
-                after = from_current_timezone(datetime.fromisoformat(after))
-            before = node.args["before"]
-            if isinstance(before, str):
-                before = from_current_timezone(datetime.fromisoformat(before))
+            if isinstance(resolved_interval, str):
+                resolved_interval = Interval[resolved_interval]
+            if isinstance(resolved_after, str):
+                resolved_after = from_current_timezone(
+                    datetime.fromisoformat(resolved_after)
+                )
+            if isinstance(resolved_before, str):
+                resolved_before = from_current_timezone(
+                    datetime.fromisoformat(resolved_before)
+                )
 
             flag_ids = [edge["node"].pk for edge in connection.edges]
 
             info.context["flag_measurements"] = flag_measurements(
-                parent.repository, flag_ids, interval, after, before
+                parent.repository,
+                flag_ids,
+                resolved_interval,
+                resolved_after,
+                resolved_before,
             )
         else:
             info.context["flag_measurements"] = {}
