@@ -100,6 +100,7 @@ class LogContext:
                 )
 
         except Exception:
+            dbsession.rollback()
             log.exception("Failed to populate log context")
 
         self._populated_from_db = True
