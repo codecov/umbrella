@@ -65,6 +65,62 @@ def test_shelter_repo_sync(dbsession, mock_configuration, mocker):
     assert len(publish_calls) == 4
 
 
+def test_shelter_owner_username_sync(dbsession, mock_configuration, mocker):
+    os.environ["PUBSUB_EMULATOR_HOST"] = "localhost"
+    publish = mocker.patch("google.cloud.pubsub_v1.PublisherClient.publish")
+
+    mock_configuration.set_params(
+        {
+            "setup": {
+                "shelter": {
+                    "pubsub_project_id": "test-project-id",
+                    "sync_repo_topic_id": "test-topic-id",
+                    "enabled": True,
+                }
+            }
+        }
+    )
+
+    owner = OwnerFactory(ownerid=123, username="old-org", service="github")
+    repos = [
+        RepositoryFactory(
+            repoid=91728378,
+            name="example-repo-a",
+            author=owner,
+            private=False,
+        ),
+        RepositoryFactory(
+            repoid=91728379,
+            name="example-repo-b",
+            author=owner,
+            private=False,
+        ),
+    ]
+    dbsession.add(owner)
+    for repo in repos:
+        dbsession.add(repo)
+    dbsession.commit()
+    publish.reset_mock()
+
+    dbsession.refresh(owner)
+    owner.username = "new-org"
+    dbsession.commit()
+
+    publish.assert_any_call(
+        "projects/test-project-id/topics/test-topic-id",
+        b'{"type": "owner", "sync": "one", "id": 123}',
+    )
+    repo_messages = {
+        call.args[1]
+        for call in publish.call_args_list
+        if call.args[1].startswith(b'{"type": "repo"')
+    }
+    assert repo_messages == {
+        b'{"type": "repo", "sync": "one", "id": 91728378}',
+        b'{"type": "repo", "sync": "one", "id": 91728379}',
+    }
+
+
 def test_repo_sync_when_shelter_disabled(dbsession, mock_configuration, mocker):
     # this prevents the pubsub SDK from trying to load credentials
     os.environ["PUBSUB_EMULATOR_HOST"] = "localhost"

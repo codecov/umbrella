@@ -9,6 +9,7 @@ from shared.django_apps.codecov_auth.tests.factories import (
     OrganizationLevelTokenFactory,
     OwnerFactory,
 )
+from shared.django_apps.core.tests.factories import RepositoryFactory
 from utils.shelter import ShelterPubsub
 
 
@@ -48,14 +49,19 @@ class TestCodecovAuthSignals(TestCase):
 
     def test_sync_on_update_username(self, mock_publish):
         owner = OwnerFactory(ownerid=12345, username="hello")
+        repositories = RepositoryFactory.create_batch(2, author=owner)
+        mock_publish.reset_mock()
         owner.username = "world"
         owner.save()
-        mock_publish.assert_has_calls(
-            [
-                call({"type": "owner", "sync": "one", "id": 12345}),
-                call({"type": "owner", "sync": "one", "id": 12345}),
-            ]
-        )
+        mock_publish.assert_any_call({"type": "owner", "sync": "one", "id": 12345})
+        repo_calls = [
+            call.args[0]
+            for call in mock_publish.call_args_list
+            if call.args[0]["type"] == "repo"
+        ]
+        assert {message["id"] for message in repo_calls} == {
+            repository.repoid for repository in repositories
+        }
 
     def test_sync_on_update_service(self, mock_publish):
         owner = OwnerFactory(ownerid=12345, service=Service.GITHUB.value)
@@ -68,13 +74,20 @@ class TestCodecovAuthSignals(TestCase):
             ]
         )
 
-    def test_no_sync_on_update_other_fields(self, mock_publish):
-        owner = OwnerFactory(ownerid=12345, name="hello")
-        owner.name = "world"
-        owner.save()
+    def test_no_sync_repos_on_create(self, mock_publish):
+        mock_publish.reset_mock()
+        OwnerFactory(ownerid=12345, username="hello")
         mock_publish.assert_called_once_with(
             {"type": "owner", "sync": "one", "id": 12345}
         )
+
+    def test_no_sync_on_update_other_fields(self, mock_publish):
+        owner = OwnerFactory(ownerid=12345, name="hello")
+        RepositoryFactory.create_batch(2, author=owner)
+        mock_publish.reset_mock()
+        owner.name = "world"
+        owner.save()
+        mock_publish.assert_not_called()
 
 
 @mock.patch("logging.Logger.warning")
