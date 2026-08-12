@@ -1,4 +1,5 @@
 from django.apps import AppConfig
+from django.contrib import admin
 
 
 class CodecovAuthConfig(AppConfig):
@@ -6,3 +7,5 @@ class CodecovAuthConfig(AppConfig):
 
     def ready(self):
         import codecov_auth.signals  # noqa: F401, PLC0415
+
+        admin.site.login_template = "admin/login_with_okta.html"
