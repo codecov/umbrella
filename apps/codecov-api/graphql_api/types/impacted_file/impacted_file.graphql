@@ -21,3 +21,5 @@ type ImpactedFiles {
 union ImpactedFilesResult =
     ImpactedFiles
   | UnknownFlags
+
+union ImpactedFileResult = ImpactedFile | UnknownPath
