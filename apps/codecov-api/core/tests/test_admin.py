@@ -305,6 +305,28 @@ class CommitAdminTests(TestCase):
         )
         self.assertEqual(list(results.values_list("pk", flat=True)), [commit.pk])
 
+    def test_get_search_results_by_commit_sha_is_case_normalized(self):
+        commit = CommitFactory(repository=self.repo, commitid="ab" * 20)
+        request = MagicMock()
+        queryset = Commit.objects.all()
+        results, _ = self.commit_admin.get_search_results(
+            request, queryset, commit.commitid.upper()
+        )
+        self.assertEqual(list(results.values_list("pk", flat=True)), [commit.pk])
+
+    def test_get_search_results_by_repoid_and_commit_sha(self):
+        other_repo = RepositoryFactory()
+        sha = "c" * 40
+        match = CommitFactory(repository=self.repo, commitid=sha)
+        CommitFactory(repository=other_repo, commitid=sha)
+
+        request = MagicMock()
+        queryset = Commit.objects.all()
+        results, _ = self.commit_admin.get_search_results(
+            request, queryset, f"{self.repo.repoid} {sha.upper()}"
+        )
+        self.assertEqual(list(results.values_list("pk", flat=True)), [match.pk])
+
     def test_get_search_results_invalid_term_returns_empty(self):
         CommitFactory(repository=self.repo)
         request = MagicMock()
