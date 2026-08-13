@@ -3,6 +3,7 @@ input ImpactedFilesFilters {
   hasUnintendedChanges: Boolean
   flags: [String!]
   components: [String!]
+  search: String
 }
 
 input ImpactedFilesOrdering {
