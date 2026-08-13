@@ -14,11 +14,13 @@ from django.urls import resolve
 from rest_framework import exceptions
 
 from codecov_auth.constants import USE_SENTRY_APP_INDICATOR
-from codecov_auth.models import Owner, Service
+from codecov_auth.models import Owner, Service, User
 from codecov_auth.utils import get_sentry_jwt_payload
 from utils.services import get_long_service_name
 
 log = logging.getLogger(__name__)
+
+_IMPERSONATION_ROLES = {User.StaffRole.MEMBER, User.StaffRole.ADMIN}
 
 
 def get_service(request: HttpRequest) -> str | None:
@@ -106,6 +108,22 @@ def impersonation_middleware(get_response):
                         "reason": "must be a staff user",
                         "current_user_id": current_user.pk,
                         "current_user_email": current_user.email,
+                        "impersonating_ownerid": impersonating_ownerid,
+                    },
+                )
+                raise exceptions.PermissionDenied()
+
+            staff_role = getattr(
+                current_user, "effective_staff_role", User.StaffRole.NONE
+            )
+            if staff_role not in _IMPERSONATION_ROLES:
+                log.warning(
+                    "Impersonation unsuccessful",
+                    extra={
+                        "reason": "must be a staff member or admin",
+                        "current_user_id": current_user.pk,
+                        "current_user_email": current_user.email,
+                        "current_user_staff_role": str(staff_role),
                         "impersonating_ownerid": impersonating_ownerid,
                     },
                 )

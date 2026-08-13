@@ -215,6 +215,83 @@ class OwnerAdminTest(TestCase):
                 str(owner_to_impersonate.pk),
             )
 
+    def test_owner_admin_impersonate_from_detail_page(self):
+        owner_to_impersonate = OwnerFactory(
+            service="bitbucket",
+            plan=DEFAULT_FREE_PLAN,
+            username="detail-owner",
+        )
+
+        detail_response = self.client.get(
+            reverse("admin:codecov_auth_owner_change", args=[owner_to_impersonate.pk])
+        )
+        self.assertEqual(detail_response.status_code, 200)
+        self.assertContains(detail_response, "Impersonate")
+        self.assertContains(
+            detail_response,
+            reverse(
+                "admin:codecov_auth_owner_impersonate",
+                args=[owner_to_impersonate.pk],
+            ),
+        )
+
+        response = self.client.get(
+            reverse(
+                "admin:codecov_auth_owner_impersonate",
+                args=[owner_to_impersonate.pk],
+            )
+        )
+        self.assertIn("/bb/detail-owner", response.url)
+        self.assertEqual(
+            response.cookies.get("staff_user").value,
+            str(owner_to_impersonate.pk),
+        )
+
+    def test_owner_admin_organizations_list(self):
+        org = OwnerFactory(username="acme-org", plan=DEFAULT_FREE_PLAN)
+        user = OwnerFactory(
+            username="member-user",
+            plan=DEFAULT_FREE_PLAN,
+            organizations=[org.ownerid],
+        )
+
+        result = self.owner_admin.organizations_list(user)
+        assert "Total: 1" in result
+        assert "acme-org" in result
+        assert reverse("admin:codecov_auth_owner_change", args=[org.ownerid]) in result
+
+        empty = self.owner_admin.organizations_list(
+            OwnerFactory(organizations=None, plan=DEFAULT_FREE_PLAN)
+        )
+        assert "Total: 0" in empty
+
+    def test_owner_admin_admins_list_includes_email(self):
+        admin_owner = OwnerFactory(
+            username="org-admin",
+            email="admin@example.com",
+            plan=DEFAULT_FREE_PLAN,
+        )
+        org = OwnerFactory(
+            username="acme",
+            plan=DEFAULT_FREE_PLAN,
+            admins=[admin_owner.ownerid],
+        )
+
+        result = self.owner_admin.admins_list(org)
+        assert "Total: 1" in result
+        assert "Email" in result
+        assert "org-admin" in result
+        assert "admin@example.com" in result
+        assert (
+            reverse("admin:codecov_auth_owner_change", args=[admin_owner.ownerid])
+            in result
+        )
+
+        empty = self.owner_admin.admins_list(
+            OwnerFactory(admins=None, plan=DEFAULT_FREE_PLAN)
+        )
+        assert "Total: 0" in empty
+
     @patch("codecov_auth.admin.TaskService.refresh")
     def test_owner_admin_refresh_owner(self, mock_refresh):
         owner_to_refresh = OwnerFactory(service="github", plan=DEFAULT_FREE_PLAN)

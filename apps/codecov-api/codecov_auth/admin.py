@@ -7,17 +7,23 @@ from django.conf import settings
 from django.contrib import admin, messages
 from django.contrib.admin.helpers import ACTION_CHECKBOX_NAME
 from django.contrib.admin.models import LogEntry
+from django.contrib.admin.utils import unquote
 from django.db.models import Count, OuterRef, Q, Subquery
 from django.db.models.fields import BLANK_CHOICE_DASH
 from django.db.models.functions import Coalesce
 from django.forms import CheckboxInput, Select, Textarea
-from django.http import HttpRequest
+from django.http import Http404, HttpRequest
 from django.shortcuts import redirect, render
-from django.urls import reverse
+from django.urls import path, reverse
 from django.utils import timezone
 from django.utils.html import format_html, format_html_join
 
-from codecov.admin import AdminMixin, get_staff_role
+from codecov.admin import (
+    AdminMixin,
+    can_impersonate,
+    get_staff_role,
+    require_impersonation_permission,
+)
 from codecov.commands.exceptions import ValidationError
 from codecov_auth.helpers import History
 from codecov_auth.models import OrganizationLevelToken, Owner, SentryUser, Session, User
@@ -102,20 +108,12 @@ def extend_trial(self, request, queryset):
 extend_trial.short_description = "Start and extend trial up to a selected date"
 
 
-def impersonate_owner(self, request, queryset):
-    if queryset.count() != 1:
-        self.message_user(
-            request, "You must impersonate exactly one Owner.", level=messages.ERROR
-        )
-        return
-
-    owner: Owner = queryset.first()
+def _impersonate_owner_response(request, owner: Owner):
+    # this cookie is read by the `ImpersonationMiddleware` and
+    # will reset `request.current_owner` to the impersonated owner
     response = redirect(
         f"{settings.CODECOV_URL}/{get_short_service_name(owner.service)}/{owner.username}"
     )
-
-    # this cookie is read by the `ImpersonationMiddleware` and
-    # will reset `request.current_owner` to the impersonated owner
     max_age = 900  # 15 minutes
     response.set_cookie(
         "staff_user",
@@ -130,6 +128,17 @@ def impersonate_owner(self, request, queryset):
         request.user,
     )
     return response
+
+
+def impersonate_owner(self, request, queryset):
+    require_impersonation_permission(request)
+    if queryset.count() != 1:
+        self.message_user(
+            request, "You must impersonate exactly one Owner.", level=messages.ERROR
+        )
+        return
+
+    return _impersonate_owner_response(request, queryset.first())
 
 
 impersonate_owner.short_description = "Impersonate the selected owner"
@@ -483,10 +492,11 @@ class InvoiceBillingAdmin(AdminMixin, admin.ModelAdmin):
 
     def get_form(self, request, obj=None, **kwargs):
         form = super().get_form(request, obj, **kwargs)
-        field = form.base_fields["account"]
-        field.widget.can_add_related = False
-        field.widget.can_change_related = False
-        field.widget.can_delete_related = False
+        field = form.base_fields.get("account")
+        if field:
+            field.widget.can_add_related = False
+            field.widget.can_change_related = False
+            field.widget.can_delete_related = False
         return form
 
 
@@ -526,10 +536,11 @@ class StripeBillingAdmin(AdminMixin, admin.ModelAdmin):
 
     def get_form(self, request, obj=None, **kwargs):
         form = super().get_form(request, obj, **kwargs)
-        field = form.base_fields["account"]
-        field.widget.can_add_related = False
-        field.widget.can_change_related = False
-        field.widget.can_delete_related = False
+        field = form.base_fields.get("account")
+        if field:
+            field.widget.can_add_related = False
+            field.widget.can_change_related = False
+            field.widget.can_delete_related = False
         return form
 
 
@@ -767,6 +778,7 @@ class AccountAdmin(AdminMixin, admin.ModelAdmin):
 @admin.register(Owner)
 class OwnerAdmin(AdminMixin, admin.ModelAdmin):
     exclude = ("oauth_token",)
+    change_form_template = "admin/codecov_auth/owner/change_form.html"
     list_display = (
         "username",
         "name",
@@ -826,6 +838,7 @@ class OwnerAdmin(AdminMixin, admin.ModelAdmin):
         "support_pin",
         "plan_activated_users_list",
         "admins_list",
+        "organizations_list",
         "github_app_installations_table",
     )
 
@@ -908,7 +921,7 @@ class OwnerAdmin(AdminMixin, admin.ModelAdmin):
                     "yaml",
                     "bot",
                     "max_upload_limit",
-                    "organizations",
+                    "organizations_list",
                     "permission_list",
                     "student_created_at",
                     "student_updated_at",
@@ -1016,48 +1029,60 @@ class OwnerAdmin(AdminMixin, admin.ModelAdmin):
             obj.stripe_subscription_id,
         )
 
-    def _links_table(self, ids, objects, url_name, label_fn, headers):
-        """Render `ids` as a two-column table linking each to its admin page.
+    def _links_table(self, ids, objects, url_name, label_fn, headers, extra_fns=None):
+        """Render `ids` as a table linking each to its admin page.
 
         `objects` maps id -> instance for the ids that still resolve; unresolved
-        ids are shown inline as missing.
+        ids are shown inline as missing. `extra_fns` is an optional list of
+        callables ``(obj) -> cell`` for columns after the linked label; each
+        must have a matching header after the first two.
         """
         if not ids:
             return "-"
-        rows = format_html_join(
-            "",
-            "<tr><td style='padding:2px 16px 2px 0'>{}</td><td>{}</td></tr>",
-            (
-                (
-                    obj_id,
-                    (
-                        format_html(
-                            '<a href="{}">{}</a>',
-                            reverse(url_name, args=[obj_id]),
-                            label_fn(objects[obj_id]),
-                        )
-                        if obj_id in objects
-                        else format_html("<em>missing ({})</em>", obj_id)
-                    ),
+        extra_fns = extra_fns or []
+        row_args = []
+        for obj_id in ids:
+            obj = objects.get(obj_id)
+            label = (
+                format_html(
+                    '<a href="{}">{}</a>',
+                    reverse(url_name, args=[obj_id]),
+                    label_fn(obj),
                 )
-                for obj_id in ids
-            ),
-        )
+                if obj is not None
+                else format_html("<em>missing ({})</em>", obj_id)
+            )
+            extras = tuple((fn(obj) if obj is not None else "-") for fn in extra_fns)
+            row_args.append((obj_id, label, *extras))
+
+        td_open = ["<td style='padding:2px 16px 2px 0'>{}</td>"] + [
+            "<td>{}</td>" for _ in range(1 + len(extra_fns))
+        ]
+        rows = format_html_join("", "<tr>" + "".join(td_open) + "</tr>", row_args)
+        th_open = ["<th style='text-align:left;padding-right:16px'>{}</th>"] + [
+            "<th style='text-align:left'>{}</th>" for _ in headers[1:]
+        ]
+        header_cells = format_html("".join(th_open), *headers)
         return format_html(
-            "<table><thead><tr>"
-            "<th style='text-align:left;padding-right:16px'>{}</th>"
-            "<th style='text-align:left'>{}</th>"
-            "</tr></thead><tbody>{}</tbody></table>",
-            headers[0],
-            headers[1],
+            "<table><thead><tr>{}</tr></thead><tbody>{}</tbody></table>",
+            header_cells,
             rows,
         )
 
-    def _owners_table(self, ownerids):
+    def _owners_table(self, ownerids, *, include_email=False):
         owners = {
             owner.ownerid: owner
             for owner in Owner.objects.filter(ownerid__in=ownerids or [])
         }
+        if include_email:
+            return self._links_table(
+                ownerids,
+                owners,
+                "admin:codecov_auth_owner_change",
+                lambda owner: owner.username or owner.ownerid,
+                ("Owner ID", "Username", "Email"),
+                extra_fns=[lambda owner: owner.email or "-"],
+            )
         return self._links_table(
             ownerids,
             owners,
@@ -1097,6 +1122,15 @@ class OwnerAdmin(AdminMixin, admin.ModelAdmin):
         return format_html(
             "<div style='margin-bottom:6px'>Total: {}</div>{}",
             len(ownerids),
+            self._owners_table(ownerids, include_email=True),
+        )
+
+    @admin.display(description="Organizations")
+    def organizations_list(self, obj):
+        ownerids = obj.organizations or []
+        return format_html(
+            "<div style='margin-bottom:6px'>Total: {}</div>{}",
+            len(ownerids),
             self._owners_table(ownerids),
         )
 
@@ -1109,25 +1143,58 @@ class OwnerAdmin(AdminMixin, admin.ModelAdmin):
             self._repos_table(repoids),
         )
 
+    def get_urls(self):
+        return [
+            path(
+                "<path:object_id>/impersonate/",
+                self.admin_site.admin_view(self.impersonate_view),
+                name="codecov_auth_owner_impersonate",
+            ),
+            *super().get_urls(),
+        ]
+
+    def impersonate_view(self, request, object_id):
+        # Members and Admins only — Viewers (and non-staff) cannot impersonate.
+        require_impersonation_permission(request)
+        obj = self.get_object(request, unquote(object_id))
+        if obj is None:
+            raise Http404(
+                f"{self.model._meta.verbose_name} with ID “{object_id}” doesn’t exist."
+            )
+        return _impersonate_owner_response(request, obj)
+
+    def change_view(self, request, object_id, form_url="", extra_context=None):
+        extra_context = extra_context or {}
+        extra_context["show_impersonate"] = can_impersonate(request)
+        return super().change_view(request, object_id, form_url, extra_context)
+
     def get_form(self, request, obj=None, change=False, **kwargs):
         form = super().get_form(request, obj, change, **kwargs)
-        PLANS_CHOICES = [
-            (x, x)
-            for x in Plan.objects.filter(is_active=True).values_list("name", flat=True)
-        ]
-        form.base_fields["plan"].widget = Select(
-            choices=BLANK_CHOICE_DASH + PLANS_CHOICES
-        )
-        form.base_fields["uses_invoice"].widget = CheckboxInput()
+        # Viewers get every field as readonly, which leaves the form with no
+        # editable `base_fields` to customize.
+        plan_field = form.base_fields.get("plan")
+        if plan_field:
+            PLANS_CHOICES = [
+                (x, x)
+                for x in Plan.objects.filter(is_active=True).values_list(
+                    "name", flat=True
+                )
+            ]
+            plan_field.widget = Select(choices=BLANK_CHOICE_DASH + PLANS_CHOICES)
 
-        is_superuser = request.user.is_superuser
-        if not is_superuser:
-            form.base_fields["staff"].disabled = True
+        uses_invoice_field = form.base_fields.get("uses_invoice")
+        if uses_invoice_field:
+            uses_invoice_field.widget = CheckboxInput()
 
-        field = form.base_fields["account"]
-        field.widget.can_add_related = False
-        field.widget.can_change_related = False
-        field.widget.can_delete_related = False
+        staff_field = form.base_fields.get("staff")
+        if staff_field and not request.user.is_superuser:
+            staff_field.disabled = True
+
+        field = form.base_fields.get("account")
+        if field:
+            field.widget.can_add_related = False
+            field.widget.can_change_related = False
+            field.widget.can_delete_related = False
 
         # workaround for when a model field has null=True without blank=True
         for field_name in [
