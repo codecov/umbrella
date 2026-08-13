@@ -13,6 +13,7 @@ from services.report import ProcessingError, RawReportInfo, ReportService
 from services.report.parser.types import VersionOneParsedRawReport
 from shared.api_archive.archive import ArchiveService
 from shared.celery_config import upload_finisher_task_name
+from shared.upload.constants import UploadErrorCode
 from shared.yaml import UserYaml
 
 from .intermediate import save_intermediate_report
@@ -38,10 +39,32 @@ def process_upload(
         .filter(Commit.repoid == repo_id, Commit.commitid == commit_sha)
         .first()
     )
-    assert commit
+    if commit is None:
+        log.warning(
+            "Commit not found, skipping upload processing",
+            extra={"repo_id": repo_id, "commit_sha": commit_sha, "upload_id": upload_id},
+        )
+        error = ProcessingError(
+            code=UploadErrorCode.COMMIT_NOT_FOUND,
+            params={"repo_id": repo_id, "commit_sha": commit_sha},
+            is_retryable=False,
+        )
+        on_processing_error(error)
+        return ProcessingResult(upload_id=upload_id, arguments=arguments, successful=False, error=error.as_dict())
 
     upload = db_session.query(Upload).filter_by(id_=upload_id).first()
-    assert upload
+    if upload is None:
+        log.warning(
+            "Upload not found in database, skipping upload processing",
+            extra={"repo_id": repo_id, "commit_sha": commit_sha, "upload_id": upload_id},
+        )
+        error = ProcessingError(
+            code=UploadErrorCode.UPLOAD_NOT_FOUND,
+            params={"upload_id": upload_id},
+            is_retryable=False,
+        )
+        on_processing_error(error)
+        return ProcessingResult(upload_id=upload_id, arguments=arguments, successful=False, error=error.as_dict())
 
     state = ProcessingState(repo_id, commit_sha)
     # this in a noop in normal cases, but relevant for task retries:
