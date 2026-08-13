@@ -22,8 +22,11 @@ class FetchImpactedFiles(BaseInteractor):
         comparison: Comparison,
         filters,
     ):
-        parameter = filters.get("ordering", {}).get("parameter")
-        direction = filters.get("ordering", {}).get("direction")
+        ordering = filters.get("ordering") or {}
+        parameter = ordering.get("parameter")
+        direction = ordering.get("direction") or filters.get("orderingDirection")
+        if not parameter and direction:
+            parameter = ImpactedFileParameter.FILE_NAME
         if parameter and direction:
             impacted_files = self.sort_impacted_files(
                 impacted_files, parameter, direction
