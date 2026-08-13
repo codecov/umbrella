@@ -74,8 +74,10 @@ class NotificationService:
         if not self.plan:
             self.plan = Plan.objects.select_related("tier").get(name=owner.plan)
 
+        # Team-tier private repos are patch-only; public repos keep full status checks.
         if (
             self.plan.tier.tier_name == TierName.TEAM.value
+            and self.repository.private
             and status_type != StatusType.PATCH.value
         ):
             return False
@@ -96,6 +98,7 @@ class NotificationService:
 
         if (
             self.plan.tier.tier_name == TierName.TEAM.value
+            and self.repository.private
             and status_type != StatusType.PATCH.value
         ):
             return False

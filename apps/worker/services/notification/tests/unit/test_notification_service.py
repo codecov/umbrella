@@ -202,7 +202,9 @@ class TestNotificationService:
     @pytest.mark.django_db
     def test_use_status_notifier_for_team_plan(self, dbsession, mock_config):
         repository = RepositoryFactory.create(
-            author__service="github", author__plan=PlanName.TEAM_MONTHLY.value
+            private=True,
+            author__service="github",
+            author__plan=PlanName.TEAM_MONTHLY.value,
         )
         ghapp_installation = GithubAppInstallationFactory(
             installation_id=456789,
@@ -221,6 +223,41 @@ class TestNotificationService:
         assert (
             service._should_use_checks_notifier(status_type=StatusType.CHANGES.value)
             == False
+        )
+        assert (
+            service._should_use_checks_notifier(status_type=StatusType.PATCH.value)
+            == True
+        )
+
+    @pytest.mark.django_db
+    def test_use_status_notifier_for_public_team_plan_repo(
+        self, dbsession, mock_config
+    ):
+        repository = RepositoryFactory.create(
+            private=False,
+            author__service="github",
+            author__plan=PlanName.TEAM_MONTHLY.value,
+        )
+        ghapp_installation = GithubAppInstallationFactory(
+            installation_id=456789,
+            owner=repository.author,
+        )
+        mock_config(ghapp_installation.app_id, "github", "integration", "id")
+        dbsession.add(ghapp_installation)
+        dbsession.flush()
+        current_yaml = {"github_checks": True}
+        service = NotificationService(repository, current_yaml, None)
+        assert (
+            service._should_use_status_notifier(status_type=StatusType.PROJECT.value)
+            == True
+        )
+        assert (
+            service._should_use_checks_notifier(status_type=StatusType.PROJECT.value)
+            == True
+        )
+        assert (
+            service._should_use_checks_notifier(status_type=StatusType.CHANGES.value)
+            == True
         )
         assert (
             service._should_use_checks_notifier(status_type=StatusType.PATCH.value)
