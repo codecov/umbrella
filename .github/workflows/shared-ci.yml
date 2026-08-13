@@ -9,6 +9,11 @@ on:
       event_name:
         type: string
         required: false
+      # Full unit/integration suites. False on merge_group (build gate only) and
+      # on push to main (merge queue already validated).
+      run_tests:
+        type: boolean
+        default: true
 
 permissions:
   contents: "read"
@@ -29,7 +34,7 @@ jobs:
 
   shared-test:
     name: Test (Shared)
-    if: ${{ inputs.skip == false }}
+    if: ${{ inputs.skip == false && inputs.run_tests == true }}
     needs: [shared-build]
     uses: ./.github/workflows/_run-tests.yml
     secrets: inherit
@@ -44,7 +49,8 @@ jobs:
     name: Benchmarks (Shared)
     # Skip on merge_group because CodSpeed does not support it yet.
     # Ref: https://github.com/CodSpeedHQ/action/issues/126
-    if: ${{ inputs.skip == false && github.event_name != 'merge_group' }}
+    # Also skip when run_tests is false (push to main) — benchmarks are PR signal.
+    if: ${{ inputs.skip == false && inputs.run_tests == true && github.event_name != 'merge_group' }}
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -75,12 +81,20 @@ jobs:
   # Because this job does not use a reusable workflow, it will produce the same
   # check whether or not it is skipped. So, we can make this check required and
   # have it figure out whether the jobs we actually care about failed.
+  #
+  # On pull_request / staging: requires tests. On merge_group / push to main:
+  # tests are skipped and the build is the gate.
   shared-required-checks:
     name: Required checks (Shared)
-    if: ${{ !cancelled() && inputs.skip == false }}
+    # Reference needs.*.result so this still runs when shared-test is skipped
+    # (merge_group / push to main).
+    if: ${{ !cancelled() && inputs.skip == false && needs.shared-build.result != 'skipped' && (needs.shared-test.result == 'success' || needs.shared-test.result == 'skipped' || needs.shared-test.result == 'failure') }}
     runs-on: ubuntu-latest
-    needs: [shared-test]
+    needs: [shared-build, shared-test]
     steps:
+      - name: Fail build
+        if: ${{ needs.shared-build.result == 'failure' || needs.shared-build.result == 'cancelled' }}
+        run: exit 1
       - name: Fail tests
         if: ${{ needs.shared-test.result == 'failure' }}
         run: exit 1
