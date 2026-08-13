@@ -142,3 +142,13 @@ def resolve_files_result_type(res, *_):
         return "UnknownFlags"
     elif isinstance(res, type({"results": list})):
         return "ImpactedFiles"
+
+
+impacted_file_result_bindable = UnionType("ImpactedFileResult")
+
+
+@impacted_file_result_bindable.type_resolver
+def resolve_file_result_type(res, *_):
+    if isinstance(res, UnknownPath):
+        return "UnknownPath"
+    return "ImpactedFile"
