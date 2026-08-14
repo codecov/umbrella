@@ -27,8 +27,11 @@ class CoberturaProcessor(BaseLanguageProcessor):
 def Int(value):
     try:
         return int(value)
-    except ValueError:
-        return int(float(value))
+    except (ValueError, TypeError):
+        try:
+            return int(float(value))
+        except (ValueError, TypeError):
+            return None
 
 
 def get_sources_to_attempt(xml) -> Sequence[str]:
@@ -98,6 +101,8 @@ def from_xml(xml: Element, report_builder_session: ReportBuilderSession) -> None
                     _type = CoverageType.branch
                 else:
                     coverage = Int(_line.get("hits"))
+                    if coverage is None:
+                        continue
 
                 # [python] [scoverage] [groovy] Conditions
                 conditions_text = _line.get("missing-branches", None)
@@ -183,6 +188,8 @@ def from_xml(xml: Element, report_builder_session: ReportBuilderSession) -> None
             if attr.get("ignored") == "true":
                 continue
             coverage = Int(attr["invocation-count"])
+            if coverage is None:
+                continue
             line_no = int(attr["line"])
             coverage_type = CoverageType.line
             if attr["branch"] == "true":
