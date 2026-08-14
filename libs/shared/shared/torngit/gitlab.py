@@ -1117,7 +1117,14 @@ class Gitlab(TorngitBaseAdapter):
         _id = None
         username = None
         url = self.count_and_get_url_template("get_authors").substitute()
-        authors = await self.api("get", url, search=email or name, token=token)
+        try:
+            authors = await self.api("get", url, search=email or name, token=token)
+        except TorngitServerUnreachableError:
+            log.warning(
+                "get_commit: timed out looking up commit author, returning partial data",
+                extra={"commit": commit, "email": email, "name": name},
+            )
+            authors = None
         if authors:
             for author in authors:
                 if author["name"] == name or author.get("email") == email:
