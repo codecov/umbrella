@@ -131,6 +131,16 @@ class SyncReposTask(BaseCodecovTask, name=sync_repos_task_name):
                     )
         except LockError:
             log.warning("Unable to sync repos because another task is already doing it")
+        except TorngitServerFailureError as e:
+            log.warning(
+                "Git provider returned a 5xx error during SyncRepos; retrying",
+                extra={
+                    "ownerid": ownerid,
+                    "retry": self.request.retries,
+                    "exc": str(e),
+                },
+            )
+            self.retry(exc=e, countdown=60 * 2 ** self.request.retries, max_retries=3)
 
     async def sync_repos_affected_repos_known(
         self,
