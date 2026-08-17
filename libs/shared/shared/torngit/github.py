@@ -676,6 +676,10 @@ class Github(TorngitBaseAdapter):
             page += 1
 
     def _parse_response(self, res: Response):
+        if res is None:
+            raise TorngitServerUnreachableError(
+                "GitHub request failed: no response returned after retries."
+            )
         if res.status_code == 204:
             return None
         elif res.headers.get("Content-Type")[:16] == "application/json":
@@ -1026,6 +1030,9 @@ class Github(TorngitBaseAdapter):
                         status=res.status_code, retry_reason=retry_reason, **log_dict
                     ),
                 )
+        raise TorngitServer5xxCodeError(
+            "GitHub is having 5xx issues and all retries were exhausted."
+        )
 
     async def refresh_token(
         self, client: httpx.AsyncClient, original_url: str
