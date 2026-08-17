@@ -148,6 +148,13 @@ class SyncPlansTask(BaseCodecovTask, name=ghm_sync_plans_task_name):
                 owner.username = username
                 owner.updatestamp = datetime.now()
         else:
+            # Before inserting, clear any existing owner with the same username
+            # to avoid violating the owner_service_username unique constraint.
+            # We use a sentinel owner with a non-existent ownerid so that
+            # clear_identical_owners finds and nulls out the conflicting row
+            # (and its LoginSession rows) without skipping it.
+            sentinel = Owner(ownerid=None)
+            clear_identical_owners(db_session, sentinel, username, "github")
             owner = self.create_owner(db_session, service_id, username)
 
         return owner.ownerid
