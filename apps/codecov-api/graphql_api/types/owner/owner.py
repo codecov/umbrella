@@ -39,7 +39,7 @@ from graphql_api.helpers.mutation import (
 )
 from graphql_api.helpers.requested_fields import selected_fields
 from graphql_api.types.enums import OrderingDirection, RepositoryOrdering
-from graphql_api.types.errors.errors import NotFoundError
+from graphql_api.types.errors.errors import NotFoundError, OwnerNotActivatedError
 from graphql_api.types.repository.repository import TOKEN_UNAVAILABLE
 from services.billing import BillingService
 from shared.django_apps.codecov_auth.sentry_app_deprecation import (
@@ -174,7 +174,7 @@ COMMITS_FIELDS = {"oldestCommitAt"}
 @owner_bindable.field("repository")
 async def resolve_repository(
     owner: Owner, info: GraphQLResolveInfo, name: str
-) -> Repository | NotFoundError:
+) -> Repository | NotFoundError | OwnerNotActivatedError:
     command = info.context["executor"].get_command("repository")
     okta_authenticated_accounts: list[int] = info.context["request"].session.get(
         OKTA_SIGNED_IN_ACCOUNTS_SESSION_KEY, []
@@ -199,6 +199,28 @@ async def resolve_repository(
     )
 
     if repository is None:
+        # Check whether the repo is hidden because the requesting user is not
+        # activated in the org's plan, rather than the repo simply not existing.
+        current_owner = info.context["request"].current_owner
+        if current_owner is not None:
+            # A non-null plan_activated_users list means the org has an
+            # activation requirement; check if the current user is excluded.
+            owner_plan_activated = await sync_to_async(
+                lambda: owner.plan_activated_users
+            )()
+            if (
+                owner_plan_activated is not None
+                and len(owner_plan_activated) > 0
+                and current_owner.ownerid not in owner_plan_activated
+            ):
+                # Confirm the repo actually exists (just not visible to this user)
+                repo_exists = await sync_to_async(
+                    lambda: Repository.objects.filter(
+                        author=owner, name=name, deleted=False
+                    ).exists()
+                )()
+                if repo_exists:
+                    return OwnerNotActivatedError()
         return NotFoundError()
 
     sentry_sdk.set_tags(
