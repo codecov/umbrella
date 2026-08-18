@@ -1,14 +1,20 @@
 import re
 
-_star_to_glob = re.compile(r"(?<!\.)\*").sub
-
 
 def _fixpaths_regs(fix: str) -> str:
     # [DEPRECATED] because handled by validators, but some data is cached in db
-    # a/**/b => a/.*/b
-    fix = fix.replace("**", r".*")
-    # a/*/b => a/[^\/\n]+/b
-    fix = _star_to_glob(r"[^\/\n]+", fix)
+    # Escape literal path segments so characters like \O in Windows paths
+    # (e.g. D:\a\Oblyro-Framework) are not interpreted as regex escapes.
+    # We split on wildcards first so that re.escape() only sees literal text,
+    # then rejoin with the appropriate regex patterns.
+    # a/**/b => a/.*/b  |  a/*/b => a/[^\/
+]+/b
+    double_star_parts = fix.split("**")
+    result_parts = []
+    for ds_part in double_star_parts:
+        single_star_parts = ds_part.split("*")
+        result_parts.append(r"[^\/\n]+".join(re.escape(s) for s in single_star_parts))
+    fix = ".*".join(result_parts)
     return fix.lstrip("/")
 
 
