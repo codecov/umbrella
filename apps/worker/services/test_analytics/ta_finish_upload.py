@@ -92,14 +92,15 @@ def transform_failures(
                 failure["failure_message"]
             ).replace("\r", "")
 
+        upload = uploads.get(failure["upload_id"])
         notif_failures.append(
             TestResultsNotificationFailure(
                 display_name=failure["computed_name"],
                 failure_message=failure["failure_message"],
                 test_id=failure["test_id"],
-                envs=uploads[failure["upload_id"]].flag_names,
+                envs=upload.flag_names if upload else [],
                 duration_seconds=failure["duration_seconds"] or 0,
-                build_url=uploads[failure["upload_id"]].build_url,
+                build_url=upload.build_url if upload else None,
             )
         )
     return notif_failures
