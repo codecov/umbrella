@@ -26,6 +26,7 @@ from shared.django_apps.core.models import Repository
 from shared.torngit.base import TorngitBaseAdapter
 from shared.torngit.exceptions import (
     TorngitClientError,
+    TorngitCommitNotFoundError,
     TorngitError,
     TorngitObjectNotFoundError,
 )
@@ -660,6 +661,11 @@ def fetch_commit_yaml_and_possibly_store(
             exc_info=True,
         )
         commit_yaml = None
+    except TorngitCommitNotFoundError:
+        # Transient: the commit is not yet resolvable on the provider.
+        # Re-raise so the caller can schedule a retry rather than proceeding
+        # with no YAML configuration.
+        raise
     except TorngitClientError:
         log.warning(
             "Unable to use yaml from commit because it cannot be fetched",
