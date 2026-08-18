@@ -398,6 +398,16 @@ def resolve_coverage_file(commit, info, path, flags=None, components=None):
             paths.extend(fc.paths)
         fallback_file = FilteredReportFile(ReportFile(path), [])
 
+    if not commit.full_report:
+        return {
+            "commit_report": None,
+            "file_report": fallback_file,
+            "commit": commit,
+            "path": path,
+            "flags": flags,
+            "components": components,
+        }
+
     commit_report = commit.full_report.filter(flags=flags, paths=paths)
     file_report = commit_report.get(path) or fallback_file
 
