@@ -8,7 +8,7 @@ from sentry_sdk import Scope
 
 from codecov.commands.exceptions import UnauthorizedGuestAccess
 from codecov_auth.models import Owner
-from graphql_api.actions.owner import get_owner
+from graphql_api.actions.owner import get_owner, get_owner_by_id
 from graphql_api.helpers.ariadne import ariadne_load_local_graphql
 
 query = ariadne_load_local_graphql(__file__, "query.graphql")
@@ -41,9 +41,15 @@ def resolve_me(_: Any, info: GraphQLResolveInfo) -> Owner | None:
 
 @query_bindable.field("owner")
 async def resolve_owner(
-    _: Any, info: GraphQLResolveInfo, username: str
+    _: Any,
+    info: GraphQLResolveInfo,
+    username: str | None = None,
+    ownerid: int | None = None,
 ) -> Owner | None:
     configure_sentry_scope(query_name(info))
+
+    if username is None and ownerid is None:
+        raise ValueError("Either 'username' or 'ownerid' must be provided.")
 
     service = info.context["service"]
     if not service:
@@ -56,7 +62,11 @@ async def resolve_owner(
             raise UnauthorizedGuestAccess()
 
         # if the owner tracks plan activated users, check if the user is in the list
-        target_owner = await get_owner(service, username)
+        target_owner = (
+            await get_owner_by_id(service, ownerid)
+            if ownerid is not None
+            else await get_owner(service, username)
+        )
         has_plan_activated_users = (
             target_owner
             and target_owner.plan_activated_users is not None
@@ -68,6 +78,8 @@ async def resolve_owner(
         ):
             raise UnauthorizedGuestAccess()
 
+    if ownerid is not None:
+        return await get_owner_by_id(service, ownerid)
     return await get_owner(service, username)
 
 
