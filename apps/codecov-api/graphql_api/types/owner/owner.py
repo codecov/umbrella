@@ -480,6 +480,14 @@ def resolve_activated_user_count(owner: Owner, info: GraphQLResolveInfo) -> int:
     return owner.activated_user_count
 
 
+@owner_bindable.field("seats")
+@sync_to_async
+@require_part_of_org
+def resolve_seats(owner: Owner, info: GraphQLResolveInfo) -> int | None:
+    plan_service = PlanService(current_org=owner)
+    return plan_service.plan_user_count
+
+
 @owner_bindable.field("billing")
 @sync_to_async
 @require_part_of_org
