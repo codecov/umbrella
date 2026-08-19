@@ -1,13 +1,21 @@
 import sentry_sdk
 
-from graphql_api.types.enums import PathContentDisplayType
+from graphql_api.types.enums import OrderingDirection, PathContentDisplayType
 from services.path import Dir, File
 
 
 @sentry_sdk.trace
 def sort_path_contents(items: list[File | Dir], filters: dict = {}) -> list[File | Dir]:
-    filter_parameter = filters.get("ordering", {}).get("parameter")
-    filter_direction = filters.get("ordering", {}).get("direction")
+    ordering = filters.get("ordering") or {}
+    # Support legacy `orderingDirection` field (maps to ordering.parameter, ASC direction)
+    if not ordering and filters.get("ordering_direction"):
+        ordering = {
+            "parameter": filters["ordering_direction"],
+            "direction": OrderingDirection.ASC,
+        }
+
+    filter_parameter = ordering.get("parameter")
+    filter_direction = ordering.get("direction")
 
     if filter_parameter and filter_direction:
         parameter_value = filter_parameter.value
