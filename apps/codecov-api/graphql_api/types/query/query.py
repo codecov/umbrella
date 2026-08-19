@@ -7,7 +7,8 @@ from graphql import GraphQLResolveInfo
 from sentry_sdk import Scope
 
 from codecov.commands.exceptions import UnauthorizedGuestAccess
-from codecov_auth.models import Owner
+from codecov_auth.helpers import current_user_part_of_org
+from codecov_auth.models import Account, Owner
 from graphql_api.actions.owner import get_owner
 from graphql_api.helpers.ariadne import ariadne_load_local_graphql
 
@@ -69,6 +70,32 @@ async def resolve_owner(
             raise UnauthorizedGuestAccess()
 
     return await get_owner(service, username)
+
+
+@query_bindable.field("account")
+async def resolve_account(
+    _: Any, info: GraphQLResolveInfo, username: str
+) -> Account | None:
+    configure_sentry_scope(query_name(info))
+
+    service = info.context["service"]
+    if not service:
+        return None
+
+    current_user = info.context["request"].user
+    current_owner = info.context["request"].current_owner
+
+    if not current_user or not current_user.is_authenticated or not current_owner:
+        return None
+
+    owner = await get_owner(service, username)
+    if owner is None or not owner.has_billing_account:
+        return None
+
+    if not current_user_part_of_org(current_owner, owner):
+        return None
+
+    return owner.account
 
 
 @query_bindable.field("config")
