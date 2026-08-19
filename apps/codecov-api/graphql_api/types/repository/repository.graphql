@@ -41,6 +41,7 @@ type Repository {
   ): BranchConnection @cost(complexity: 3, multipliers: ["first", "last"])
   defaultBranch: String
   graphToken: String
+  imageToken: String @deprecated(reason: "Use graphToken instead")
   yaml: String
   bot: Owner
   repositoryConfig: RepositoryConfig
