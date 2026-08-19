@@ -87,9 +87,13 @@ def get_test_data_queryset_via_ca(
             default=Sum("flaky_fail_count") / F("total_count"),
             output_field=FloatField(),
         ),
-        total_duration=Sum(
-            F("avg_duration_seconds")
-            * (F("pass_count") + F("fail_count") + F("flaky_fail_count")),
+        total_duration=Coalesce(
+            Sum(
+                F("avg_duration_seconds")
+                * (F("pass_count") + F("fail_count") + F("flaky_fail_count")),
+                output_field=FloatField(),
+            ),
+            Value(0.0),
             output_field=FloatField(),
         ),
         avg_duration=Case(
