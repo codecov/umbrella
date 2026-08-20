@@ -17,6 +17,7 @@ from shared.celery_config import (
     BUNDLE_ANALYSIS_NOTIFY_MAX_RETRIES,
     bundle_analysis_notify_task_name,
 )
+from shared.torngit.exceptions import TorngitServerFailureError
 from shared.yaml import UserYaml
 from tasks.base import BaseCodecovTask
 
@@ -69,6 +70,15 @@ class BundleAnalysisNotifyTask(BaseCodecovTask, name=bundle_analysis_notify_task
                     previous_result=previous_result,
                     **kwargs,
                 )
+        except TorngitServerFailureError:
+            log.warning(
+                "Git provider is having server issues during bundle analysis notify - retrying",
+                extra={
+                    "repoid": repoid,
+                    "commit": commitid,
+                },
+            )
+            self.retry(countdown=60)
         except LockRetry as retry:
             if retry.max_retries_exceeded:
                 log.error(
