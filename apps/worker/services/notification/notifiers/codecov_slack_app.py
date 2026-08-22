@@ -58,7 +58,7 @@ class CodecovSlackAppNotifier(AbstractBaseNotifier):
     def build_payload(self, comparison: ComparisonProxy) -> dict:
         head_full_commit = comparison.head
         base_full_commit = comparison.project_coverage_base
-        if comparison.has_project_coverage_base_report():
+        if comparison.has_project_coverage_base_report() and comparison.has_head_report():
             difference = Decimal(0)
             head_coverage = head_full_commit.report.totals.coverage
             base_coverage = base_full_commit.report.totals.coverage
