@@ -91,6 +91,10 @@ class RepositoryViewSetMixin(
                 repo_owner_username=org_name,
                 repo_owner_service=service,
             )
+            # Newly created repos bypass the annotated queryset and lack the
+            # `recent_commit_totals` annotation that RepoSerializer expects.
+            # Set it to None explicitly to avoid AttributeError during serialization.
+            repo.recent_commit_totals = None
 
         self.check_object_permissions(self.request, repo)
         return repo
