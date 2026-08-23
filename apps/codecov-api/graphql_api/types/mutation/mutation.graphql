@@ -44,4 +44,5 @@ type Mutation {
   setUploadTokenRequired(input: SetUploadTokenRequiredInput!): SetUploadTokenRequiredPayload
   updateBundleCacheConfig(input: UpdateBundleCacheConfigInput!): UpdateBundleCacheConfigPayload
   deleteOwner(input: DeleteOwnerInput!): DeleteOwnerPayload
+  transplantReport(input: TransplantReportInput!): TransplantReportPayload
 }
