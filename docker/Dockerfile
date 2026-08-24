@@ -13,7 +13,7 @@ FROM golang:1.26-bookworm as berglas
 ARG BERGLAS_VERSION
 RUN git clone --depth 1 --branch v${BERGLAS_VERSION} https://github.com/GoogleCloudPlatform/berglas.git /src
 WORKDIR /src
-RUN go get golang.org/x/crypto@v0.54.0 golang.org/x/net@v0.57.0 && go mod tidy
+RUN go get golang.org/x/crypto@v0.54.0 golang.org/x/net@v0.57.0 google.golang.org/grpc@v1.82.1 && go mod tidy
 RUN CGO_ENABLED=0 go build -trimpath -o /bin/berglas .
 
 FROM $REQUIREMENTS_IMAGE as app
