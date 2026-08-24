@@ -29,7 +29,7 @@ dependencies = [
     "python-redis-lock>=4.0.0",
     "pyyaml>=6.0.1",
     "redis>=4.4.4",
-    "requests>=2.32.3",
+    "requests>=2.33.0",
     "sentry-sdk>=2.13.0",
     "sqlalchemy<2",
     "zstandard>=0.23.0",
