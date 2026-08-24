@@ -263,7 +263,8 @@ def get_bundle_analysis_lock_manager(
     settings for high-concurrency scenarios.
 
     Returns a LockManager with:
-    - blocking_timeout: 30s (default) - wait longer before giving up
+    - blocking_timeout: 0s (default) - non-blocking; fail immediately if lock is held,
+      letting the Celery retry mechanism handle backoff instead of busy-polling Redis.
     - base_retry_countdown: 10s (default) - faster retries than default 200s
     """
     return LockManager(
@@ -272,7 +273,7 @@ def get_bundle_analysis_lock_manager(
         report_type=ReportType.BUNDLE_ANALYSIS,
         blocking_timeout=int(
             get_config(
-                "setup", "tasks", "bundle_analysis", "blocking_timeout", default=30
+                "setup", "tasks", "bundle_analysis", "blocking_timeout", default=0
             )
         ),
         base_retry_countdown=int(
