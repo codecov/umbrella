@@ -31,6 +31,10 @@ def get_flaky_tests_dict(repo_id: int) -> dict[bytes, FlakeInfo]:
     }
 
 
+def strip_nul(s: str | None) -> str | None:
+    return s.replace("\x00", "") if s is not None else None
+
+
 def insert_testrun(
     timestamp: datetime,
     repo_id: int | None,
@@ -58,16 +62,18 @@ def insert_testrun(
             Testrun(
                 timestamp=timestamp,
                 test_id=test_id,
-                name=testrun["name"],
-                classname=testrun["classname"],
-                testsuite=testrun["testsuite"],
-                computed_name=testrun["computed_name"]
-                or f"{testrun['classname']}::{testrun['name']}",
+                name=strip_nul(testrun["name"]),
+                classname=strip_nul(testrun["classname"]),
+                testsuite=strip_nul(testrun["testsuite"]),
+                computed_name=strip_nul(
+                    testrun["computed_name"]
+                    or f"{testrun['classname']}::{testrun['name']}"
+                ),
                 outcome=outcome,
                 duration_seconds=testrun["duration"],
-                failure_message=testrun["failure_message"],
+                failure_message=strip_nul(testrun["failure_message"]),
                 framework=parsing_info["framework"],
-                filename=testrun["filename"],
+                filename=strip_nul(testrun["filename"]),
                 properties=testrun.get("properties"),
                 repo_id=repo_id,
                 commit_sha=commit_sha,
