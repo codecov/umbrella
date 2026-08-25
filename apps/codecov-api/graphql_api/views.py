@@ -239,7 +239,16 @@ class AsyncGraphqlView(GraphQLAsyncView):
     ) -> HttpResponse:
         await self._get_user(request)
         # get request body information for logging
-        req_body = json.loads(request.body.decode("utf-8")) if request.body else {}
+        try:
+            req_body = json.loads(request.body.decode("utf-8")) if request.body else {}
+        except json.JSONDecodeError:
+            return JsonResponse(
+                data={
+                    "status": 400,
+                    "detail": "Invalid JSON in request body.",
+                },
+                status=400,
+            )
 
         # get request path information for logging
         req_path = request.get_full_path()
@@ -331,7 +340,12 @@ class AsyncGraphqlView(GraphQLAsyncView):
             return response
 
     def context_value(self, request: WSGIRequest, *_args: Any) -> dict[str, Any]:
-        request_body = json.loads(request.body.decode("utf-8")) if request.body else {}
+        try:
+            request_body = (
+                json.loads(request.body.decode("utf-8")) if request.body else {}
+            )
+        except json.JSONDecodeError:
+            request_body = {}
         self.request = request
 
         return {
