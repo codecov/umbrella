@@ -16,7 +16,8 @@ def mock_redis(mocker):
     """Mock Redis connection for LockManager tests"""
     mock_redis_conn = MagicMock()
     mocker.patch(
-        "services.lock_manager.get_redis_connection", return_value=mock_redis_conn
+        "services.lock_manager.get_redis_connection_for_writes",
+        return_value=mock_redis_conn,
     )
     return mock_redis_conn
 
