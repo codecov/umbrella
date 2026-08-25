@@ -1159,11 +1159,11 @@ wheels = [
 
 [[package]]
 name = "idna"
-version = "3.10"
+version = "3.19"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/f1/70/7703c29685631f5a7590aa73f1f1d3fa9a380e654b86af429e0934a32f7d/idna-3.10.tar.gz", hash = "sha256:12f65c9b470abda6dc35cf8e63cc574b1c52b11df2c86030af0ac09b01b13ea9", size = 190490, upload-time = "2024-09-15T18:07:39.745Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/5f/f7/abb373e5757eaec4b922b92f97ec8d6d7e057cf06778247604fbc4e7c3f3/idna-3.19.tar.gz", hash = "sha256:5e0811a4383b21dc5838069f801c4fb62113b7447663d2530d2bd6e77b49bf15", size = 215237, upload-time = "2026-08-18T05:14:24.270Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/76/c6/c88e154df9c4e1a2a66ccf0005a88dfb2650c1dffb6f5ce603dfbd452ce3/idna-3.10-py3-none-any.whl", hash = "sha256:946d195a0d259cbba61165e88e65941f16e9b36ea6ddb97f00452bae8b1287d3", size = 70442, upload-time = "2024-09-15T18:07:37.964Z" },
+    { url = "https://files.pythonhosted.org/packages/57/b0/0e52c878c53f245edd3a11020f20979b3f490f245af532c7cae3027754b5/idna-3.19-py3-none-any.whl", hash = "sha256:815e7be7a7806d54abb586dc943addc79e8b2ee16915059658cbeff4b1b43bf4", size = 68550, upload-time = "2026-08-18T05:14:22.343Z" },
 ]
 
 [[package]]
@@ -2443,7 +2443,7 @@ wheels = [
 
 [[package]]
 name = "requests"
-version = "2.32.3"
+version = "2.34.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "certifi" },
@@ -2451,9 +2451,9 @@ dependencies = [
     { name = "idna" },
     { name = "urllib3" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/63/70/2bf7780ad2d390a8d301ad0b550f1581eadbd9a20f896afe06353c2a2913/requests-2.32.3.tar.gz", hash = "sha256:55365417734eb18255590a9ff9eb97e9e1da868d4ccd6402399eaf68af20a760", size = 131218, upload-time = "2024-05-29T15:37:49.536Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/ac/c3/e2a2b89f2d3e2179abd6d00ebd70bff6273f37fb3e0cc209f48b39d00cbf/requests-2.34.2.tar.gz", hash = "sha256:f288924cae4e29463698d6d60bc6a4da69c89185ad1e0bcc4104f584e960b9ed", size = 142856, upload-time = "2026-05-14T19:25:27.735Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/f9/9b/335f9764261e915ed497fcdeb11df5dfd6f7bf257d4a6a2a686d80da4d54/requests-2.32.3-py3-none-any.whl", hash = "sha256:70761cfe03c773ceb22aa2f671b4757976145175cdfca038c02654d061d6dcc6", size = 64928, upload-time = "2024-05-29T15:37:47.027Z" },
+    { url = "https://files.pythonhosted.org/packages/a0/f4/c67b0b3f1b9245e8d266f0f112c500d50e5b4e83cb6f3b71b6528104182a/requests-2.34.2-py3-none-any.whl", hash = "sha256:2a0d60c172f83ac6ab31e4554906c0f3b3588d37b5cb939b1c061f4907e278e0", size = 73075, upload-time = "2026-05-14T19:25:26.443Z" },
 ]
 
 [[package]]
@@ -2656,7 +2656,7 @@ requires-dist = [
     { name = "python-redis-lock", specifier = ">=4.0.0" },
     { name = "pyyaml", specifier = ">=6.0.1" },
     { name = "redis", specifier = ">=4.4.4" },
-    { name = "requests", specifier = ">=2.32.3" },
+    { name = "requests", specifier = ">=2.33.0" },
     { name = "sentry-sdk", specifier = ">=2.13.0" },
     { name = "sqlalchemy", specifier = "<2" },
     { name = "zstandard", specifier = ">=0.23.0" },
@@ -3229,7 +3229,7 @@ codecov-api = [
     { name = "google-cloud-pubsub", specifier = ">=2.27.1" },
     { name = "gunicorn", specifier = ">=22.0.0" },
     { name = "httpx", specifier = ">=0.23.1" },
-    { name = "idna", specifier = ">=3.7" },
+    { name = "idna", specifier = ">=3.15" },
     { name = "ijson", specifier = ">=3.2.3" },
     { name = "minio", specifier = ">=7.2.15" },
     { name = "mmh3", specifier = ">=5.0.1" },
@@ -3250,7 +3250,7 @@ codecov-api = [
     { name = "python-redis-lock", specifier = ">=4.0.0" },
     { name = "redis", specifier = ">=4.4.4" },
     { name = "regex", specifier = ">=2023.12.25" },
-    { name = "requests", specifier = ">=2.32.3" },
+    { name = "requests", specifier = ">=2.33.0" },
     { name = "sentry-sdk", specifier = ">=2.29.1" },
     { name = "sentry-sdk", extras = ["celery"], specifier = ">=2.29.1" },
     { name = "shared", editable = "libs/shared" },
@@ -3324,7 +3324,7 @@ prod = [
     { name = "google-cloud-pubsub", specifier = ">=2.27.1" },
     { name = "gunicorn", specifier = ">=22.0.0" },
     { name = "httpx", specifier = ">=0.23.1" },
-    { name = "idna", specifier = ">=3.7" },
+    { name = "idna", specifier = ">=3.15" },
     { name = "ijson", specifier = ">=3.2.3" },
     { name = "jinja2", specifier = ">=3.1.5" },
     { name = "lxml", specifier = ">=6.1.1" },
@@ -3349,7 +3349,7 @@ prod = [
     { name = "pyyaml", specifier = ">=6.0.1" },
     { name = "redis", specifier = ">=4.4.4" },
     { name = "regex", specifier = ">=2023.12.25" },
-    { name = "requests", specifier = ">=2.32.3" },
+    { name = "requests", specifier = ">=2.33.0" },
     { name = "sentry-sdk", specifier = ">=2.29.1" },
     { name = "sentry-sdk", extras = ["celery"], specifier = ">=2.29.1" },
     { name = "shared", editable = "libs/shared" },
@@ -3401,7 +3401,7 @@ shared = [
     { name = "python-redis-lock", specifier = ">=4.0.0" },
     { name = "redis", specifier = ">=4.4.4" },
     { name = "regex", specifier = ">=2023.12.25" },
-    { name = "requests", specifier = ">=2.32.3" },
+    { name = "requests", specifier = ">=2.33.0" },
     { name = "sentry-sdk", specifier = ">=2.29.1" },
     { name = "sentry-sdk", extras = ["celery"], specifier = ">=2.29.1" },
     { name = "shared", editable = "libs/shared" },
@@ -3452,7 +3452,7 @@ worker = [
     { name = "pyyaml", specifier = ">=6.0.1" },
     { name = "redis", specifier = ">=4.4.4" },
     { name = "regex", specifier = ">=2023.12.25" },
-    { name = "requests", specifier = ">=2.32.3" },
+    { name = "requests", specifier = ">=2.33.0" },
     { name = "sentry-sdk", specifier = ">=2.29.1" },
     { name = "sentry-sdk", extras = ["celery"], specifier = ">=2.29.1" },
     { name = "shared", editable = "libs/shared" },

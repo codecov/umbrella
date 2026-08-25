@@ -74,8 +74,10 @@ RUN apt-get update \
 
 COPY --from=build /wheels/ /wheels/
 
+# pip ships in the uv Python image, not uv.lock. 26.2+ clears the scanned CVEs.
 RUN --mount=type=cache,target=/root/.cache/uv \
     --mount=type=bind,source=./pyproject.toml,target=./pyproject.toml \
     --mount=type=bind,source=./uv.lock,target=./uv.lock \
     --mount=type=bind,source=libs/shared,target=libs/shared \
-    uv pip install --no-deps --no-index --find-links=/wheels /wheels/* --system
+    uv pip install --no-deps --no-index --find-links=/wheels /wheels/* --system \
+    && uv pip install --system 'pip>=26.2'
