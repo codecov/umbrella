@@ -24,6 +24,7 @@ import logging
 import threading
 
 from kombu.transport import redis as kombu_redis
+from redis.exceptions import ResponseError as RedisResponseError
 
 log = logging.getLogger(__name__)
 
@@ -87,6 +88,19 @@ def install_broker_resilience() -> bool:
             # state was reset in `_brpop_read`'s finally; returning None
             # skips delivery so the hub proceeds to the next event.
             return None
+        except RedisResponseError as exc:
+            if "UNBLOCKED" in str(exc):
+                # Redis forcibly unblocked this client because the instance
+                # transitioned from master to replica during a failover.
+                # This is transient: return None so the event loop continues
+                # and Celery will reconnect on the next iteration.
+                log.warning(
+                    "broker_resilience: Redis master->replica failover detected; "
+                    "BRPOP unblocked (%s). Worker will reconnect.",
+                    exc,
+                )
+                return None
+            raise
 
     _brpop_read.__wrapped__ = _orig_brpop_read  # type: ignore[attr-defined]
     channel_cls._brpop_read = _brpop_read
