@@ -90,9 +90,26 @@ class OktaLoginMixin(StateMixin):
             return None
 
         if res.status_code >= 400:
+            # Okta returns a JSON error body (error / error_description) that
+            # identifies the exact failure (invalid_client, invalid_grant, ...).
+            log.warning(
+                "Okta token exchange returned an error",
+                extra={
+                    "status_code": res.status_code,
+                    "okta_error": res.text[:500],
+                },
+            )
             return None
 
-        return OktaTokenResponse(**res.json())
+        try:
+            return OktaTokenResponse(**res.json())
+        except pydantic.ValidationError:
+            log.warning(
+                "Okta token exchange succeeded but response was missing fields",
+                extra={"status_code": res.status_code},
+                exc_info=True,
+            )
+            return None
 
     def _redirect_to_consent(
         self, iss: str, client_id: str, oauth_redirect_url: str
