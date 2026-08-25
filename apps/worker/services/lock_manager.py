@@ -8,6 +8,7 @@ import sentry_sdk
 from redis import Redis  # type: ignore
 from redis.exceptions import ConnectionError as RedisConnectionError  # type: ignore
 from redis.exceptions import LockError
+from redis.exceptions import ReadOnlyError as RedisReadOnlyError
 from redis.exceptions import TimeoutError as RedisTimeoutError
 
 from database.enums import ReportType
@@ -173,6 +174,26 @@ class LockManager:
                         "repoid": self.repoid,
                     },
                 )
+        except RedisReadOnlyError:
+            # The Redis node we're connected to is a read-only replica (e.g. after a
+            # failover). Treat this like a transient connection error so the task is
+            # retried rather than failing permanently.
+            log.warning(
+                "Redis is read-only (replica); cannot acquire lock – will retry",
+                extra={
+                    "commitid": self.commitid,
+                    "lock_name": lock_name,
+                    "lock_type": lock_type.value,
+                    "repoid": self.repoid,
+                },
+                exc_info=True,
+            )
+            raise LockRetry(
+                countdown=self.base_retry_countdown,
+                lock_name=lock_name,
+                repoid=self.repoid,
+                commitid=self.commitid,
+            )
         except LockError:
             #  incr/expire can raise RedisConnectionError/RedisTimeoutError when Redis
             # is unavailable; we let those propagate so the task fails once (no infinite loop).
