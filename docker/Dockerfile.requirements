@@ -59,16 +59,15 @@ ARG APP_DIR
 # Patch stale OS packages carried by the base image (this is the scanned stage)
 # and avoid pulling optional codec recommends (libheif/libde265/tiff) that have
 # no Debian fix and are unused at runtime.
-# Drop system libexpat1 (CVE-2026-45186, no Bookworm fix): CPython's pyexpat
-# embeds its own expat and does not link the shared library.
+# Omit libxml2-dev / libxslt-dev / libpq-dev: lxml and psycopg2-binary wheels
+# vendor those C libraries, and the -dev packages pull zlib1g-dev + libxml2
+# (Depends: zlib1g). Drop Debian zlib (CVE-2026-27171, no Bookworm fix) and
+# libexpat1 (CVE-2026-45186; CPython's pyexpat embeds its own expat).
 RUN apt-get update \
     && apt-get -y upgrade \
     && apt-get install -y --no-install-recommends \
-    libxml2-dev \
-    libxslt-dev \
-    libpq-dev \
     make \
-    && apt-get purge -y libexpat1 \
+    && apt-get purge -y libexpat1 zlib1g zlib1g-dev \
     && apt-get autoremove -y \
     && rm -rf /var/lib/apt/lists/*
 
