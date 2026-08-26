@@ -344,15 +344,19 @@ class AsyncGraphqlView(GraphQLAsyncView):
     def error_formatter(self, error: Any, debug: bool = False) -> dict[str, Any]:
         user = self.request.user
         is_anonymous = user.is_anonymous if user else True
+        original_error = error.original_error
+        # Native GraphQL errors (original_error is None) are caused by invalid
+        # client input (e.g. bad query syntax, wrong variable types, missing
+        # fields). They are not server bugs and should not be sent to Sentry.
+        is_native_graphql_error = original_error is None
         # the only way to check for a malformed query
         is_bad_query = "Cannot query field" in error.formatted["message"]
-        if debug or (not is_anonymous and is_bad_query):
+        if debug or (not is_anonymous and is_bad_query) or is_native_graphql_error:
             return format_error(error, debug)
         formatted = error.formatted
         formatted["message"] = "INTERNAL SERVER ERROR"
         formatted["type"] = "ServerError"
         # if this is one of our own command exception, we can tell a bit more
-        original_error = error.original_error
         if isinstance(original_error, BaseException) or isinstance(
             original_error, ServiceException
         ):
