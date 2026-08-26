@@ -353,7 +353,14 @@ class AsyncGraphqlView(GraphQLAsyncView):
         formatted["type"] = "ServerError"
         # if this is one of our own command exception, we can tell a bit more
         original_error = error.original_error
-        if isinstance(original_error, BaseException) or isinstance(
+        if original_error is None:
+            # No underlying Python exception — this is a native GraphQL engine
+            # error (e.g. variable coercion failure like "Expected type X to be
+            # a mapping").  Treat it as a client error: surface the real message
+            # and do NOT log or send to Sentry.
+            formatted["message"] = error.message
+            formatted["type"] = "ValidationError"
+        elif isinstance(original_error, BaseException) or isinstance(
             original_error, ServiceException
         ):
             formatted["message"] = original_error.message  # type: ignore
