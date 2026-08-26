@@ -22,6 +22,7 @@ VIEWER_RESTRICTED_APP_LABELS = {
 # Individual models hidden from Viewers (within otherwise-visible apps).
 VIEWER_RESTRICTED_MODELS = {
     ("codecov_auth", "invoicebilling"),
+    ("codecov_auth", "oktauser"),
     ("codecov_auth", "ownerexport"),
     ("codecov_auth", "sentryuser"),
     ("codecov_auth", "stripebilling"),

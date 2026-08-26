@@ -26,7 +26,14 @@ from codecov.admin import (
 )
 from codecov.commands.exceptions import ValidationError
 from codecov_auth.helpers import History
-from codecov_auth.models import OrganizationLevelToken, Owner, SentryUser, Session, User
+from codecov_auth.models import (
+    OktaUser,
+    OrganizationLevelToken,
+    Owner,
+    SentryUser,
+    Session,
+    User,
+)
 from codecov_auth.services.org_level_token_service import OrgLevelTokenService
 from codecov_auth.services.owner_reconnect import (
     build_reconnect_preview,
@@ -421,6 +428,54 @@ class SentryUserAdmin(AdminMixin, admin.ModelAdmin):
         "name",
         "email",
     )
+
+    def has_add_permission(self, _, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(OktaUser)
+class OktaUserAdmin(AdminMixin, admin.ModelAdmin):
+    list_display = (
+        "name",
+        "email",
+        "okta_id",
+        "user_link",
+    )
+    list_select_related = ("user",)
+    search_fields = (
+        "name__iregex",
+        "email__iregex",
+        "okta_id",
+    )
+    # `access_token` is intentionally excluded so the stored Okta token is
+    # never rendered in the admin.
+    readonly_fields = (
+        "id",
+        "external_id",
+        "okta_id",
+        "user_link",
+        "created_at",
+        "updated_at",
+    )
+    fields = readonly_fields + (
+        "name",
+        "email",
+    )
+
+    @admin.display(description="User")
+    def user_link(self, obj):
+        user = obj.user
+        if user is None:
+            return "-"
+        if user.name and user.email:
+            label = f"{user.name} ({user.email})"
+        else:
+            label = user.name or user.email or user.pk
+        url = reverse("admin:codecov_auth_user_change", args=[user.pk])
+        return format_html('<a href="{}">{}</a>', url, label)
 
     def has_add_permission(self, _, obj=None):
         return False

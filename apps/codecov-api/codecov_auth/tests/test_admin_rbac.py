@@ -19,6 +19,7 @@ from compare.models import CommitComparison
 from redis_admin.models import RedisQueue
 from shared.django_apps.codecov_auth.models import (
     InvoiceBilling,
+    OktaUser,
     OwnerExport,
     SentryUser,
     StripeBilling,
@@ -167,6 +168,7 @@ def test_viewer_cannot_see_restricted_apps_and_models():
         Group,
         BillingAppStripeBilling,
         InvoiceBilling,
+        OktaUser,
         OwnerExport,
         SentryUser,
         StripeBilling,
