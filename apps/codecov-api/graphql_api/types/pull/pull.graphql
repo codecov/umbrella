@@ -2,6 +2,7 @@ type Pull {
   behindBy: Int
   behindByCommit: String
   title: String
+  message: String
   state: PullRequestState!
   pullId: Int!
   author: Owner
