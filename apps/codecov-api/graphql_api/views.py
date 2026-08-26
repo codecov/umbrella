@@ -349,10 +349,15 @@ class AsyncGraphqlView(GraphQLAsyncView):
         if debug or (not is_anonymous and is_bad_query):
             return format_error(error, debug)
         formatted = error.formatted
+        original_error = error.original_error
+        # If original_error is None, this is a pure GraphQL validation error
+        # (e.g., wrong variable type, missing field) — a client mistake, not a server fault.
+        # Return the formatted GraphQL error directly without logging or Sentry capture.
+        if original_error is None:
+            return formatted
         formatted["message"] = "INTERNAL SERVER ERROR"
         formatted["type"] = "ServerError"
         # if this is one of our own command exception, we can tell a bit more
-        original_error = error.original_error
         if isinstance(original_error, BaseException) or isinstance(
             original_error, ServiceException
         ):
