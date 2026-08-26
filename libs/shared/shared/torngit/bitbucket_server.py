@@ -130,22 +130,31 @@ class BitbucketServer(TorngitBaseAdapter):
             "repo_slug": self.slug,
         }
 
-        try:
-            async with self.get_client() as client:
-                res = await client.request(
-                    method.upper(), url, json=body, headers=headers
+        max_retries = 3
+        for current_retry in range(1, max_retries + 1):
+            try:
+                async with self.get_client() as client:
+                    res = await client.request(
+                        method.upper(), url, json=body, headers=headers
+                    )
+                logged_body = None
+                if res.status_code >= 300 and res.text is not None:
+                    logged_body = res.text
+                log.log(
+                    logging.WARNING if res.status_code >= 300 else logging.INFO,
+                    "Bitbucket HTTP %s",
+                    res.status_code,
+                    extra=dict(body=logged_body, **log_dict),
                 )
-            logged_body = None
-            if res.status_code >= 300 and res.text is not None:
-                logged_body = res.text
-            log.log(
-                logging.WARNING if res.status_code >= 300 else logging.INFO,
-                "Bitbucket HTTP %s",
-                res.status_code,
-                extra=dict(body=logged_body, **log_dict),
-            )
-        except (httpx.NetworkError, httpx.TimeoutException):
-            raise TorngitServerUnreachableError("Bitbucket was not able to be reached.")
+                break
+            except (httpx.NetworkError, httpx.TimeoutException):
+                if current_retry < max_retries:
+                    log.warning(
+                        "Bitbucket Server was not able to be reached, retrying",
+                        extra=dict(current_retry=current_retry, **log_dict),
+                    )
+                    continue
+                raise TorngitServerUnreachableError("Bitbucket was not able to be reached.")
         if res.status_code == 599:
             raise TorngitServerUnreachableError(
                 "Bitbucket was not able to be reached, server timed out."
