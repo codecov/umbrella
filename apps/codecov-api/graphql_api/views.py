@@ -363,6 +363,11 @@ class AsyncGraphqlView(GraphQLAsyncView):
             # (e.g., unauthorized, forbidden) that shouldn't be sent to Sentry
             formatted["message"] = str(original_error.detail)
             formatted["type"] = type(original_error).__name__
+        elif isinstance(original_error, ValueError) and "got invalid value" in error.formatted.get("message", ""):
+            # ValueError raised by scalar parsers (e.g. DateTime) during variable coercion
+            # for invalid client-supplied input — not a server error, do not log or capture
+            formatted["message"] = str(original_error)
+            formatted["type"] = "ValidationError"
         else:
             # otherwise it's not supposed to happen, so we log it
             log.error("GraphQL internal server error", exc_info=original_error)
