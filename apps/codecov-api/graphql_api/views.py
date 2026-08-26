@@ -353,13 +353,7 @@ class AsyncGraphqlView(GraphQLAsyncView):
         formatted["type"] = "ServerError"
         # if this is one of our own command exception, we can tell a bit more
         original_error = error.original_error
-        if original_error is None:
-            # No original_error means this is a native GraphQL validation error
-            # (e.g. invalid variable type, unknown field) — a client mistake, not
-            # a server bug. Return the original message as-is without capturing.
-            formatted["message"] = error.formatted["message"]
-            formatted["type"] = "ValidationError"
-        elif isinstance(original_error, BaseException) or isinstance(
+        if isinstance(original_error, BaseException) or isinstance(
             original_error, ServiceException
         ):
             formatted["message"] = original_error.message  # type: ignore
@@ -369,10 +363,14 @@ class AsyncGraphqlView(GraphQLAsyncView):
             # (e.g., unauthorized, forbidden) that shouldn't be sent to Sentry
             formatted["message"] = str(original_error.detail)
             formatted["type"] = type(original_error).__name__
-        else:
-            # otherwise it's not supposed to happen, so we log it
+        elif original_error is not None:
+            # An unexpected application exception — log and report to Sentry
             log.error("GraphQL internal server error", exc_info=original_error)
             capture_exception(original_error)
+        # If original_error is None, this is a native GraphQL validation error
+        # (e.g. wrong variable type, unknown field) — a client mistake that
+        # should not be reported to Sentry. The message stays masked as
+        # "INTERNAL SERVER ERROR" for anonymous users per existing behaviour.
         return formatted
 
     @sync_to_async
