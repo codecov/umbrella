@@ -17,6 +17,7 @@ from codecov_auth.admin import (
     GithubAppInstallationAdmin,
     InvoiceBillingAdmin,
     LogEntryAdmin,
+    OktaUserAdmin,
     OrgUploadTokenInline,
     OwnerAdmin,
     OwnerToBeDeletedAdmin,
@@ -25,6 +26,7 @@ from codecov_auth.admin import (
     find_and_remove_stale_users,
 )
 from codecov_auth.models import (
+    OktaUser,
     OrganizationLevelToken,
     Owner,
     Plan,
@@ -46,6 +48,7 @@ from shared.django_apps.codecov_auth.tests.factories import (
     AccountFactory,
     GithubAppInstallationFactory,
     InvoiceBillingFactory,
+    OktaUserFactory,
     OrganizationLevelTokenFactory,
     OwnerFactory,
     PlanFactory,
@@ -70,6 +73,45 @@ class LogEntryAdminTest(TestCase):
         assert "Admin User" in result
         assert "admin@example.com" not in result
         assert reverse("admin:codecov_auth_user_change", args=[user.pk]) in result
+
+
+class OktaUserAdminTest(TestCase):
+    def setUp(self):
+        self.staff_user = UserFactory(is_staff=True)
+        self.client.force_login(user=self.staff_user)
+        self.okta_user_admin = OktaUserAdmin(OktaUser, AdminSite())
+
+    def test_changelist_page(self):
+        OktaUserFactory(name="Okta Person", email="okta@example.com")
+        response = self.client.get(reverse("admin:codecov_auth_oktauser_changelist"))
+        assert response.status_code == 200
+        assert b"okta@example.com" in response.content
+
+    def test_detail_page(self):
+        okta_user = OktaUserFactory()
+        response = self.client.get(
+            reverse("admin:codecov_auth_oktauser_change", args=[okta_user.pk])
+        )
+        assert response.status_code == 200
+
+    def test_user_link_points_to_linked_user(self):
+        user = UserFactory(name="Linked User", email="linked@example.com")
+        okta_user = OktaUserFactory(user=user)
+
+        result = self.okta_user_admin.user_link(okta_user)
+
+        assert "Linked User" in result
+        assert reverse("admin:codecov_auth_user_change", args=[user.pk]) in result
+
+    def test_access_token_is_not_exposed(self):
+        assert "access_token" not in self.okta_user_admin.fields
+        assert "access_token" not in self.okta_user_admin.readonly_fields
+
+    def test_no_add_or_delete_permission(self):
+        request = RequestFactory().get("/admin/")
+        request.user = self.staff_user
+        assert self.okta_user_admin.has_add_permission(request) is False
+        assert self.okta_user_admin.has_delete_permission(request) is False
 
 
 class OwnerAdminTest(TestCase):
