@@ -12,6 +12,7 @@ from codecov_auth.views.base import StateMixin
 from codecov_auth.views.okta_mixin import (
     OktaLoginMixin,
     OktaTokenResponse,
+    get_or_create_user_by_email,
     validate_id_token,
 )
 
@@ -105,11 +106,9 @@ class OktaAdminLoginView(OktaLoginMixin, StateMixin, View):
             )
             return okta_user.user
 
-        # First-time login — create the User and link the OktaUser record.
-        current_user = User.objects.create(
-            name=id_payload.name,
-            email=id_payload.email,
-        )
+        # First-time login — reuse an existing User with this email if one
+        # exists, otherwise create a new one, then link the OktaUser record.
+        current_user = get_or_create_user_by_email(id_payload.email, id_payload.name)
         okta_user = OktaUser.objects.create(
             user=current_user,
             okta_id=okta_id,
