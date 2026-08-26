@@ -1,4 +1,4 @@
-union RegenerateSupportPinError = UnauthenticatedError
+union RegenerateSupportPinError = UnauthenticatedError | MissingService
 
 type RegenerateSupportPinPayload {
   me: Me
