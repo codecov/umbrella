@@ -23,3 +23,15 @@ def resolve_head_totals(flag_comparison: FlagComparison, info) -> dict:
 @flag_comparison_bindable.field("baseTotals")
 def resolve_base_totals(flag_comparison: FlagComparison, info) -> dict:
     return flag_comparison.base_totals
+
+
+@flag_comparison_bindable.field("changeCoverage")
+def resolve_change_coverage(flag_comparison: FlagComparison, info) -> float | None:
+    head_totals = flag_comparison.head_totals
+    base_totals = flag_comparison.base_totals
+    if head_totals and base_totals:
+        head_coverage = head_totals.get("coverage")
+        base_coverage = base_totals.get("coverage")
+        if head_coverage is not None and base_coverage is not None:
+            return float(head_coverage) - float(base_coverage)
+    return None
