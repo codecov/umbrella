@@ -4,7 +4,7 @@ from django.contrib import auth
 from django.test import override_settings
 from django.urls import reverse
 
-from codecov_auth.models import OktaUser
+from codecov_auth.models import OktaUser, User
 from codecov_auth.views.okta import OKTA_BASIC_AUTH
 from codecov_auth.views.okta_mixin import OktaIdTokenPayload
 from shared.django_apps.codecov_auth.tests.factories import (
@@ -153,6 +153,35 @@ def test_okta_perform_login(
     # logs in new user
     current_user = auth.get_user(client)
     assert user == current_user
+
+
+@override_settings(
+    OKTA_OAUTH_CLIENT_ID="test-client-id",
+    OKTA_OAUTH_CLIENT_SECRET="test-client-secret",
+    OKTA_OAUTH_REDIRECT_URL="https://localhost:8000/login/okta",
+)
+def test_okta_perform_login_links_existing_user_by_email(
+    client, mocked_okta_token_request, mocked_validate_id_token, db
+):
+    existing_user = UserFactory(email="test@example.com", name="Pre-existing")
+
+    state = "test-state"
+    session = client.session
+    session["okta_oauth_state"] = state
+    session.save()
+
+    res = client.get(
+        reverse("okta-login"),
+        data={"code": "test-code", "state": state},
+    )
+
+    assert res.status_code == 302
+
+    # Links to the existing user rather than creating a duplicate.
+    assert User.objects.filter(email="test@example.com").count() == 1
+    okta_user = OktaUser.objects.get(okta_id="test-id")
+    assert okta_user.user == existing_user
+    assert auth.get_user(client) == existing_user
 
 
 @override_settings(

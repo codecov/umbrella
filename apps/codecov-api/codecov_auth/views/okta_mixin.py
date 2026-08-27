@@ -10,11 +10,31 @@ from django.http import HttpResponse
 from django.shortcuts import redirect
 from requests.auth import HTTPBasicAuth
 
+from codecov_auth.models import User
 from codecov_auth.views.base import StateMixin
 
 log = logging.getLogger(__name__)
 
 ISS_REGEX = re.compile(r"https://[\w\d\-\_]+.okta.com/?")
+
+
+def get_or_create_user_by_email(email: str | None, name: str | None) -> User:
+    """Return an existing User matching ``email``, else create a new one.
+
+    Ties a first-time Okta identity to a pre-existing User (e.g. one created
+    through another login method) instead of minting a duplicate. ``email`` is
+    a CITextField, so the lookup is case-insensitive; when several users share
+    an email the earliest is chosen for determinism.
+    """
+    if email:
+        existing = User.objects.filter(email=email).order_by("id").first()
+        if existing is not None:
+            log.info(
+                "Linking Okta identity to existing user by email",
+                extra={"user_id": existing.pk},
+            )
+            return existing
+    return User.objects.create(name=name, email=email)
 
 
 class OktaTokenResponse(pydantic.BaseModel):

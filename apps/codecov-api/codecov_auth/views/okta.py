@@ -13,6 +13,7 @@ from codecov_auth.views.okta_mixin import (
     ISS_REGEX,
     OktaLoginMixin,
     OktaTokenResponse,
+    get_or_create_user_by_email,
     validate_id_token,
 )
 from utils.services import get_short_service_name
@@ -94,10 +95,7 @@ class OktaLoginView(LoginMixin, OktaLoginMixin, View):
                 )
                 current_user = okta_user.user
             else:
-                current_user = User.objects.create(
-                    name=user_name,
-                    email=user_email,
-                )
+                current_user = get_or_create_user_by_email(user_email, user_name)
 
         if okta_user is None:
             okta_user = OktaUser.objects.create(

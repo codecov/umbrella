@@ -2,9 +2,12 @@ from django.contrib import auth
 from django.test import override_settings
 from django.urls import reverse
 
-from codecov_auth.models import OktaUser
+from codecov_auth.models import OktaUser, User
 from codecov_auth.views.okta_mixin import OktaIdTokenPayload
-from shared.django_apps.codecov_auth.tests.factories import OktaUserFactory
+from shared.django_apps.codecov_auth.tests.factories import (
+    OktaUserFactory,
+    UserFactory,
+)
 
 _ADMIN_SETTINGS = {
     "OKTA_ISS": "https://example.okta.com",
@@ -133,6 +136,35 @@ def test_okta_admin_callback_existing_okta_user(client, mocker, db):
 
     current_user = auth.get_user(client)
     assert current_user == existing.user
+
+
+@override_settings(**_ADMIN_SETTINGS)
+def test_okta_admin_callback_links_existing_user_by_email(client, mocker, db):
+    _mock_token_post(mocker)
+    _mock_validate_id_token(mocker)
+    existing_user = UserFactory(email="admin@example.com", name="Pre-existing")
+
+    state = "test-state"
+    session = client.session
+    session["okta_admin_oauth_state"] = state
+    session["okta_admin_next"] = "/admin/"
+    session.save()
+
+    res = client.get(
+        reverse("okta-admin-login"),
+        data={"code": "test-code", "state": state},
+    )
+
+    assert res.status_code == 302
+
+    # No duplicate User is created; the OktaUser links to the existing one.
+    assert User.objects.filter(email="admin@example.com").count() == 1
+    okta_user = OktaUser.objects.get(okta_id="test-okta-id")
+    assert okta_user.user == existing_user
+
+    existing_user.refresh_from_db()
+    assert existing_user.is_staff is True
+    assert auth.get_user(client) == existing_user
 
 
 @override_settings(**_ADMIN_SETTINGS)

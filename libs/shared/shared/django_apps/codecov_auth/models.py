@@ -112,6 +112,12 @@ class User(ExportModelOperationsMixin("codecov_auth.user"), BaseCodecovModel):
     class Meta:
         db_table = "users"
         app_label = CODECOV_AUTH_APP_LABEL
+        indexes = [
+            # Supports email-based lookups (e.g. linking an Okta identity to an
+            # existing user). citext uses a case-insensitive btree operator
+            # class, so this index serves the `email=` equality filter.
+            models.Index(fields=["email"], name="users_email_idx"),
+        ]
 
     def save(self, *args, **kwargs):
         role_changed = self._sync_staff_role_with_flags()
