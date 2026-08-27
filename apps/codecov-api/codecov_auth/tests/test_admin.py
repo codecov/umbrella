@@ -686,6 +686,30 @@ class OwnerAdminTest(TestCase):
         self.assertFalse(form.base_fields["account"].widget.can_change_related)
         self.assertFalse(form.base_fields["account"].widget.can_delete_related)
 
+    def _plan_field(self, owner):
+        rf = RequestFactory()
+        get_request = rf.get(f"/admin/codecov_auth/owner/{owner.ownerid}/change/")
+        get_request.user = self.staff_user
+        form = self.owner_admin.get_form(
+            request=get_request, obj=owner, change=True, fields=["plan"]
+        )
+        return form.base_fields["plan"]
+
+    def test_plan_field_has_no_blank_choice(self):
+        self.assertFalse(Owner._meta.get_field("plan").blank)
+        owner = OwnerFactory(plan=PlanName.CODECOV_PRO_YEARLY.value)
+        plan_field = self._plan_field(owner)
+        self.assertTrue(plan_field.required)
+        self.assertNotIn("", [value for value, _ in plan_field.choices])
+
+    def test_plan_field_keeps_retired_plan_of_current_owner(self):
+        owner = OwnerFactory(plan=PlanName.BASIC_PLAN_NAME.value)
+        plan_field = self._plan_field(owner)
+        self.assertIn(
+            PlanName.BASIC_PLAN_NAME.value,
+            [value for value, _ in plan_field.choices],
+        )
+
 
 class GithubAppInstallationAdminTest(TestCase):
     def setUp(self):
