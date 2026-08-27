@@ -696,6 +696,7 @@ class OwnerAdminTest(TestCase):
         return form.base_fields["plan"]
 
     def test_plan_field_has_no_blank_choice(self):
+        self.assertFalse(Owner._meta.get_field("plan").blank)
         owner = OwnerFactory(plan=PlanName.CODECOV_PRO_YEARLY.value)
         plan_field = self._plan_field(owner)
         self.assertTrue(plan_field.required)
