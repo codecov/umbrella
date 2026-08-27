@@ -9,9 +9,8 @@ from django.contrib.admin.helpers import ACTION_CHECKBOX_NAME
 from django.contrib.admin.models import LogEntry
 from django.contrib.admin.utils import unquote
 from django.db.models import Count, OuterRef, Q, Subquery
-from django.db.models.fields import BLANK_CHOICE_DASH
 from django.db.models.functions import Coalesce
-from django.forms import CheckboxInput, Select, Textarea
+from django.forms import CheckboxInput, Textarea
 from django.http import Http404, HttpRequest
 from django.shortcuts import redirect, render
 from django.urls import path, reverse
@@ -1229,13 +1228,21 @@ class OwnerAdmin(AdminMixin, admin.ModelAdmin):
         # editable `base_fields` to customize.
         plan_field = form.base_fields.get("plan")
         if plan_field:
-            PLANS_CHOICES = [
-                (x, x)
-                for x in Plan.objects.filter(is_active=True).values_list(
-                    "name", flat=True
-                )
-            ]
-            plan_field.widget = Select(choices=BLANK_CHOICE_DASH + PLANS_CHOICES)
+            plan_names = list(
+                Plan.objects.filter(is_active=True).values_list("name", flat=True)
+            )
+            # Retired plans aren't offered, but an owner still on one has to keep
+            # it as an option, otherwise the select falls back to a blank value
+            # and saving the form clears the plan.
+            current_plan = getattr(obj, "plan", None)
+            if current_plan and current_plan not in plan_names:
+                plan_names.append(current_plan)
+            form.base_fields["plan"] = forms.ChoiceField(
+                choices=[(name, name) for name in plan_names],
+                label=plan_field.label,
+                help_text=plan_field.help_text,
+                initial=current_plan or plan_field.initial,
+            )
 
         uses_invoice_field = form.base_fields.get("uses_invoice")
         if uses_invoice_field:
