@@ -151,7 +151,7 @@ class TorngitBaseAdapter:
 
             try:
                 before, after = _diff.pop(0).split(" b/", 1)
-            except IndexError:
+            except (IndexError, ValueError):
                 before, after = None, None
                 # find the --- a
                 for source in _diff:
