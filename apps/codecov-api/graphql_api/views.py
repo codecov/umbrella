@@ -21,7 +21,7 @@ from django.http import (
     HttpResponseNotAllowed,
     JsonResponse,
 )
-from graphql import DocumentNode
+from graphql import DocumentNode, parse as graphql_parse
 from rest_framework.exceptions import APIException
 from sentry_sdk import capture_exception
 
@@ -226,7 +226,25 @@ class AsyncGraphqlView(GraphQLAsyncView):
         if "query" in request_body and isinstance(request_body["query"], str):
             clean_query = request_body["query"].replace("\n", " ")
             clean_query = clean_query.replace("  ", "").strip()
+            # Strip backslash-escaped dollar signs sent by some clients (e.g.
+            # curl in double-quoted shell strings where \$ prevents shell
+            # expansion but the backslash leaks into the HTTP body).
+            clean_query = clean_query.replace("\\$", "$")
             return clean_query
+
+    @staticmethod
+    def query_parser(context_value: Any, data: dict) -> DocumentNode:
+        """Custom query parser that sanitizes the query before parsing.
+
+        Some clients (e.g. curl in double-quoted shell strings) send
+        backslash-escaped dollar signs (\\$) instead of bare $ for GraphQL
+        variable references.  The backslash is not valid GraphQL syntax and
+        causes a GraphQLSyntaxError.  Strip it before handing off to the
+        standard parser.
+        """
+        query = data.get("query", "")
+        sanitized = query.replace("\\$", "$")
+        return graphql_parse(sanitized)
 
     async def get(self, *args: Any, **kwargs: Any) -> HttpResponse:
         if settings.GRAPHQL_PLAYGROUND:
