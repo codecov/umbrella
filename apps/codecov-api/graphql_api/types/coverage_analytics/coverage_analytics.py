@@ -1,7 +1,7 @@
 import logging
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 import sentry_sdk
@@ -124,13 +124,20 @@ async def resolve_measurements(
 def resolve_components_measurements(
     parent: CoverageAnalyticsProps,
     info: GraphQLResolveInfo,
-    interval: Interval,
-    before: datetime,
-    after: datetime,
+    interval: Interval | None = None,
+    before: datetime | None = None,
+    after: datetime | None = None,
     branch: str | None = None,
     filters: Mapping | None = None,
     ordering_direction: OrderingDirection | None = OrderingDirection.ASC,
 ):
+    if interval is None:
+        interval = Interval.INTERVAL_30_DAY
+    if before is None:
+        before = datetime.now()
+    if after is None:
+        after = before - timedelta(days=interval.value * 3)
+
     components = UserYaml.get_final_yaml(
         owner_yaml=parent.repository.author.yaml,
         repo_yaml=parent.repository.yaml,
