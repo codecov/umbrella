@@ -18,7 +18,7 @@ class UpdateDefaultOrganizationInteractor(BaseInteractor):
             return
 
         if (
-            default_org.ownerid not in self.current_owner.organizations
+            default_org.ownerid not in (self.current_owner.organizations or [])
             and default_org.ownerid != self.current_owner.ownerid
         ):
             raise ValidationError(
