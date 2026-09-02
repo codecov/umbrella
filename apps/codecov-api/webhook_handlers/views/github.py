@@ -400,7 +400,9 @@ class GithubWebhookHandler(APIView):
         ],
         **kwargs,
     ):
-        installation = request.data["installation"]
+        # Senders have delivered payloads with a null `installation`, so this
+        # cannot assume the key is present or that its value is a dict.
+        installation = request.data.get("installation") or {}
         if not installation.get("account", None):
             # Non-2xx responses feed automated GitHub App redelivery loops.
             log.warning(
