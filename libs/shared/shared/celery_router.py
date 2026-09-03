@@ -3,6 +3,8 @@ import re
 from collections import OrderedDict
 from collections.abc import Mapping
 
+from django.db import InterfaceError, OperationalError, close_old_connections
+
 from shared.celery_config import BaseCeleryConfig, get_task_group
 from shared.config import get_config
 from shared.django_apps.codecov_auth.models import Plan
@@ -79,7 +81,14 @@ def route_tasks_based_on_user_plan(task_name: str, user_plan: str, owner: int) -
     Returns:
         Dict containing queue name and any extra configuration
     """
-    plan = Plan.objects.get(name=user_plan)
+    close_old_connections()
+    try:
+        plan = Plan.objects.get(name=user_plan)
+    except (OperationalError, InterfaceError):
+        # Connection may have been dropped server-side (e.g. idle timeout,
+        # read replica restart). Close it and retry once with a fresh connection.
+        close_old_connections()
+        plan = Plan.objects.get(name=user_plan)
 
     if not plan.is_enterprise_plan:
         return {"queue": _get_default_queue(task_name), "extra_config": {}}
