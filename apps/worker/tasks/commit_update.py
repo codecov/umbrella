@@ -1,6 +1,8 @@
 import datetime as dt
 import logging
 
+from sqlalchemy.exc import IntegrityError
+
 from app import celery_app
 from database.models import Branch, Commit, Pull
 from helpers.exceptions import RepositoryWithoutValidBotError
@@ -70,6 +72,34 @@ class CommitUpdateTask(BaseCodecovTask, name=commit_update_task_name):
                         head=commit.commitid,
                     )
                     db_session.add(pull)
+                    try:
+                        db_session.flush()
+                    except IntegrityError:
+                        # Another worker concurrently inserted the same Pull record.
+                        # Roll back the failed insert, re-fetch the existing row, and
+                        # apply the head-update logic as if we had found it initially.
+                        db_session.rollback()
+                        pull = (
+                            db_session.query(Pull)
+                            .filter(Pull.repoid == repoid, Pull.pullid == commit.pullid)
+                            .first()
+                        )
+                        if pull is not None:
+                            previous_pull_head = (
+                                db_session.query(Commit)
+                                .filter(
+                                    Commit.repoid == repoid,
+                                    Commit.commitid == pull.head,
+                                )
+                                .first()
+                            )
+                            if (
+                                previous_pull_head is None
+                                or previous_pull_head.deleted == True
+                                or previous_pull_head.timestamp < commit.timestamp
+                            ):
+                                pull.head = commit.commitid
+                            db_session.flush()
                 else:
                     previous_pull_head = (
                         db_session.query(Commit)
@@ -83,7 +113,7 @@ class CommitUpdateTask(BaseCodecovTask, name=commit_update_task_name):
                     ):
                         pull.head = commit.commitid
 
-                db_session.flush()
+                    db_session.flush()
 
             if commit.branch is not None:
                 # upsert branch
