@@ -55,6 +55,7 @@ def resolve_coverage_analytics_result_type(
 
 
 @coverage_analytics_bindable.field("percentCovered")
+@coverage_analytics_bindable.field("totalCoverage")
 def resolve_percent_covered(
     parent: CoverageAnalyticsProps, info: GraphQLResolveInfo
 ) -> float | None:
