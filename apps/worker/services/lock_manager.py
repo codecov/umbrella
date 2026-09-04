@@ -16,7 +16,7 @@ from shared.celery_config import (
     DEFAULT_LOCK_TIMEOUT_SECONDS,
 )
 from shared.config import get_config
-from shared.helpers.redis import get_redis_connection  # type: ignore
+from shared.helpers.redis import get_redis_write_connection  # type: ignore
 
 log = logging.getLogger(__name__)
 
@@ -88,7 +88,7 @@ class LockManager:
         self.report_type = report_type
         self.lock_timeout = lock_timeout
         self.blocking_timeout = blocking_timeout
-        self.redis_connection = redis_connection or get_redis_connection()
+        self.redis_connection = redis_connection or get_redis_write_connection()
         self.base_retry_countdown = base_retry_countdown
 
     def lock_name(self, lock_type: LockType):
