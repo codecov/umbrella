@@ -16,6 +16,7 @@ from graphql_api.helpers.connection import (
     build_connection_graphql,
     queryset_to_connection,
 )
+from graphql_api.helpers.ordering import parse_repository_ordering
 from graphql_api.types.enums import OrderingDirection, RepositoryOrdering
 
 me = ariadne_load_local_graphql(__file__, "me.graphql")
@@ -45,8 +46,8 @@ def resolve_viewable_repositories(
     current_user,
     info: GraphQLResolveInfo,
     filters=None,
-    ordering=RepositoryOrdering.ID,
-    ordering_direction=OrderingDirection.ASC,
+    ordering=None,
+    ordering_direction=None,
     **kwargs,
 ):
     okta_authenticated_accounts: list[int] = info.context["request"].session.get(
@@ -60,10 +61,15 @@ def resolve_viewable_repositories(
     queryset = search_repos(
         current_user, filters, okta_authenticated_accounts, exclude_okta_enforced_repos
     )
+
+    resolved_ordering, resolved_direction = parse_repository_ordering(
+        ordering, ordering_direction
+    )
+
     return queryset_to_connection(
         queryset,
-        ordering=(ordering, RepositoryOrdering.ID),
-        ordering_direction=ordering_direction,
+        ordering=(resolved_ordering, RepositoryOrdering.ID),
+        ordering_direction=resolved_direction,
         **kwargs,
     )
 
