@@ -290,6 +290,15 @@ def resolve_org_upload_token(
     return command.get_org_upload_token(owner)
 
 
+@owner_bindable.field("defaultOrg")
+@sync_to_async
+@require_part_of_org
+def resolve_default_org(
+    owner: Owner, info: GraphQLResolveInfo, **kwargs: Any
+) -> Owner | None:
+    return owner.default_org
+
+
 @owner_bindable.field("defaultOrgUsername")
 @sync_to_async
 @require_part_of_org
