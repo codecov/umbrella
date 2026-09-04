@@ -915,6 +915,16 @@ class ImpactedFile:
         )
 
     @cached_property
+    def lines_count(self) -> int:
+        if self.head_coverage is None:
+            return 0
+        return (
+            self.head_coverage.hits
+            + self.head_coverage.misses
+            + self.head_coverage.partials
+        )
+
+    @cached_property
     def misses_count(self) -> int:
         total_misses = 0
         total_misses += self._direct_misses_count
