@@ -381,7 +381,7 @@ def resolve_coverage_flags(commit: Commit, info: GraphQLResolveInfo) -> list[str
 @commit_coverage_analytics_bindable.field("coverageFile")
 @sync_to_async
 @sentry_sdk.trace
-def resolve_coverage_file(commit, info, path, flags=None, components=None):
+def resolve_coverage_file(commit, info, path, flags=None, components=None, sha=None):
     fallback_file, paths = None, []
     if components:
         all_components = components_service.commit_components(
