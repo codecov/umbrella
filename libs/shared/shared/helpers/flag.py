@@ -8,11 +8,14 @@ class Flag:
         self._totals = totals
         self.carriedforward = carriedforward
         self.carriedforward_from = carriedforward_from
+        self._filtered_report = None
 
     @property
     def report(self):
         """returns the report filtered by this flag"""
-        return self._report.filter(paths=None, flags=[self.name])
+        if self._filtered_report is None:
+            self._filtered_report = self._report.filter(paths=None, flags=[self.name])
+        return self._filtered_report
 
     @property
     def totals(self):
