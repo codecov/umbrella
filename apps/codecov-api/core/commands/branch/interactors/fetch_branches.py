@@ -1,6 +1,7 @@
 from typing import Any
 
 from asgiref.sync import sync_to_async
+from django.db import models
 from django.db.models import OuterRef, Q, QuerySet, Subquery
 
 from codecov.commands.base import BaseInteractor
@@ -34,6 +35,30 @@ class FetchRepoBranchesInteractor(BaseInteractor):
             ).filter(
                 Q(merged__isnot=True)  # exclude merged branches
                 | Q(name=repository.branch)  # but always include the default branch
+            )
+
+        # Enhance branch information with latest commit activity metrics
+        if filters.get("include_activity_metrics", True):
+            queryset = queryset.annotate(
+                latest_commit_timestamp=Subquery(
+                    Commit.objects.filter(
+                        repository_id=OuterRef("repository__repoid"),
+                        branch=OuterRef("branch"),
+                        deleted=False,
+                    )
+                    .order_by("-timestamp")
+                    .values("timestamp")[:1]
+                ),
+                total_commits_count=Subquery(
+                    Commit.objects.filter(
+                        repository_id=OuterRef("repository__repoid"),
+                        branch=OuterRef("branch"),
+                        deleted=False,
+                    )
+                    .values("repository_id")
+                    .annotate(count=models.Count("id"))
+                    .values("count")[:1]
+                ),
             )
 
         return queryset
