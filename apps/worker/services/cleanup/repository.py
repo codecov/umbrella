@@ -93,7 +93,7 @@ def start_repo_cleanup(repo_id: int) -> tuple[bool, int]:
             # so we cannot duplicate the values just like that, so lets change up the `service_id`
             # a bit. We need the `Repository.service_id` for further `ArchiveService` deletions.
             service=owner_service,
-            service_id=f"☠️{owner_service_id}☠️",
+            service_id=f"☠️{owner_service_id}☠️{repo_id}",
         )
         new_token = uuid4().hex
         Repository.objects.filter(repoid=repo_id).update(
