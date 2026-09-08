@@ -4,7 +4,7 @@ import django.contrib.postgres.indexes
 import django.db.models.functions.text
 from django.db import migrations
 
-from shared.django_apps.migration_utils import RiskyAddIndex
+from shared.django_apps.migration_utils import RiskyRunSQL
 
 
 class Migration(migrations.Migration):
@@ -22,13 +22,28 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        RiskyAddIndex(
-            model_name="repository",
-            index=django.contrib.postgres.indexes.GinIndex(
-                django.contrib.postgres.indexes.OpClass(
-                    django.db.models.functions.text.Upper("name"), name="gin_trgm_ops"
+        # SeparateDatabaseAndState is used here because GinIndex(OpClass(...)) codegen
+        # broke in Django 5.x: it places the operator class inside the expression parens
+        # instead of after them, producing invalid SQL. The correct SQL is hardcoded in
+        # the database_operations; state_operations keep Django's model state in sync.
+        migrations.SeparateDatabaseAndState(
+            database_operations=[
+                RiskyRunSQL(
+                    sql='CREATE INDEX IF NOT EXISTS "repos_name_trgm_idx" ON "repos" USING gin ((UPPER("name")) gin_trgm_ops)',
+                    reverse_sql='DROP INDEX IF EXISTS "repos_name_trgm_idx"',
                 ),
-                name="repos_name_trgm_idx",
-            ),
+            ],
+            state_operations=[
+                migrations.AddIndex(
+                    model_name="repository",
+                    index=django.contrib.postgres.indexes.GinIndex(
+                        django.contrib.postgres.indexes.OpClass(
+                            django.db.models.functions.text.Upper("name"),
+                            name="gin_trgm_ops",
+                        ),
+                        name="repos_name_trgm_idx",
+                    ),
+                ),
+            ],
         ),
     ]
