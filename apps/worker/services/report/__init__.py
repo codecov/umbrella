@@ -799,6 +799,9 @@ class ReportService(BaseReportService):
         )
         res = self.save_report(commit, report)
         db_session = commit.get_db_session()
+
+        # Build all Upload objects first, then batch-insert to avoid N+1 flushes
+        uploads_with_sessions: list[tuple[Upload, object]] = []
         for sess_id, session in report.sessions.items():
             upload = Upload(
                 build_code=session.build,
@@ -820,17 +823,46 @@ class ReportService(BaseReportService):
                 ),
             )
             db_session.add(upload)
-            db_session.flush()
-            self._attach_flags_to_upload(
-                upload, session.flags if session.flags else [], commit.repoid
-            )
+            uploads_with_sessions.append((upload, session))
+
+        # Single flush to get IDs for all uploads at once
+        db_session.flush()
+
+        # Attach flags in bulk: fetch repo flags once, then assign to all uploads
+        upload_flag_map: dict[Upload, list[str]] = {
+            upload: (session.flags if session.flags else [])
+            for upload, session in uploads_with_sessions
+        }
+        flag_dict = self.fetch_repo_flags(db_session, commit.repoid)
+        flags_to_create: list[RepositoryFlag] = []
+        for upload, flag_names in upload_flag_map.items():
+            upload_flags = []
+            for flag_name in flag_names:
+                flag = flag_dict.get(flag_name)
+                if flag is None:
+                    flag = RepositoryFlag(
+                        repository_id=commit.repoid, flag_name=flag_name
+                    )
+                    flags_to_create.append(flag)
+                    flag_dict[flag_name] = flag
+                upload_flags.append(flag)
+            upload.flags = upload_flags
+        if flags_to_create:
+            db_session.add_all(flags_to_create)
+        db_session.flush()
+
+        # Batch-insert UploadLevelTotals for all sessions that have totals
+        upload_totals_list: list[UploadLevelTotals] = []
+        for upload, session in uploads_with_sessions:
             if session.totals is not None:
                 upload_totals = UploadLevelTotals(upload_id=upload.id_)
-                db_session.add(upload_totals)
                 upload_totals.update_from_totals(
                     session.totals, precision=precision, rounding=rounding
                 )
-                db_session.flush()
+                upload_totals_list.append(upload_totals)
+        if upload_totals_list:
+            db_session.add_all(upload_totals_list)
+            db_session.flush()
 
         return res
 
