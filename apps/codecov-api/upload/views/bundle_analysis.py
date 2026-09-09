@@ -203,20 +203,31 @@ class BundleAnalysisView(ShelterMixin, APIView):
                 MeasurementName.BUNDLE_ANALYSIS_REPORT_SIZE,
                 MeasurementName.BUNDLE_ANALYSIS_STYLESHEET_SIZE,
             ]
-            for measurement_type in supported_bundle_analysis_measurement_types:
-                _, created = Dataset.objects.get_or_create(
-                    name=measurement_type.value,
+            existing_names = set(
+                Dataset.objects.filter(
                     repository_id=repo.pk,
+                    name__in=[t.value for t in supported_bundle_analysis_measurement_types],
+                ).values_list("name", flat=True)
+            )
+            missing_types = [
+                t for t in supported_bundle_analysis_measurement_types
+                if t.value not in existing_names
+            ]
+            created_datasets = Dataset.objects.bulk_create(
+                [
+                    Dataset(name=t.value, repository_id=repo.pk)
+                    for t in missing_types
+                ]
+            )
+            for dataset in created_datasets:
+                log.info(
+                    "Created new timescale dataset for bundle analysis",
+                    extra={
+                        "commit": commit.commitid,
+                        "repoid": repo.repoid,
+                        "measurement_type": dataset.name,
+                    },
                 )
-                if created:
-                    log.info(
-                        "Created new timescale dataset for bundle analysis",
-                        extra={
-                            "commit": commit.commitid,
-                            "repoid": repo.repoid,
-                            "measurement_type": measurement_type,
-                        },
-                    )
 
         return ("success", Response({"url": url}, status=201))
 
