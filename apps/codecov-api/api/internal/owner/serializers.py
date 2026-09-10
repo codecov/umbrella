@@ -8,7 +8,7 @@ from rest_framework.exceptions import PermissionDenied
 
 from codecov_auth.models import Owner, Plan
 from services.billing import BillingService
-from services.sentry import send_user_webhook as send_sentry_webhook
+from services.sentry import is_sentry_user, send_user_webhook as send_sentry_webhook
 from shared.plan.constants import TEAM_PLAN_MAX_USERS, TierName
 from shared.plan.service import PlanService
 
@@ -374,7 +374,8 @@ class AccountDetailsSerializer(serializers.ModelSerializer):
 
             if plan and plan.tier.tier_name == TierName.SENTRY.value:
                 current_owner = self.context["view"].request.current_owner
-                send_sentry_webhook(current_owner, instance)
+                if is_sentry_user(current_owner):
+                    send_sentry_webhook(current_owner, instance)
 
             if checkout_session_id_or_none is not None:
                 self.context["checkout_session_id"] = checkout_session_id_or_none
