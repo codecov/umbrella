@@ -53,7 +53,8 @@ services:
       - codecov
 
   minio:
-    image: minio/minio:latest
+    # Docker Hub blocks anonymous pulls of minio/minio; quay tag is still published.
+    image: quay.io/minio/minio:RELEASE.2024-12-18T13-15-44Z
     command: server --address ":9002" /export
     environment:
       - MINIO_ACCESS_KEY=codecov-default-key
