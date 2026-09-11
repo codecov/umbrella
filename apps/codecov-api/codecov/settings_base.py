@@ -2,6 +2,7 @@ import os
 
 import sentry_sdk
 from corsheaders.defaults import default_headers
+from csp.constants import NONE, SELF
 from sentry_sdk.integrations.celery import CeleryIntegration
 from sentry_sdk.integrations.django import DjangoIntegration
 from sentry_sdk.integrations.httpx import HttpxIntegration
@@ -175,27 +176,29 @@ SPECTACULAR_SETTINGS = {
 
 # The frame-ancestors directive restricts the URLs which can embed the resource using
 # frame, iframe, object, or embed. This configuration denies doing so.
-CSP_FRAME_ANCESTORS = "'none'"
-
-# Allows GraphQL Playground to render
-CSP_DEFAULT_SRC = [
-    "'self'",
-    "'sha256-47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU='",
-    "'sha256-eKdXhLyOdPl2/gp1Ob116rCU2Ox54rseyz1MwCmzb6w='",
-    "'sha256-a1pELtDJXf8fPX1YL2JiBM91RQBeIAswunzgwMEsvwA='",
-    "'sha256-cNIcuS0BVLuBVP5rpfeFE42xHz7r5hMyf9YdfknWuCg='",
-    "'sha256-bmwAzHxhO1mBINfkKkKPopyKEv4ppCHx/z84wQJ9nOY='",
-    "'sha256-jQoC6QpIonlMBPFbUGlJFRJFFWbbijMl7Z8XqWrb46o='",
-    "'sha256-8bfsSkoReSu+APs9CT6QDx2VMgtiw9/lrZLMZNUmhc0='",
-    "'sha256-WoezM4J4TynepdEmsbDslXjZN6zQbvY3M0cX0ujGGUo='",
-    "'sha256-OdsouMbSygCsanIn5RN0skp0SiM8rjt4PqX+YWPG3d0='",
-    "https://cdn.jsdelivr.net/npm/graphql-playground-react/build/static/js/middleware.js",
-    "https://cdn.jsdelivr.net/npm/graphql-playground-react/build/favicon.png",
-    "https://cdn.jsdelivr.net/npm/graphql-playground-react/build/static/css/index.css",
-    "blob:",
-]
-
-CSP_WORKER_SRC = ["'self'", "blob:"]
+# Allows GraphQL Playground to render (django-csp 4 dict-based config).
+CONTENT_SECURITY_POLICY = {
+    "DIRECTIVES": {
+        "frame-ancestors": [NONE],
+        "default-src": [
+            SELF,
+            "'sha256-47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU='",
+            "'sha256-eKdXhLyOdPl2/gp1Ob116rCU2Ox54rseyz1MwCmzb6w='",
+            "'sha256-a1pELtDJXf8fPX1YL2JiBM91RQBeIAswunzgwMEsvwA='",
+            "'sha256-cNIcuS0BVLuBVP5rpfeFE42xHz7r5hMyf9YdfknWuCg='",
+            "'sha256-bmwAzHxhO1mBINfkKkKPopyKEv4ppCHx/z84wQJ9nOY='",
+            "'sha256-jQoC6QpIonlMBPFbUGlJFRJFFWbbijMl7Z8XqWrb46o='",
+            "'sha256-8bfsSkoReSu+APs9CT6QDx2VMgtiw9/lrZLMZNUmhc0='",
+            "'sha256-WoezM4J4TynepdEmsbDslXjZN6zQbvY3M0cX0ujGGUo='",
+            "'sha256-OdsouMbSygCsanIn5RN0skp0SiM8rjt4PqX+YWPG3d0='",
+            "https://cdn.jsdelivr.net/npm/graphql-playground-react/build/static/js/middleware.js",
+            "https://cdn.jsdelivr.net/npm/graphql-playground-react/build/favicon.png",
+            "https://cdn.jsdelivr.net/npm/graphql-playground-react/build/static/css/index.css",
+            "blob:",
+        ],
+        "worker-src": [SELF, "blob:"],
+    },
+}
 
 # Internationalization
 # https://docs.djangoproject.com/en/2.1/topics/i18n/

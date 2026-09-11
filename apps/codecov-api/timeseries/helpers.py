@@ -1,6 +1,6 @@
 import math
 from collections.abc import Iterable
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 import sentry_sdk
 from django.conf import settings
@@ -179,7 +179,7 @@ def aligned_start_date(interval: Interval, date: datetime) -> datetime:
     delta = interval_deltas[interval]
 
     # TimescaleDB aligns time buckets starting on 2000-01-03)
-    aligning_date = datetime(2000, 1, 3, tzinfo=timezone.utc)
+    aligning_date = datetime(2000, 1, 3, tzinfo=UTC)
 
     # number of full intervals between aligning date and the given date
     intervals_before = math.floor((date - aligning_date) / delta)
@@ -201,7 +201,7 @@ def fill_sparse_measurements(
     Those placeholder entries will have empty measurement values.
     """
     by_timestamp = {
-        measurement["timestamp_bin"].replace(tzinfo=timezone.utc): measurement
+        measurement["timestamp_bin"].replace(tzinfo=UTC): measurement
         for measurement in measurements
     }
     timestamps = sorted(by_timestamp.keys())

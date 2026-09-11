@@ -632,26 +632,29 @@ wheels = [
 
 [[package]]
 name = "django"
-version = "4.2.30"
+version = "5.2.17"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "asgiref" },
     { name = "sqlparse" },
     { name = "tzdata", marker = "sys_platform == 'win32'" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/11/b5/f1a53dc68da6429d6e0345bb848161e2381a2e9f02700148911e8582c2b3/django-4.2.30.tar.gz", hash = "sha256:4ebc7a434e3819db6cf4b399fb5b3f536310a30e8486f08b66886840be84b37c", size = 10468707, upload-time = "2026-04-07T14:05:45.57Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/d5/d8/43e9d000519adceb189620b6869ff88031e046df91c2e9da72f8f6918399/django-5.2.17.tar.gz", hash = "sha256:9d4d93be539a18ab80d058eb515900e10951e04c537c5a6b394fc49528d3251f", size = 10889740, upload-time = "2026-08-04T15:04:03.173Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/39/b7/a7c96f239cf91313a6589233fed55111c7063b26683b226802732c455dbc/django-4.2.30-py3-none-any.whl", hash = "sha256:4d07aaf1c62f9984842b67c2874ebbf7056a17be253860299b93ae1881faad65", size = 7997231, upload-time = "2026-04-07T14:05:38.241Z" },
+    { url = "https://files.pythonhosted.org/packages/df/f8/ce120525ca78f12b07daf65786679c5d0b54a75285a8958d3ae55e39da35/django-5.2.17-py3-none-any.whl", hash = "sha256:f04fb3b36ee119e1af4fa1d397d5fd6cf12700f49321e84d4f4c642c5b1973db", size = 8315563, upload-time = "2026-08-04T15:03:59.1Z" },
 ]
 
 [[package]]
 name = "django-autocomplete-light"
-version = "3.12.1"
+version = "5.0.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "django" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/bc/49/fd4705cd96f313d858f9a8c5fce1c33f1f61adb6b25acc92a924acf0a305/django_autocomplete_light-3.12.1.tar.gz", hash = "sha256:50f7b83681feec6491c38e6114d7a4fe80f9e99a8cc6c8458a3e7bb137ad6b1d", size = 296420, upload-time = "2025-02-26T08:21:16.332Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/5d/ca/1288c2c7597484340c6ba5e3911c84b552511310633954d7aa496610e45a/django_autocomplete_light-5.0.0.tar.gz", hash = "sha256:115ee3541ee4a7ddd1b92396ea75d0f38d0b91899b0dc17259310975c728b32e", size = 117640, upload-time = "2026-06-18T01:43:28.909Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/e1/bd/9e9cc8746bf51031a477dd21ee3a08449ab9d94739a242622dc381ebe763/django_autocomplete_light-5.0.0-py3-none-any.whl", hash = "sha256:6fa30efa43e87ff17266e638de04accb11543186e332b09ae43cbccb10e804bb", size = 134025, upload-time = "2026-06-18T01:43:27.178Z" },
+]
 
 [[package]]
 name = "django-better-admin-arrayfield"
@@ -677,14 +680,15 @@ wheels = [
 
 [[package]]
 name = "django-csp"
-version = "3.8"
+version = "4.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "django" },
+    { name = "packaging" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/68/16/c3c65ad59997284402e54d00797c7aca96572df911aede3e1f2cc2e029f8/django_csp-3.8.tar.gz", hash = "sha256:ef0f1a9f7d8da68ae6e169c02e9ac661c0ecf04db70e0d1d85640512a68471c0", size = 13341, upload-time = "2024-03-01T14:00:30.013Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/52/db/23567744dff2169aadb095f726088074476b24dfff5a759ffcf6389cf401/django_csp-4.0.tar.gz", hash = "sha256:b27010bb702eb20a3dad329178df2b61a2b82d338b70fbdc13c3a3bd28712833", size = 20028, upload-time = "2025-04-02T16:41:46.721Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/14/ff/2c7a4b6706125a17bd0071802e4894c28772cfcdea20a086a2be3c5fafda/django_csp-3.8-py3-none-any.whl", hash = "sha256:19b2978b03fcd73517d7d67acbc04fbbcaec0facc3e83baa502965892d1e0719", size = 17410, upload-time = "2024-03-01T14:00:28.135Z" },
+    { url = "https://files.pythonhosted.org/packages/e1/a4/736ab90ee527a23e194d1ce7358c6bcced66381ced83c28268b4aea236f7/django_csp-4.0-py3-none-any.whl", hash = "sha256:d5a0a05463a6b75a4f1fc1828c58c89af8db9364d09fc6e12f122b4d7f3d00dc", size = 25689, upload-time = "2025-04-02T16:41:45.689Z" },
 ]
 
 [[package]]
@@ -1161,7 +1165,7 @@ wheels = [
 name = "idna"
 version = "3.19"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/5f/f7/abb373e5757eaec4b922b92f97ec8d6d7e057cf06778247604fbc4e7c3f3/idna-3.19.tar.gz", hash = "sha256:5e0811a4383b21dc5838069f801c4fb62113b7447663d2530d2bd6e77b49bf15", size = 215237, upload-time = "2026-08-18T05:14:24.270Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/5f/f7/abb373e5757eaec4b922b92f97ec8d6d7e057cf06778247604fbc4e7c3f3/idna-3.19.tar.gz", hash = "sha256:5e0811a4383b21dc5838069f801c4fb62113b7447663d2530d2bd6e77b49bf15", size = 215237, upload-time = "2026-08-18T05:14:24.27Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/57/b0/0e52c878c53f245edd3a11020f20979b3f490f245af532c7cae3027754b5/idna-3.19-py3-none-any.whl", hash = "sha256:815e7be7a7806d54abb586dc943addc79e8b2ee16915059658cbeff4b1b43bf4", size = 68550, upload-time = "2026-08-18T05:14:22.343Z" },
 ]
@@ -2635,7 +2639,7 @@ requires-dist = [
     { name = "codecov-ribs", specifier = ">=0.1.18" },
     { name = "colour", specifier = ">=0.1.5" },
     { name = "cryptography", specifier = ">=50.0.0" },
-    { name = "django", specifier = ">=4.2.30,<5.0.0" },
+    { name = "django", specifier = ">=5.2.17,<6.0.0" },
     { name = "django-better-admin-arrayfield", specifier = ">=1.4.2" },
     { name = "django-model-utils", specifier = ">=4.5.1" },
     { name = "django-postgres-extra", specifier = ">=2.0.8" },
@@ -3212,11 +3216,11 @@ codecov-api = [
     { name = "codecov-ribs", specifier = ">=0.1.18" },
     { name = "colour", specifier = ">=0.1.5" },
     { name = "cryptography", specifier = ">=50.0.0" },
-    { name = "django", specifier = ">=4.2.30,<5.0.0" },
-    { name = "django-autocomplete-light", specifier = ">=3.11.0" },
+    { name = "django", specifier = ">=5.2.17,<6.0.0" },
+    { name = "django-autocomplete-light", specifier = ">=5.0.0" },
     { name = "django-better-admin-arrayfield", specifier = ">=1.4.2" },
     { name = "django-cors-headers", specifier = ">=3.7.0" },
-    { name = "django-csp", specifier = "==3.8.0" },
+    { name = "django-csp", specifier = ">=4.0,<5" },
     { name = "django-cursor-pagination", specifier = ">=0.3.0" },
     { name = "django-filter", specifier = ">=2.4.0" },
     { name = "django-model-utils", specifier = ">=4.5.1" },
@@ -3307,11 +3311,11 @@ prod = [
     { name = "codecov-ribs", specifier = ">=0.1.18" },
     { name = "colour", specifier = ">=0.1.5" },
     { name = "cryptography", specifier = ">=50.0.0" },
-    { name = "django", specifier = ">=4.2.30,<5.0.0" },
-    { name = "django-autocomplete-light", specifier = ">=3.11.0" },
+    { name = "django", specifier = ">=5.2.17,<6.0.0" },
+    { name = "django-autocomplete-light", specifier = ">=5.0.0" },
     { name = "django-better-admin-arrayfield", specifier = ">=1.4.2" },
     { name = "django-cors-headers", specifier = ">=3.7.0" },
-    { name = "django-csp", specifier = "==3.8.0" },
+    { name = "django-csp", specifier = ">=4.0,<5" },
     { name = "django-cursor-pagination", specifier = ">=0.3.0" },
     { name = "django-filter", specifier = ">=2.4.0" },
     { name = "django-model-utils", specifier = ">=4.5.1" },
@@ -3373,7 +3377,7 @@ shared = [
     { name = "codecov-ribs", specifier = ">=0.1.18" },
     { name = "colour", specifier = ">=0.1.5" },
     { name = "cryptography", specifier = ">=50.0.0" },
-    { name = "django", specifier = ">=4.2.30,<5.0.0" },
+    { name = "django", specifier = ">=5.2.17,<6.0.0" },
     { name = "django-better-admin-arrayfield", specifier = ">=1.4.2" },
     { name = "django-model-utils", specifier = ">=4.5.1" },
     { name = "django-postgres-extra", specifier = ">=2.0.8" },
@@ -3420,7 +3424,7 @@ worker = [
     { name = "codecov-ribs", specifier = ">=0.1.18" },
     { name = "colour", specifier = ">=0.1.5" },
     { name = "cryptography", specifier = ">=50.0.0" },
-    { name = "django", specifier = ">=4.2.30,<5.0.0" },
+    { name = "django", specifier = ">=5.2.17,<6.0.0" },
     { name = "django-better-admin-arrayfield", specifier = ">=1.4.2" },
     { name = "django-model-utils", specifier = ">=4.5.1" },
     { name = "django-postgres-extra", specifier = ">=2.0.8" },
