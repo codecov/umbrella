@@ -96,9 +96,17 @@ class SaveCommitMeasurementsTask(
             return {"successful": False, "error": "no_commit_in_db"}
 
         if dataset_names is None:
-            dataset_names = [
-                dataset.name for dataset in repository_datasets_query(commit.repository)
-            ]
+            try:
+                dataset_names = [
+                    dataset.name
+                    for dataset in repository_datasets_query(commit.repository)
+                ]
+            except Exception:
+                log.warning(
+                    "save_commit_measurements: failed to query timeseries datasets, skipping",
+                    exc_info=True,
+                )
+                return {"successful": False, "error": "timeseries_db_unavailable"}
         if len(dataset_names) == 0:
             return
 
