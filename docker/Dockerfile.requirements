@@ -64,6 +64,7 @@ ARG APP_DIR
 RUN apt-get update \
     && apt-get -y upgrade \
     && apt-get install -y --no-install-recommends \
+    libpcre2-8-0 \
     libxml2-dev \
     libxslt-dev \
     libpq-dev \
