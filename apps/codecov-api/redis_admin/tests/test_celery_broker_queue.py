@@ -1084,7 +1084,7 @@ class CeleryFrequencyChartTest(TestCase):
         # The loader is shipped as an EXTERNAL static file (not inline)
         # so the strict CSP on api-admin.codecov.io — which only allows
         # `'self'` and one fixed sha256 for inline scripts — does not
-        # block it. See settings_base.py CSP_DEFAULT_SRC.
+        # block it. See settings_base.py CONTENT_SECURITY_POLICY default-src.
         assert "celery_chart_fragment.js" in body
         assert 'src="' in body  # confirms external script form, not inline
         # Loader styles ship as an EXTERNAL stylesheet for the same CSP

@@ -7,7 +7,7 @@ from datetime import datetime
 from hashlib import md5
 from typing import Optional, Self
 
-from django.contrib.postgres.fields import ArrayField, CITextField
+from django.contrib.postgres.fields import ArrayField
 from django.contrib.sessions.models import Session as DjangoSession
 from django.db import models
 from django.db.models import Case, QuerySet, Sum, When
@@ -30,6 +30,7 @@ from shared.django_apps.codecov_auth.helpers import get_gitlab_url
 from shared.django_apps.codecov_auth.managers import OwnerManager
 from shared.django_apps.core.managers import RepositoryManager
 from shared.django_apps.core.models import DateTimeWithoutTZField, Repository
+from shared.django_apps.db_fields import CaseInsensitiveTextField
 from shared.helpers.github_apps import is_configured
 from shared.plan.constants import DEFAULT_FREE_PLAN, PlanName, TierName, TrialDaysAmount
 
@@ -88,7 +89,7 @@ class User(ExportModelOperationsMixin("codecov_auth.user"), BaseCodecovModel):
         MEMBER = "member"
         ADMIN = "admin"
 
-    email = CITextField(null=True)
+    email = CaseInsensitiveTextField(null=True)
     name = models.TextField(null=True)
     is_staff = models.BooleanField(null=True, default=False)
     is_superuser = models.BooleanField(null=True, default=False)
@@ -399,7 +400,7 @@ class Owner(ExportModelOperationsMixin("codecov_auth.owner"), models.Model):
 
     ownerid = models.AutoField(primary_key=True)
     service = models.TextField(choices=Service.choices)  # Really an ENUM in db
-    username = CITextField(
+    username = CaseInsensitiveTextField(
         unique=True, null=True
     )  # No actual unique constraint on this in the DB
     email = models.TextField(null=True)

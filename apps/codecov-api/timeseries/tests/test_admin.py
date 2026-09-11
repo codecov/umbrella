@@ -1,3 +1,4 @@
+from datetime import UTC
 from unittest.mock import patch
 
 import pytest
@@ -67,13 +68,13 @@ class DatasetAdminTest(TestCase):
         assert backfill_dataset.call_count == 2
         backfill_dataset.assert_any_call(
             self.dataset1,
-            start_date=timezone.datetime(2000, 1, 1, tzinfo=timezone.utc),
-            end_date=timezone.datetime(2022, 1, 1, tzinfo=timezone.utc),
+            start_date=timezone.datetime(2000, 1, 1, tzinfo=UTC),
+            end_date=timezone.datetime(2022, 1, 1, tzinfo=UTC),
         )
         backfill_dataset.assert_any_call(
             self.dataset2,
-            start_date=timezone.datetime(2000, 1, 1, tzinfo=timezone.utc),
-            end_date=timezone.datetime(2022, 1, 1, tzinfo=timezone.utc),
+            start_date=timezone.datetime(2000, 1, 1, tzinfo=UTC),
+            end_date=timezone.datetime(2022, 1, 1, tzinfo=UTC),
         )
 
         self.dataset1.refresh_from_db()
