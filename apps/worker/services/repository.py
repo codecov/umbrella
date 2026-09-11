@@ -180,9 +180,9 @@ def possibly_update_commit_from_provider_info(
             )
             async_to_sync(update_commit_from_provider_info)(repository_service, commit)
             return True
-    except TorngitObjectNotFoundError:
+    except TorngitClientError:
         log.warning(
-            "Could not update commit with info because it was not found at the provider"
+            "Could not update commit with info because of a provider client error"
         )
         return False
     log.debug("Not updating commit because it already seems to be populated")
