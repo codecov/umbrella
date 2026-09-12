@@ -56,6 +56,8 @@ class CleanupContext:
         cleaned_files: int = 0,
         model: type[Model] | None = None,
     ):
+        cleaned_models = cleaned_models or 0
+        cleaned_files = cleaned_files or 0
         self.summary.totals.cleaned_models += cleaned_models
         self.summary.totals.cleaned_files += cleaned_files
 

@@ -158,7 +158,7 @@ services:
       - codecov
 
   minio:
-    image: minio/minio:latest
+    image: quay.io/minio/minio:RELEASE.2024-12-18T13-15-44Z
     command: server --address ":9002" --console-address ":9001" /export
     ports:
       - "9002:9002"

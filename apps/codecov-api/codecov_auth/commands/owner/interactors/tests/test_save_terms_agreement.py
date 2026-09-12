@@ -1,10 +1,10 @@
+from datetime import UTC
 from unittest.mock import patch
 
 import pytest
 from asgiref.sync import async_to_sync
 from django.contrib.auth.models import AnonymousUser
 from django.test import TestCase
-from django.utils import timezone
 from freezegun import freeze_time
 from freezegun.api import FakeDatetime
 
@@ -17,7 +17,7 @@ from ..save_terms_agreement import SaveTermsAgreementInteractor
 class UpdateSaveTermsAgreementInteractorTest(TestCase):
     def setUp(self):
         self.current_user = UserFactory(name="codecov-user")
-        self.updated_at = FakeDatetime(2022, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
+        self.updated_at = FakeDatetime(2022, 1, 1, 0, 0, 0, tzinfo=UTC)
 
     @async_to_sync
     def execute(self, current_user, input=None):

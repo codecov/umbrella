@@ -43,7 +43,7 @@ services:
     image: redis:6-alpine
 
   minio:
-    image: minio/minio:latest
+    image: quay.io/minio/minio:RELEASE.2024-12-18T13-15-44Z
     command: server /export
     environment:
       - MINIO_ACCESS_KEY=codecov-default-key
