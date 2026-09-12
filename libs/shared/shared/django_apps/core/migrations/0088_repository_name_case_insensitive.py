@@ -10,9 +10,14 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.AlterField(
-            model_name="repository",
-            name="name",
-            field=shared.django_apps.db_fields.CaseInsensitiveTextField(),
+        migrations.SeparateDatabaseAndState(
+            database_operations=[],
+            state_operations=[
+                migrations.AlterField(
+                    model_name="repository",
+                    name="name",
+                    field=shared.django_apps.db_fields.CaseInsensitiveTextField(),
+                ),
+            ],
         ),
     ]

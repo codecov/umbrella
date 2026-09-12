@@ -1,14 +1,13 @@
 from django.db import models
 
-CASE_INSENSITIVE_COLLATION = "codecov_case_insensitive"
-
 
 class CaseInsensitiveTextField(models.TextField):
-    """TextField with a case-insensitive collation (Django 5+ replacement for CITextField)."""
+    """Django 5+ TextField that keeps existing PostgreSQL citext columns."""
 
-    def __init__(self, *args, **kwargs):
-        kwargs.setdefault("db_collation", CASE_INSENSITIVE_COLLATION)
-        super().__init__(*args, **kwargs)
+    def db_type(self, connection):
+        if connection.vendor == "postgresql":
+            return "citext"
+        return super().db_type(connection)
 
     def deconstruct(self):
         name, path, args, kwargs = super().deconstruct()
