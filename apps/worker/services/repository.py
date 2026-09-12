@@ -552,15 +552,28 @@ async def fetch_and_update_pull_request_information(
         )
         return EnrichedPull(database_pull=pull, provider_pull=None)
     if not pull:
-        pull = Pull(
-            repoid=repoid,
-            pullid=pullid,
-            state=pull_information["state"],
-            title=pull_information["title"],
-            issueid=pull_information["id"],
-        )
-        db_session.add(pull)
-        db_session.flush()
+        db_session.begin(nested=True)
+        try:
+            pull = Pull(
+                repoid=repoid,
+                pullid=pullid,
+                state=pull_information["state"],
+                title=pull_information["title"],
+                issueid=pull_information["id"],
+            )
+            db_session.add(pull)
+            db_session.commit()
+        except IntegrityError:
+            log.warning(
+                "IntegrityError while inserting Pull, fetching existing record",
+                extra={"repoid": repoid, "pullid": pullid},
+            )
+            db_session.rollback()
+            pull = (
+                db_session.query(Pull)
+                .filter_by(pullid=pullid, repoid=repoid)
+                .one()
+            )
     else:
         pull.state = pull_information["state"]
         pull.title = pull_information["title"]
