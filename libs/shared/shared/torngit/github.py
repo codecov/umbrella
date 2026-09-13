@@ -941,7 +941,16 @@ class Github(TorngitBaseAdapter):
                 tried_refresh = True
                 # Refresh token and retry
                 log.debug("Token is invalid. Refreshing")
-                token = await self.refresh_token(client, url)
+                try:
+                    token = await self.refresh_token(client, url)
+                except (
+                    httpx.TimeoutException,
+                    httpx.NetworkError,
+                    httpx.RemoteProtocolError,
+                ):
+                    raise TorngitServerUnreachableError(
+                        "GitHub was not able to be reached while refreshing token."
+                    )
                 if token is not None:
                     # Assuming we could retry and the retry was successful
                     # Update headers and retry
@@ -1061,11 +1070,20 @@ class Github(TorngitBaseAdapter):
             self.service_url
             + self.count_and_get_url_template(url_name="refresh_token").substitute()
         )
-        res = await client.request(
-            "POST",
-            url,
-            params=params,
-        )
+        try:
+            res = await client.request(
+                "POST",
+                url,
+                params=params,
+            )
+        except (
+            httpx.TimeoutException,
+            httpx.NetworkError,
+            httpx.RemoteProtocolError,
+        ):
+            raise TorngitServerUnreachableError(
+                "GitHub was not able to be reached while refreshing token."
+            )
         if res.status_code >= 300:
             raise TorngitRefreshTokenFailedError(
                 {
