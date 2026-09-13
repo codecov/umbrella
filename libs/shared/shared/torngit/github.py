@@ -646,7 +646,12 @@ class Github(TorngitBaseAdapter):
         if not token_to_use:
             raise TorngitMisconfiguredCredentials()
         response = await self.make_http_call(*args, token_to_use=token_to_use, **kwargs)
-        return self._parse_response(response)
+        try:
+            return self._parse_response(response)
+        except httpx.RemoteProtocolError as e:
+            raise TorngitServerUnreachableError(
+                "GitHub closed the connection before sending a complete response."
+            ) from e
 
     async def paginated_api_generator(
         self, client, method, url_name, token=None, **kwargs
