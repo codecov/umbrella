@@ -96,6 +96,7 @@ async def resolve_test_results(
     info: GraphQLResolveInfo,
     ordering: GQLTestResultsOrdering | None = None,
     filters: GQLTestResultsFilters | None = None,
+    branch: str | None = None,
     first: int | None = None,
     after: str | None = None,
     last: int | None = None,
@@ -121,7 +122,7 @@ async def resolve_test_results(
         )
 
         filters = filters or {}
-        branch = filters.get("branch")
+        branch = filters.get("branch") or branch
         parameter_enum = filters.get("parameter")
         testsuites = filters.get("test_suites")
         flags = filters.get("flags")
