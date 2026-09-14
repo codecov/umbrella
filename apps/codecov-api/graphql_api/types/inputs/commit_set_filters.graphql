@@ -3,6 +3,7 @@ input CommitsSetFilters {
   branchName: String
   pullId: Int
   search: String
+  searchValue: String
   states: [CommitState!]
   coverageStatus: [CommitStatus!]
 }
