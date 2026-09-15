@@ -1,3 +1,4 @@
+import asyncio
 import base64
 import hashlib
 import logging
@@ -1539,8 +1540,9 @@ class Github(TorngitBaseAdapter):
     async def list_teams(self, token=None):
         token = self.get_token_by_type_if_none(token, TokenType.admin)
         # https://developer.github.com/v3/orgs/#list-your-organizations
-        page, data = 0, []
+        page, all_memberships = 0, []
         async with self.get_client() as client:
+            # Phase 1: collect all membership objects via pagination
             while True:
                 page += 1
                 url = self.count_and_get_url_template(
@@ -1549,31 +1551,40 @@ class Github(TorngitBaseAdapter):
                 orgs = await self.api(client, "get", url, page=page, token=token)
                 if len(orgs) == 0:
                     break
-                # organization names
-                for org in orgs:
-                    try:
-                        organization = org["organization"]
-                        url = self.count_and_get_url_template(
-                            url_name="list_teams_org_name"
-                        ).substitute(login=organization["login"])
-                        org = await self.api(client, "get", url, token=token)  # noqa: PLW2901
-                        data.append(
-                            {
-                                "name": organization.get("name", org["login"]),
-                                "id": str(organization["id"]),
-                                "email": organization.get("email"),
-                                "username": organization["login"],
-                            }
-                        )
-                    except TorngitClientGeneralError:
-                        log.exception(
-                            "Unable to load organization",
-                            extra={"url": organization["url"]},
-                        )
+                all_memberships.extend(orgs)
                 if len(orgs) < 30:
                     break
 
-            return data
+            # Phase 2: fetch org details concurrently, capped to avoid secondary rate limits
+            semaphore = asyncio.Semaphore(10)
+
+            async def fetch_org_details(membership):
+                organization = membership["organization"]
+                detail_url = self.count_and_get_url_template(
+                    url_name="list_teams_org_name"
+                ).substitute(login=organization["login"])
+                try:
+                    async with semaphore:
+                        org_detail = await self.api(
+                            client, "get", detail_url, token=token
+                        )
+                    return {
+                        "name": organization.get("name", org_detail["login"]),
+                        "id": str(organization["id"]),
+                        "email": organization.get("email"),
+                        "username": organization["login"],
+                    }
+                except TorngitClientGeneralError:
+                    log.exception(
+                        "Unable to load organization",
+                        extra={"url": organization["url"]},
+                    )
+                    return None
+
+            results = await asyncio.gather(
+                *[fetch_org_details(m) for m in all_memberships]
+            )
+            return [r for r in results if r is not None]
 
     # Commits
     # -------
