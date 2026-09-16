@@ -5,6 +5,8 @@ def match(patterns: list[str] | None, string: str) -> bool:
     if patterns is None or string in patterns:
         return True
 
+    string = string or ""
+
     patterns = set(filter(None, patterns))
     negatives = set(filter(lambda a: a.startswith(("^!", "!")), patterns))
     positives = patterns - negatives
