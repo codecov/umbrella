@@ -12,6 +12,7 @@ type Upload {
   errors: UploadErrorsConnection
   name: String
   id: Int
+  totals: CoverageTotals
 }
 
 type UploadErrorsConnection {
