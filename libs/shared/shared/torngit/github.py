@@ -2184,6 +2184,8 @@ class Github(TorngitBaseAdapter):
             )
         async with self.get_client() as client:
             content = await self.api(client, "get", url, ref=ref, token=token)
+        if isinstance(content, dict):
+            content = [content]
         return [
             {
                 "name": f["name"],
