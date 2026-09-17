@@ -328,6 +328,16 @@ class AsyncGraphqlView(GraphQLAsyncView):
                         )
                 except Exception:
                     pass
+                # Return HTTP 400 for client-side GraphQL errors (invalid
+                # variable values, unknown input fields, etc.) so callers
+                # receive a meaningful status code rather than a 200 with an
+                # error body.
+                if data["errors"][0].get("type") == "ClientError":
+                    inc_counter(
+                        GQL_ERROR_TYPE_COUNTER,
+                        labels={"error_type": "client_error", "path": req_path},
+                    )
+                    return JsonResponse(data=data, status=400)
             return response
 
     def context_value(self, request: WSGIRequest, *_args: Any) -> dict[str, Any]:
@@ -341,11 +351,23 @@ class AsyncGraphqlView(GraphQLAsyncView):
             "clean_query": self.get_clean_query(request_body) if request_body else "",
         }
 
+    # GraphQL client error message fragments that indicate a bad request from
+    # the caller rather than an unexpected server-side failure.
+    _CLIENT_ERROR_MESSAGES = (
+        "Cannot query field",
+        "got invalid value",
+        "is not defined by type",
+        "Expected type",
+        "Unknown argument",
+        "Unknown field",
+    )
+
     def error_formatter(self, error: Any, debug: bool = False) -> dict[str, Any]:
         user = self.request.user
         is_anonymous = user.is_anonymous if user else True
-        # the only way to check for a malformed query
-        is_bad_query = "Cannot query field" in error.formatted["message"]
+        message = error.formatted["message"]
+        # Detect client-side query/variable errors (bad requests from the caller)
+        is_bad_query = any(marker in message for marker in self._CLIENT_ERROR_MESSAGES)
         if debug or (not is_anonymous and is_bad_query):
             return format_error(error, debug)
         formatted = error.formatted
@@ -353,7 +375,13 @@ class AsyncGraphqlView(GraphQLAsyncView):
         formatted["type"] = "ServerError"
         # if this is one of our own command exception, we can tell a bit more
         original_error = error.original_error
-        if isinstance(original_error, BaseException) or isinstance(
+        if original_error is None:
+            # Native GraphQL validation/coercion error (e.g. unknown input field,
+            # invalid variable value).  These are client mistakes, not server bugs.
+            # Return a sanitised response without logging or sending to Sentry.
+            formatted["message"] = "BAD REQUEST"
+            formatted["type"] = "ClientError"
+        elif isinstance(original_error, BaseException) or isinstance(
             original_error, ServiceException
         ):
             formatted["message"] = original_error.message  # type: ignore
