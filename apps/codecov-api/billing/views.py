@@ -4,6 +4,7 @@ from typing import Any
 
 import stripe
 from django.conf import settings
+from django.db import OperationalError
 from django.db.models import QuerySet
 from django.http import HttpRequest
 from rest_framework import status
@@ -649,6 +650,17 @@ class StripeWebhookHandler(APIView):
 
         # Converts event names of the format X.Y.Z into X_Y_Z, and calls
         # the relevant method in this class
-        getattr(self, self.event.type.replace(".", "_"))(self.event.data.object)
+        try:
+            getattr(self, self.event.type.replace(".", "_"))(self.event.data.object)
+        except OperationalError:
+            log.warning(
+                "Transient database error while processing Stripe webhook -- Stripe will retry",
+                extra={"stripe_webhook_event": self.event.type},
+                exc_info=True,
+            )
+            return Response(
+                "Database temporarily unavailable",
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
 
         return Response(status=status.HTTP_204_NO_CONTENT)
