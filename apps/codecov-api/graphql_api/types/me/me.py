@@ -79,6 +79,18 @@ def resolve_my_organizations(current_user, _, filters=None, **kwargs):
     )
 
 
+@me_bindable.field("owners")
+def resolve_owners(current_user, _, filters=None, **kwargs):
+    """Deprecated: use myOrganizations instead."""
+    queryset = search_my_owners(current_user, filters)
+    return queryset_to_connection(
+        queryset,
+        ordering=("ownerid",),
+        ordering_direction=OrderingDirection.DESC,
+        **kwargs,
+    )
+
+
 @me_bindable.field("sessions")
 def resolve_sessions(current_user, _, **kwargs):
     queryset = get_owner_login_sessions(current_user)
