@@ -38,9 +38,11 @@ def get_sources_to_attempt(xml) -> Sequence[str]:
 
 def from_xml(xml: Element, report_builder_session: ReportBuilderSession) -> None:
     # # process timestamp
-    if max_age := report_builder_session.yaml_field(
-        ("codecov", "max_report_age"), "12h ago"
-    ):
+    if (
+        max_age := report_builder_session.yaml_field(
+            ("codecov", "max_report_age"), "12h ago"
+        )
+    ) and str(max_age).lower() != "off":
         original_timestamp = xml.get("timestamp")
         timestamp = normalize_timestamp(original_timestamp)
 
