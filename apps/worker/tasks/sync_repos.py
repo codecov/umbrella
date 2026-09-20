@@ -5,6 +5,7 @@ from asgiref.sync import async_to_sync
 from celery.exceptions import SoftTimeLimitExceeded
 from redis.exceptions import LockError
 from sqlalchemy import and_
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm.session import Session
 
 from app import celery_app
@@ -649,7 +650,26 @@ class SyncReposTask(BaseCodecovTask, name=sync_repos_task_name):
             },
         )
         db_session.add(new_repo)
-        db_session.flush()
+        try:
+            with db_session.begin_nested():
+                db_session.flush()
+        except IntegrityError:
+            # Another concurrent SyncRepos task inserted this repo between our
+            # SELECT and INSERT (TOCTOU race on the repos_slug unique constraint).
+            # Roll back the savepoint, then fetch the row the other task created.
+            log.warning(
+                "Race condition detected inserting repo - fetching existing row",
+                extra={"ownerid": ownerid, "repo_name": repo_data["name"]},
+            )
+            existing_repo = (
+                db_session.query(Repository)
+                .filter(
+                    Repository.ownerid == ownerid,
+                    Repository.service_id == repo_data["service_id"],
+                )
+                .first()
+            )
+            return existing_repo.repoid
         return new_repo.repoid
 
     def sync_repos_languages(
