@@ -4,7 +4,7 @@ from datetime import datetime
 from asgiref.sync import async_to_sync
 from celery.exceptions import SoftTimeLimitExceeded
 from redis.exceptions import LockError
-from sqlalchemy import and_
+from sqlalchemy import and_, insert
 from sqlalchemy.orm.session import Session
 
 from app import celery_app
@@ -292,18 +292,33 @@ class SyncReposTask(BaseCodecovTask, name=sync_repos_task_name):
 
                 for repo in missing_repos:
                     repo_data = repo["repo"]
-                    new_repo = Repository(
-                        ownerid=ownerid,
-                        service_id=repo_data["service_id"],
-                        name=repo_data["name"],
-                        language=repo_data["language"],
-                        private=repo_data["private"],
-                        branch=repo_data["branch"],
-                        using_integration=True,
+                    table = Repository.__table__
+                    insert_stmt = (
+                        insert(table)
+                        .values(
+                            ownerid=ownerid,
+                            service_id=repo_data["service_id"],
+                            name=repo_data["name"],
+                            language=repo_data["language"],
+                            private=repo_data["private"],
+                            branch=repo_data["branch"],
+                            using_integration=True,
+                        )
+                        .on_conflict_do_nothing()
                     )
-                    db_session.add(new_repo)
-                    db_session.flush()
-                    repoids.append(new_repo.repoid)
+                    db_session.execute(insert_stmt)
+                    # Re-query for the repo to get its repoid regardless of
+                    # whether this task or a concurrent task performed the INSERT.
+                    inserted_repo = (
+                        db_session.query(Repository)
+                        .filter(
+                            Repository.ownerid == ownerid,
+                            Repository.name == repo_data["name"],
+                        )
+                        .first()
+                    )
+                    if inserted_repo is not None:
+                        repoids.append(inserted_repo.repoid)
 
         # Here comes the actual function
         received_repos = False
