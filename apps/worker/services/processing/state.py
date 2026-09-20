@@ -23,7 +23,7 @@ meaning that:
 
 from dataclasses import dataclass
 
-from shared.helpers.redis import get_redis_connection
+from shared.helpers.redis import get_redis_primary_connection
 from shared.metrics import Counter
 
 MERGE_BATCH_SIZE = 10
@@ -76,7 +76,7 @@ def should_trigger_postprocessing(uploads: UploadNumbers) -> bool:
 
 class ProcessingState:
     def __init__(self, repoid: int, commitsha: str) -> None:
-        self._redis = get_redis_connection()
+        self._redis = get_redis_primary_connection()
         self.repoid = repoid
         self.commitsha = commitsha
 
