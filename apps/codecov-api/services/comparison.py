@@ -15,6 +15,7 @@ from django.db.models import Prefetch, QuerySet
 from django.utils.functional import cached_property
 
 import shared.reports.api_report_service as report_service
+from shared.storage.exceptions import FileNotInStorageError
 from compare.models import CommitComparison
 from core.models import Commit, Pull
 from reports.models import CommitReport
@@ -1037,6 +1038,11 @@ class ComparisonReport:
         try:
             data = archive_service.read_file(self.commit_comparison.report_storage_path)
             return json.loads(data)
+        except FileNotInStorageError:
+            log.warning(
+                "ComparisonReport - comparison file not found in storage",
+            )
+            return {}
         except Exception:
             log.error(
                 "ComparisonReport - couldn't fetch data from storage", exc_info=True
