@@ -86,6 +86,13 @@ def resolve_commit(repository: Repository, info: GraphQLResolveInfo, id: str) ->
     return commit
 
 
+@repository_bindable.field("latestCommit")
+def resolve_latest_commit(
+    repository: Repository, info: GraphQLResolveInfo
+) -> Commit | None:
+    return repository.commits.order_by("-timestamp").first()
+
+
 @repository_bindable.field("uploadToken")
 def resolve_upload_token(
     repository: Repository, info: GraphQLResolveInfo

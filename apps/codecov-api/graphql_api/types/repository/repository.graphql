@@ -10,6 +10,7 @@ type Repository {
   private: Boolean!
   oldestCommitAt: DateTime
   latestCommitAt: DateTime
+  latestCommit: Commit
   updatedAt: DateTime
   author: Owner!
   uploadToken: String
