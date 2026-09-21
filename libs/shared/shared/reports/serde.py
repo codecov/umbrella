@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import dataclasses
+import json
 from decimal import Decimal
 from fractions import Fraction
 from types import GeneratorType
@@ -77,17 +78,35 @@ def report_default(obj):
 orjson_option = orjson.OPT_PASSTHROUGH_DATACLASS | orjson.OPT_NON_STR_KEYS
 
 
+class _ReportJsonEncoder(json.JSONEncoder):
+    """Fallback JSON encoder that delegates to report_default for custom types."""
+
+    def default(self, obj):
+        result = report_default(obj)
+        if result is obj:
+            return super().default(obj)
+        return result
+
+
 def _dumps_not_none(value) -> str:
     if isinstance(value, list):
-        return orjson.dumps(
-            _rstrip_none(list(value)), default=report_default, option=orjson_option
-        ).decode()
+        data = _rstrip_none(list(value))
+        try:
+            return orjson.dumps(
+                data, default=report_default, option=orjson_option
+            ).decode()
+        except TypeError:
+            return json.dumps(data, cls=_ReportJsonEncoder)
     if isinstance(value, ReportLine):
-        return orjson.dumps(
-            _rstrip_none(list(value.astuple())),
-            default=report_default,
-            option=orjson_option,
-        ).decode()
+        data = _rstrip_none(list(value.astuple()))
+        try:
+            return orjson.dumps(
+                data,
+                default=report_default,
+                option=orjson_option,
+            ).decode()
+        except TypeError:
+            return json.dumps(data, cls=_ReportJsonEncoder)
     return value if value and value != "null" else ""
 
 
