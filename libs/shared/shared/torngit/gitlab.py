@@ -1400,6 +1400,8 @@ class Gitlab(TorngitBaseAdapter):
             service_id=self.data["repo"]["service_id"]
         )
         res = await self.api("get", url, token=token, ref_name=commitid)
+        if not res:
+            return {"commitid": None, "parents": []}
         start = res[0]["id"]
         commit_mapping = {val["id"]: val["parent_ids"] for val in res}
         return self.build_tree_from_commits(start, commit_mapping)
