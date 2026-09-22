@@ -20,6 +20,8 @@ type Commit {
   pathContents(path: String, filters: PathContentsFilters): PathContentsResult
   deprecatedPathContents(path: String, filters: PathContentsFilters, first: Int, after: String, last: Int, before: String): DeprecatedPathContentsResult
   errors(errorType: CommitErrorType!): CommitErrorsConnection!
+  yamlErrors: CommitErrorsConnection! @deprecated(reason: "Use errors(errorType: YAML_ERROR) instead")
+  botErrors: CommitErrorsConnection! @deprecated(reason: "Use errors(errorType: BOT_ERROR) instead")
   totalUploads: Int!
   bundleStatus: CommitStatus
   coverageStatus: CommitStatus
