@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import fakeredis
 import pytest
+from django.db.models import Q
 
 from redis_admin import conn as redis_admin_conn
 from redis_admin import families as redis_admin_families
@@ -73,6 +74,20 @@ def test_queryset_orders_by_depth_descending(patched_redis):
 def test_queryset_filter_with_no_args_is_a_clone(patched_redis):
     patched_redis.rpush("uploads/1/aa", "x")
     assert RedisQueue.objects.filter().count() == 1
+
+
+def test_queryset_filter_empty_q_is_a_no_op(patched_redis):
+    """Django 5 ChangeList always calls ``filter(Q())`` for remaining lookups."""
+    patched_redis.rpush("uploads/1/aa", "x")
+    assert RedisQueue.objects.filter(Q()).count() == 1
+
+
+def test_queryset_filter_q_repoid_matches_kwargs(patched_redis):
+    patched_redis.rpush("uploads/1/abc", "x")
+    patched_redis.rpush("uploads/2/def", "x")
+
+    rows = list(RedisQueue.objects.filter(Q(repoid=1)))
+    assert {r.name for r in rows} == {"uploads/1/abc"}
 
 
 def test_queryset_filter_unknown_kwarg_raises_not_implemented(patched_redis):

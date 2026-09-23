@@ -387,7 +387,7 @@ def test_staff_role_filter_buckets_users_by_effective_role():
 
     def ids_for(role):
         request = _request_for(admin_user)
-        filt = StaffRoleListFilter(request, {"role": role}, User, user_admin)
+        filt = StaffRoleListFilter(request, {"role": [role]}, User, user_admin)
         return set(
             filt.queryset(request, User.objects.all()).values_list("id", flat=True)
         )

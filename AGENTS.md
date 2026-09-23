@@ -62,3 +62,8 @@ Examples worth capturing:
 - Architecture decisions (where shared code lives, what belongs in `libs/shared/` vs `apps/worker/`)
 
 Write learnings as concise, actionable references — something a developer or agent can consult mid-task. Include concrete examples where possible.
+
+### Django 5 admin + Redis-backed querysets
+
+- Django 5 `ChangeList.get_queryset` always applies remaining lookups as `qs.filter(Q(...))`, including an empty `Q()` when nothing remains (Django 4.2 used `qs.filter(**remaining_lookup_params)`). Redis-backed admin querysets must accept positional empty/`Q` args — see `redis_admin/filter_compat.py`.
+- Django 5 `SimpleListFilter` expects param values as lists (`value[-1]`). Unit tests that construct filters directly must pass `{"param": ["value"]}`, not scalar strings.
