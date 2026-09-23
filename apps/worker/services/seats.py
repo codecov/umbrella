@@ -40,14 +40,19 @@ def determine_seat_activation(pull: EnrichedPull) -> SeatActivationInfo:
     """
     db_pull = pull.database_pull
     provider_pull = pull.provider_pull
+    if db_pull is None:
+        log.warning(
+            "Database pull was None when determining whether to activate seat for user",
+        )
+        return SeatActivationInfo(reason="no_db_pull")
     if provider_pull is None:
         log.warning(
             "Provider pull was None when determining whether to activate seat for user",
             extra={
-                "pullid": db_pull.pullid,
-                "repoid": db_pull.repoid,
-                "head_commit": db_pull.head,
-                "base_commit": db_pull.base,
+                "pullid": getattr(db_pull, "pullid", None),
+                "repoid": getattr(db_pull, "repoid", None),
+                "head_commit": getattr(db_pull, "head", None),
+                "base_commit": getattr(db_pull, "base", None),
             },
         )
         return SeatActivationInfo(reason="no_provider_pull")
