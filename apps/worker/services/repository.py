@@ -10,6 +10,7 @@ from asgiref.sync import async_to_sync
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Query, Session, lazyload
 
+import httpx
 import shared.torngit as torngit
 from database.enums import CommitErrorTypes
 from database.models import Commit, Owner, Pull
@@ -28,6 +29,7 @@ from shared.torngit.exceptions import (
     TorngitClientError,
     TorngitError,
     TorngitObjectNotFoundError,
+    TorngitServerUnreachableError,
 )
 from shared.torngit.response_types import ProviderPull
 from shared.typings.torngit import (
@@ -183,6 +185,13 @@ def possibly_update_commit_from_provider_info(
     except TorngitObjectNotFoundError:
         log.warning(
             "Could not update commit with info because it was not found at the provider"
+        )
+        return False
+    except (TorngitServerUnreachableError, httpx.ConnectError, httpx.NetworkError):
+        log.warning(
+            "Could not update commit with info due to a network or SSL error reaching the provider",
+            extra={"repoid": commit.repoid, "commit": commit.commitid},
+            exc_info=True,
         )
         return False
     log.debug("Not updating commit because it already seems to be populated")
