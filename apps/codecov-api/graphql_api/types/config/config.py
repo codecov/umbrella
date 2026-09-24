@@ -92,6 +92,7 @@ def resolve_seats_limit(_, info):
 
 
 @config_bindable.field("isTimescaleEnabled")
+@config_bindable.field("isTimeseriesEnabled")
 @sync_to_async
 def resolve_is_timescale_enabled(_, info):
     if isinstance(settings.TIMESERIES_ENABLED, str):
