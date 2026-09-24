@@ -24,6 +24,7 @@ from .commit import (
     commit,
     commit_bindable,
     commit_bundle_analysis_bindable,
+    commit_bundle_analysis_measurements_bindable,
     commit_coverage_analytics_bindable,
 )
 from .comparison import comparison, comparison_bindable, comparison_result_bindable
@@ -153,6 +154,7 @@ bindables = [
     bundle_report_info_bindable,
     commit_bindable,
     commit_bundle_analysis_bindable,
+    commit_bundle_analysis_measurements_bindable,
     commit_coverage_analytics_bindable,
     comparison_bindable,
     comparison_result_bindable,

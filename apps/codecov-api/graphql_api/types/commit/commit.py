@@ -51,6 +51,9 @@ from shared.reports.types import ReportTotals
 commit_bindable = ObjectType("Commit")
 commit_coverage_analytics_bindable = ObjectType("CommitCoverageAnalytics")
 commit_bundle_analysis_bindable = ObjectType("CommitBundleAnalysis")
+commit_bundle_analysis_measurements_bindable = ObjectType(
+    "CommitBundleAnalysisMeasurements"
+)
 
 commit_bindable.set_alias("createdAt", "timestamp")
 commit_bindable.set_alias("pullId", "pullid")
@@ -486,6 +489,39 @@ def resolve_commit_bundle_analysis_report(commit: Commit, info) -> BundleAnalysi
     info.context["commit"] = commit
 
     return bundle_analysis_report
+
+
+@commit_bindable.field("bundleAnalysisMeasurements")
+@sync_to_async
+@sentry_sdk.trace
+def resolve_bundle_analysis_measurements(commit: Commit, info: GraphQLResolveInfo):
+    """
+    Returns a simplified bundle analysis measurements summary for a commit,
+    exposing top-level sizeTotal and per-bundle summaries.
+    """
+    bundle_analysis_report = load_bundle_analysis_report(commit)
+    if not isinstance(bundle_analysis_report, BundleAnalysisReport):
+        return None
+
+    # Register temp DB path for cleanup by RequestFinalizer (same as bundleAnalysisReport)
+    info.context[
+        "request"
+    ].bundle_analysis_head_report_db_path = bundle_analysis_report.report.db_path
+
+    bundles = [
+        {
+            "name": bundle.name,
+            "size_total": bundle.size_total,
+            "load_time_total": None,
+        }
+        for bundle in bundle_analysis_report.bundles
+    ]
+
+    return {
+        "size_total": bundle_analysis_report.size_total,
+        "load_time_total": None,
+        "bundles": bundles,
+    }
 
 
 @commit_bindable.field("latestUploadError")
