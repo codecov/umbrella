@@ -27,8 +27,12 @@ def obfuscate_owner_data(owner: Owner) -> None:
     if owner.username:
         owner.username = f"deleted_user_{owner.ownerid}"
 
-    # Obfuscate service by setting to a generic value
+    # Obfuscate service by setting to a generic value, and replace service_id
+    # with the ownerid to ensure uniqueness on the (service, service_id)
+    # constraint when multiple owners sharing the same original service_id are
+    # marked for deletion.
     owner.service = Service.TO_BE_DELETED.value
+    owner.service_id = str(owner.ownerid)
 
     # Clear sensitive tokens
     owner.oauth_token = None
@@ -41,6 +45,7 @@ def obfuscate_owner_data(owner: Owner) -> None:
             "business_email",
             "username",
             "service",
+            "service_id",
             "oauth_token",
         ]
     )
