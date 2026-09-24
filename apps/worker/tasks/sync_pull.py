@@ -576,9 +576,20 @@ class PullSyncTask(BaseCodecovTask, name=pulls_task_name):
             redis_client = get_redis_connection()
             redis_client.set(f"flake_uploads:{repository.repoid}", 0)
             redis_client.lpush(KEY_NAME.format(repository.repoid), pull_head)
-            self.app.tasks[process_flakes_task_name].apply_async(
-                kwargs={"repo_id": repository.repoid, "commit_id": pull_head}
-            )
+            try:
+                with self.app.connection_or_connect() as conn:
+                    self.app.tasks[process_flakes_task_name].apply_async(
+                        kwargs={"repo_id": repository.repoid, "commit_id": pull_head},
+                        connection=conn,
+                    )
+            except Exception:
+                log.exception(
+                    "Failed to dispatch ProcessFlakesTask due to broker connection error",
+                    extra={
+                        "repoid": repository.repoid,
+                        "commit_id": pull_head,
+                    },
+                )
 
     def trigger_ai_pr_review(self, enriched_pull: EnrichedPull, current_yaml: UserYaml):
         pull = enriched_pull.database_pull
