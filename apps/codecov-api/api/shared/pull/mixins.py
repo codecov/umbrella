@@ -5,6 +5,7 @@ from rest_framework import filters, viewsets
 
 from api.shared.mixins import RepoPropertyMixin
 from api.shared.permissions import RepositoryArtifactPermissions
+from compare.models import CommitComparison
 from core.models import Commit
 
 
@@ -39,5 +40,21 @@ class PullViewSetMixin(
                 Commit.objects.filter(
                     commitid=OuterRef("head"), repository=OuterRef("repository")
                 ).values("ci_passed")[:1]
+            ),
+            commit_comparison_state=Subquery(
+                CommitComparison.objects.filter(
+                    base_commit__commitid=OuterRef("compared_to"),
+                    base_commit__repository=OuterRef("repository"),
+                    compare_commit__commitid=OuterRef("head"),
+                    compare_commit__repository=OuterRef("repository"),
+                ).values("state")[:1]
+            ),
+            commit_comparison_patch_totals=Subquery(
+                CommitComparison.objects.filter(
+                    base_commit__commitid=OuterRef("compared_to"),
+                    base_commit__repository=OuterRef("repository"),
+                    compare_commit__commitid=OuterRef("head"),
+                    compare_commit__repository=OuterRef("repository"),
+                ).values("patch_totals")[:1]
             ),
         )
