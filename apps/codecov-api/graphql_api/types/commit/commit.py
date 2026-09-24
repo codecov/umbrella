@@ -416,6 +416,19 @@ def resolve_coverage_file(commit, info, path, flags=None, components=None):
 @sentry_sdk.trace
 def resolve_coverage_components(commit: Commit, info, filters=None) -> list[Component]:
     info.context["component_commit"] = commit
+    # Store parent commit for percentChange computation in component resolvers
+    if commit.parent_commit_id:
+        try:
+            parent_commit = Commit.objects.get(
+                commitid=commit.parent_commit_id,
+                repository_id=commit.repository_id,
+            )
+            info.context["component_parent_commit"] = parent_commit
+        except Commit.DoesNotExist:
+            info.context["component_parent_commit"] = None
+    else:
+        info.context["component_parent_commit"] = None
+
     current_owner = info.context["request"].current_owner
     all_components = components_service.commit_components(
         commit,
