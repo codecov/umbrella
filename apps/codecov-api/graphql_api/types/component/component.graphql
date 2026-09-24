@@ -1,6 +1,11 @@
 type Component {
     id: String!
     name: String!
+    componentId: String!
+    percentCovered: Float
+    percentChange: Float
+    lineCount: Int
+    hitsCount: Int
     totals: CoverageTotals
 }
 
