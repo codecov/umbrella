@@ -137,7 +137,7 @@ use_modern_sqlalchemy_session_manager = _use_modern_sqlalchemy_session_manager()
 
 
 def get_db_session(path: str, auto_close: bool | None = True) -> DbSession:
-    engine = create_engine(f"sqlite:///{path}")
+    engine = create_engine(f"sqlite:///{path}", connect_args={"check_same_thread": False})
     Session = sessionmaker()
     Session.configure(bind=engine)
     session = Session()
