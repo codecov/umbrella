@@ -38,6 +38,7 @@ from graphql_api.helpers.mutation import (
     require_shared_account_or_part_of_org,
 )
 from graphql_api.helpers.requested_fields import selected_fields
+from graphql_api.helpers.ordering import parse_repository_ordering
 from graphql_api.types.enums import OrderingDirection, RepositoryOrdering
 from graphql_api.types.errors.errors import NotFoundError
 from graphql_api.types.repository.repository import TOKEN_UNAVAILABLE
@@ -65,8 +66,8 @@ def resolve_repositories(
     owner: Owner,
     info: GraphQLResolveInfo,
     filters: dict | None = None,
-    ordering: RepositoryOrdering | None = RepositoryOrdering.ID,
-    ordering_direction: OrderingDirection | None = OrderingDirection.ASC,
+    ordering: str | RepositoryOrdering | None = None,
+    ordering_direction: OrderingDirection | None = None,
     **kwargs: Any,
 ) -> Coroutine[Any, Any, Connection]:
     current_owner = info.context["request"].current_owner
@@ -83,10 +84,14 @@ def resolve_repositories(
         current_owner, owner, filters, okta_account_auths, exclude_okta_enforced_repos
     )
 
+    resolved_ordering, resolved_direction = parse_repository_ordering(
+        ordering, ordering_direction
+    )
+
     return queryset_to_connection_sync(
         queryset,
-        ordering=(ordering, RepositoryOrdering.ID),
-        ordering_direction=ordering_direction,
+        ordering=(resolved_ordering, RepositoryOrdering.ID),
+        ordering_direction=resolved_direction,
         **kwargs,
     )
 
