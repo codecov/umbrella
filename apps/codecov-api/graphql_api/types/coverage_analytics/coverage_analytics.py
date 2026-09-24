@@ -281,9 +281,11 @@ def resolve_flags(
         if settings.TIMESERIES_ENABLED:
             # TODO: is there a way to have these automatically casted at a
             # lower level (i.e. based on the schema)?
-            interval = node.args["interval"]
+            interval = node.args.get("interval")
             if isinstance(interval, str):
                 interval = Interval[interval]
+            if interval is None:
+                interval = Interval.INTERVAL_1_DAY
             after = node.args["after"]
             if isinstance(after, str):
                 after = from_current_timezone(datetime.fromisoformat(after))
