@@ -21,7 +21,7 @@ from django.http import (
     HttpResponseNotAllowed,
     JsonResponse,
 )
-from graphql import DocumentNode
+from graphql import DocumentNode, GraphQLSyntaxError
 from rest_framework.exceptions import APIException
 from sentry_sdk import capture_exception
 
@@ -305,6 +305,21 @@ class AsyncGraphqlView(GraphQLAsyncView):
                     GQL_ERROR_TYPE_COUNTER,
                     labels={"error_type": "all", "path": req_path},
                 )
+                # Return 400 for syntax errors caused by malformed client queries
+                if all(
+                    e.get("type") == "SyntaxError" for e in data["errors"]
+                ):
+                    inc_counter(
+                        GQL_ERROR_TYPE_COUNTER,
+                        labels={"error_type": "syntax_error", "path": req_path},
+                    )
+                    return JsonResponse(
+                        data={
+                            "status": 400,
+                            "errors": data["errors"],
+                        },
+                        status=400,
+                    )
                 try:
                     if data["errors"][0]["extensions"]["cost"]:
                         costs = data["errors"][0]["extensions"]["cost"]
@@ -353,7 +368,11 @@ class AsyncGraphqlView(GraphQLAsyncView):
         formatted["type"] = "ServerError"
         # if this is one of our own command exception, we can tell a bit more
         original_error = error.original_error
-        if isinstance(original_error, BaseException) or isinstance(
+        if isinstance(error, GraphQLSyntaxError):
+            # Client sent a malformed query — treat as a client error, not a server error
+            formatted["message"] = error.message
+            formatted["type"] = "SyntaxError"
+        elif isinstance(original_error, BaseException) or isinstance(
             original_error, ServiceException
         ):
             formatted["message"] = original_error.message  # type: ignore
