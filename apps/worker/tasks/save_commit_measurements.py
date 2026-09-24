@@ -2,6 +2,7 @@ import logging
 from collections.abc import Sequence
 
 from celery import group
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from app import celery_app
@@ -103,9 +104,13 @@ class SaveCommitMeasurementsTask(
             return
 
         try:
-            # TODO: We should improve on the error handling/logs inside this fn
             save_commit_measurements(commit=commit, dataset_names=dataset_names)
             return {"successful": True}
+        except OperationalError:
+            # Re-raise transient DB connection errors so the base task class
+            # can apply exponential-backoff retries (e.g. SSL SYSCALL errors
+            # caused by a TimescaleDB restart or network interruption).
+            raise
         except Exception:
             log.exception(
                 "An error happened while saving commit measurements",
