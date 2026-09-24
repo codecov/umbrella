@@ -306,8 +306,28 @@ class AsyncGraphqlView(GraphQLAsyncView):
                     labels={"error_type": "all", "path": req_path},
                 )
                 try:
-                    if data["errors"][0]["extensions"]["cost"]:
-                        costs = data["errors"][0]["extensions"]["cost"]
+                    first_error = data["errors"][0]
+                    first_message = first_error.get("message", "")
+                    if first_error.get("type") == "ClientError" or (
+                        "to be a mapping" in first_message
+                        or "Expected type" in first_message
+                    ):
+                        inc_counter(
+                            GQL_ERROR_TYPE_COUNTER,
+                            labels={
+                                "error_type": "invalid_input",
+                                "path": req_path,
+                            },
+                        )
+                        return JsonResponse(
+                            data={
+                                "status": 400,
+                                "detail": first_message,
+                            },
+                            status=400,
+                        )
+                    if first_error["extensions"]["cost"]:
+                        costs = first_error["extensions"]["cost"]
                         log.error(
                             "Query Cost Exceeded",
                             extra={
@@ -346,8 +366,16 @@ class AsyncGraphqlView(GraphQLAsyncView):
         is_anonymous = user.is_anonymous if user else True
         # the only way to check for a malformed query
         is_bad_query = "Cannot query field" in error.formatted["message"]
+        # variable coercion errors are client errors (e.g. passing a string for an input type)
+        is_coercion_error = "to be a mapping" in error.formatted[
+            "message"
+        ] or "Expected type" in error.formatted["message"]
         if debug or (not is_anonymous and is_bad_query):
             return format_error(error, debug)
+        if is_coercion_error:
+            formatted = error.formatted
+            formatted["type"] = "ClientError"
+            return formatted
         formatted = error.formatted
         formatted["message"] = "INTERNAL SERVER ERROR"
         formatted["type"] = "ServerError"
