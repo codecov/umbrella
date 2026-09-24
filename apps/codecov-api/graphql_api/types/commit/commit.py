@@ -488,6 +488,42 @@ def resolve_commit_bundle_analysis_report(commit: Commit, info) -> BundleAnalysi
     return bundle_analysis_report
 
 
+@commit_bindable.field("sourceFile")
+@sync_to_async
+@sentry_sdk.trace
+def resolve_source_file(commit, info, path, flags=None, components=None):
+    fallback_file, paths = None, []
+    if components:
+        all_components = components_service.commit_components(
+            commit,
+            info.context["request"].current_owner,
+            should_use_sentry_app=getattr(
+                info.context["request"], USE_SENTRY_APP_INDICATOR, False
+            ),
+        )
+        filtered_components = components_service.filter_components_by_name_or_id(
+            all_components, components
+        )
+        for fc in filtered_components:
+            paths.extend(fc.paths)
+        fallback_file = FilteredReportFile(ReportFile(path), [])
+
+    if not commit.full_report:
+        return None
+
+    commit_report = commit.full_report.filter(flags=flags, paths=paths)
+    file_report = commit_report.get(path) or fallback_file
+
+    return {
+        "commit_report": commit_report,
+        "file_report": file_report,
+        "commit": commit,
+        "path": path,
+        "flags": flags,
+        "components": components,
+    }
+
+
 @commit_bindable.field("latestUploadError")
 async def resolve_latest_upload_error(commit, info):
     command = info.context["executor"].get_command("commit")
