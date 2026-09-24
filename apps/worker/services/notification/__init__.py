@@ -229,7 +229,7 @@ class NotificationService:
                     **status,
                 }
                 yield (
-                    status["type"],
+                    status.get("type", "project"),
                     f"{status.get('name_prefix', '')}{component.get_display_name()}",
                     n_st,
                 )
