@@ -2,7 +2,7 @@ scalar DateTime
 
 type Query {
   me: Me
-  owner(username: String!): Owner
+  owner(username: String, name: String): Owner
   config: Config!
 }
 
