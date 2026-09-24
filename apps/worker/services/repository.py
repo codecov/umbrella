@@ -28,6 +28,7 @@ from shared.torngit.exceptions import (
     TorngitClientError,
     TorngitError,
     TorngitObjectNotFoundError,
+    TorngitServerFailureError,
 )
 from shared.torngit.response_types import ProviderPull
 from shared.typings.torngit import (
@@ -660,7 +661,7 @@ def fetch_commit_yaml_and_possibly_store(
             exc_info=True,
         )
         commit_yaml = None
-    except TorngitClientError:
+    except (TorngitClientError, TorngitServerFailureError):
         log.warning(
             "Unable to use yaml from commit because it cannot be fetched",
             extra={"repoid": repository.repoid, "commit": commit.commitid},
