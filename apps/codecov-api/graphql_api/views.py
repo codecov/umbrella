@@ -365,8 +365,10 @@ class AsyncGraphqlView(GraphQLAsyncView):
             formatted["type"] = type(original_error).__name__
         else:
             # otherwise it's not supposed to happen, so we log it
-            log.error("GraphQL internal server error", exc_info=original_error)
-            capture_exception(original_error)
+            # but skip logging/capturing if it's a client-caused bad query
+            if not is_bad_query:
+                log.error("GraphQL internal server error", exc_info=original_error)
+                capture_exception(original_error)
         return formatted
 
     @sync_to_async
