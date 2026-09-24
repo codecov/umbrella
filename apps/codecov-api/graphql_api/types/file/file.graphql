@@ -1,6 +1,7 @@
 type File {
   content: String
   coverage: [CoverageAnnotation]
+  lineCoverage: [CoverageAnnotation] @deprecated(reason: "Use `coverage`")
   totals: CoverageTotals
   hashedPath: String!
 }
