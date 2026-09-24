@@ -4,6 +4,7 @@ import logging
 from datetime import timedelta
 
 from celery import signals
+from django.db import close_old_connections
 from celery.beat import BeatLazyFunc
 from celery.schedules import crontab
 
@@ -49,6 +50,25 @@ def initialize_cache(**kwargs):
     log.info("Initialized cache")
     redis_cache_backend = RedisBackend(get_redis_connection())
     cache.configure(redis_cache_backend)
+
+
+@signals.task_prerun.connect
+def reset_db_connections(**kwargs) -> None:
+    """Close stale DB connections before each task.
+
+    Celery tasks bypass Django's request/response cycle, so the normal
+    close_old_connections() middleware hook never fires. Without this,
+    workers can reuse connections that the PostgreSQL server has already
+    closed (e.g. read-replica restart or idle-connection timeout),
+    causing OperationalError: server closed the connection unexpectedly.
+    """
+    close_old_connections()
+
+
+@signals.task_postrun.connect
+def close_db_connections(**kwargs) -> None:
+    """Release DB connections after each task completes."""
+    close_old_connections()
 
 
 # Cron task names
