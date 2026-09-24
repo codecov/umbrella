@@ -5,7 +5,8 @@ from enum import Enum
 
 import sentry_sdk
 from asgiref.sync import async_to_sync
-from celery.exceptions import Retry, SoftTimeLimitExceeded
+from celery.exceptions import Reject, Retry, SoftTimeLimitExceeded
+from kombu.exceptions import OperationalError as BrokerOperationalError
 
 from app import celery_app
 from celery_config import notify_error_task_name
@@ -533,9 +534,21 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                 upload_ids=upload_ids,
                 error=Errors.INTERNAL_RETRYING,
             )
-            self.retry(
-                max_retries=UPLOAD_FINISHER_MAX_RETRIES, countdown=retry.countdown
-            )
+            try:
+                self.retry(
+                    max_retries=UPLOAD_FINISHER_MAX_RETRIES, countdown=retry.countdown
+                )
+            except BrokerOperationalError as broker_exc:
+                log.error(
+                    "Upload finisher retry failed due to broker OOM; requeuing original task",
+                    extra={
+                        "commitid": commitid,
+                        "repoid": repoid,
+                        "attempts": self.attempts,
+                        "error": str(broker_exc),
+                    },
+                )
+                raise Reject(broker_exc, requeue=True) from broker_exc
 
     def _handle_finisher_lock(
         self,
@@ -654,9 +667,21 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                 upload_ids=upload_ids,
                 error=Errors.INTERNAL_RETRYING,
             )
-            self.retry(
-                max_retries=UPLOAD_FINISHER_MAX_RETRIES, countdown=retry.countdown
-            )
+            try:
+                self.retry(
+                    max_retries=UPLOAD_FINISHER_MAX_RETRIES, countdown=retry.countdown
+                )
+            except BrokerOperationalError as broker_exc:
+                log.error(
+                    "Upload finisher retry failed due to broker OOM; requeuing original task",
+                    extra={
+                        "commitid": commitid,
+                        "repoid": repoid,
+                        "attempts": self.attempts,
+                        "error": str(broker_exc),
+                    },
+                )
+                raise Reject(broker_exc, requeue=True) from broker_exc
 
     def finish_reports_processing(
         self,
