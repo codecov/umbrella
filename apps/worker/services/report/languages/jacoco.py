@@ -88,8 +88,12 @@ def from_xml(xml: Element, report_builder_session: ReportBuilderSession) -> None
                     if ln > 0:
                         for counter in method.iter("counter"):
                             if counter.attrib["type"] == "COMPLEXITY":
-                                m = int(counter.attrib["missed"])
-                                c = int(counter.attrib["covered"])
+                                missed = counter.attrib.get("missed")
+                                covered = counter.attrib.get("covered")
+                                if missed is None or covered is None:
+                                    break
+                                m = int(missed)
+                                c = int(covered)
                                 method_complixity[ln] = (c, m + c)
                                 break
 
