@@ -728,17 +728,19 @@ class BaseCodecovTask(celery_app.Task):
         Queue a task to create an upload breadcrumb.
         """
         try:
-            self.app.tasks[upload_breadcrumb_task_name].apply_async(
-                kwargs={
-                    "commit_sha": commit_sha,
-                    "repo_id": repo_id,
-                    "breadcrumb_data": BreadcrumbData(
-                        milestone=milestone, error=error, error_text=error_text
-                    ),
-                    "upload_ids": upload_ids,
-                    "sentry_trace_id": current_sentry_trace_id(),
-                }
-            )
+            with self.app.connection_or_connect() as conn:
+                self.app.tasks[upload_breadcrumb_task_name].apply_async(
+                    kwargs={
+                        "commit_sha": commit_sha,
+                        "repo_id": repo_id,
+                        "breadcrumb_data": BreadcrumbData(
+                            milestone=milestone, error=error, error_text=error_text
+                        ),
+                        "upload_ids": upload_ids,
+                        "sentry_trace_id": current_sentry_trace_id(),
+                    },
+                    connection=conn,
+                )
         except Exception:
             log.exception(
                 "Failed to queue upload breadcrumb task",
