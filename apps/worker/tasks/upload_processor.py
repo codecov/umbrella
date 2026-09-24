@@ -1,7 +1,7 @@
 import logging
 
 import sentry_sdk
-from celery.exceptions import SoftTimeLimitExceeded
+from celery.exceptions import Retry, SoftTimeLimitExceeded
 from sqlalchemy.orm import Session as DbSession
 
 from app import celery_app
@@ -133,15 +133,52 @@ class UploadProcessorTask(BaseCodecovTask, name=upload_processor_task_name):
                     },
                 )
 
+        # Maximum retries when commit/upload records are transiently missing from DB
+        MAX_MISSING_DATA_RETRIES = 3
+        MISSING_DATA_RETRY_DELAY = 30  # seconds
+
+        def on_missing_data(reason: str):
+            """Retry when required DB records (Commit or Upload) are not yet visible."""
+            retry_count = self.request.retries
+            if retry_count < MAX_MISSING_DATA_RETRIES:
+                countdown = MISSING_DATA_RETRY_DELAY * (2**retry_count)
+                log.warning(
+                    "Required data missing, scheduling retry",
+                    extra={
+                        "reason": reason,
+                        "countdown": countdown,
+                        "retry_count": retry_count,
+                    },
+                )
+                self._call_upload_breadcrumb_task(
+                    commit_sha=commitid,
+                    repo_id=repoid,
+                    milestone=Milestones.PROCESSING_UPLOAD,
+                    upload_ids=[arguments["upload_id"]],
+                    error=Errors.INTERNAL_RETRYING,
+                )
+                self.retry(max_retries=MAX_MISSING_DATA_RETRIES, countdown=countdown)
+            else:
+                log.error(
+                    "Required data still missing after max retries, giving up",
+                    extra={"reason": reason, "retry_count": retry_count},
+                )
+                raise AssertionError(reason)
+
         try:
             return process_upload(
                 on_processing_error,
+                on_missing_data,
                 db_session,
                 int(repoid),
                 commitid,
                 UserYaml(commit_yaml),
                 arguments,
             )
+        except Retry:
+            # Retry exceptions are raised intentionally (e.g. missing commit/upload);
+            # do not emit an error breadcrumb for them.
+            raise
         except SoftTimeLimitExceeded as e:
             self._call_upload_breadcrumb_task(
                 commit_sha=commitid,
