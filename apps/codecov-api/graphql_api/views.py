@@ -239,7 +239,11 @@ class AsyncGraphqlView(GraphQLAsyncView):
     ) -> HttpResponse:
         await self._get_user(request)
         # get request body information for logging
-        req_body = json.loads(request.body.decode("utf-8")) if request.body else {}
+        try:
+            req_body = json.loads(request.body.decode("utf-8")) if request.body else {}
+        except json.JSONDecodeError:
+            log.warning("GraphQL request body could not be parsed as JSON")
+            req_body = {}
 
         # get request path information for logging
         req_path = request.get_full_path()
