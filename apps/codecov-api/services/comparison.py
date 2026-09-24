@@ -308,6 +308,9 @@ class CreateChangeSummaryVisitor(FileComparisonVisitor):
         if line_type(base_line[0]) == line_type(head_line[0]):
             return
 
+        if LineType.skipped in (line_type(base_line[0]), line_type(head_line[0])):
+            return
+
         self._update_summary(base_line, head_line)
 
 
