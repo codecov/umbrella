@@ -41,7 +41,7 @@ def resolve_me(_: Any, info: GraphQLResolveInfo) -> Owner | None:
 
 @query_bindable.field("owner")
 async def resolve_owner(
-    _: Any, info: GraphQLResolveInfo, username: str
+    _: Any, info: GraphQLResolveInfo, username: str, service: str | None = None
 ) -> Owner | None:
     configure_sentry_scope(query_name(info))
 
