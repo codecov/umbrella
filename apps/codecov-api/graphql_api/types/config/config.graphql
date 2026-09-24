@@ -5,6 +5,8 @@ type Config {
   seatsLimit: Int
   isTimescaleEnabled: Boolean!
   hasAdmins: Boolean
+  codecovUrl: String
+  apiUrl: String
   githubEnterpriseURL: String
   gitlabEnterpriseURL: String
   bitbucketServerURL: String
