@@ -56,6 +56,11 @@ type Repository {
   "CoverageAnalytics are fields related to Codecov's Coverage product offering"
   coverageAnalytics: CoverageAnalytics
 
+  flagsMeasurementsActive: Boolean! @deprecated(reason: "Use coverageAnalytics { flagsMeasurementsActive } instead")
+  flagsMeasurementsBackfilled: Boolean! @deprecated(reason: "Use coverageAnalytics { flagsMeasurementsBackfilled } instead")
+  componentsMeasurementsActive: Boolean! @deprecated(reason: "Use coverageAnalytics { componentsMeasurementsActive } instead")
+  componentsMeasurementsBackfilled: Boolean! @deprecated(reason: "Use coverageAnalytics { componentsMeasurementsBackfilled } instead")
+
   "TestAnalytics are fields related to Codecov's Test Analytics product offering"
   testAnalytics: TestAnalytics
 }
