@@ -11,6 +11,7 @@ from compare.models import CommitComparison
 from core.models import Commit, Pull
 from graphql_api.actions.commits import pull_commits
 from graphql_api.actions.comparison import validate_commit_comparison
+from graphql_api.actions.flags import get_flag_comparisons
 from graphql_api.dataloader.bundle_analysis import load_bundle_analysis_comparison
 from graphql_api.dataloader.commit import CommitLoader
 from graphql_api.dataloader.comparison import ComparisonLoader
@@ -161,6 +162,25 @@ def resolve_behind_by_commit(
     pull: Pull, info: GraphQLResolveInfo, **kwargs: Any
 ) -> str:
     return pull.behind_by_commit
+
+
+@sync_to_async
+def _get_flag_comparisons_list(commit_comparison) -> list:
+    return list(get_flag_comparisons(commit_comparison))
+
+
+@pull_bindable.field("flagComparisons")
+@sentry_sdk.trace
+async def resolve_flag_comparisons_on_pull(
+    pull: Pull, info: GraphQLResolveInfo, **kwargs: Any
+) -> list:
+    if not pull.compared_to or not pull.head:
+        return []
+    comparison_loader = ComparisonLoader.loader(info, pull.repository_id)
+    commit_comparison = await comparison_loader.load((pull.compared_to, pull.head))
+    if commit_comparison is None or not commit_comparison.is_processed:
+        return []
+    return await _get_flag_comparisons_list(commit_comparison)
 
 
 @pull_bindable.field("firstPull")
