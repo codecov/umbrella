@@ -229,6 +229,7 @@ class BaseCodecovTask(celery_app.Task):
         db_session = get_db_session()
         user_plan = _get_user_plan_from_task(db_session, self.name, kwargs)
         ownerid = _get_ownerid_from_task(db_session, self.name, kwargs)
+        close_old_connections()
         route_with_extra_config = route_tasks_based_on_user_plan(
             self.name, user_plan, ownerid
         )
