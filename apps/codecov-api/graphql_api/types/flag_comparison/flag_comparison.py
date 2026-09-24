@@ -20,6 +20,16 @@ def resolve_head_totals(flag_comparison: FlagComparison, info) -> dict:
     return flag_comparison.head_totals
 
 
+@flag_comparison_bindable.field("head")
+def resolve_head(flag_comparison: FlagComparison, info) -> dict:
+    return flag_comparison.head_totals
+
+
 @flag_comparison_bindable.field("baseTotals")
 def resolve_base_totals(flag_comparison: FlagComparison, info) -> dict:
+    return flag_comparison.base_totals
+
+
+@flag_comparison_bindable.field("base")
+def resolve_base(flag_comparison: FlagComparison, info) -> dict:
     return flag_comparison.base_totals
