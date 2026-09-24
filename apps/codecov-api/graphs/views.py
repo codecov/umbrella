@@ -299,16 +299,24 @@ class GraphHandler(APIView, RepoPropertyMixin, GraphBadgeAPIMixin):
             FLARE_USE_COUNTER, labels={"flare_request": "completed_successfully"}
         )
 
+        def _safe_int_param(value, default):
+            try:
+                return int(value)
+            except (ValueError, TypeError):
+                return int(default)
+
         if graph == "tree":
-            options["width"] = int(
+            options["width"] = _safe_int_param(
                 self.request.query_params.get(
                     "width", settings["sunburst"]["options"]["width"] or 100
-                )
+                ),
+                settings["sunburst"]["options"]["width"] or 100,
             )
-            options["height"] = int(
+            options["height"] = _safe_int_param(
                 self.request.query_params.get(
                     "height", settings["sunburst"]["options"]["height"] or 100
-                )
+                ),
+                settings["sunburst"]["options"]["height"] or 100,
             )
             inc_counter(FLARE_SUCCESS_COUNTER, labels={"graph_type": graph})
             log.info(
@@ -321,15 +329,17 @@ class GraphHandler(APIView, RepoPropertyMixin, GraphBadgeAPIMixin):
             )
             return tree(flare, None, None, **options)
         elif graph == "icicle":
-            options["width"] = int(
+            options["width"] = _safe_int_param(
                 self.request.query_params.get(
                     "width", settings["icicle"]["options"]["width"] or 100
-                )
+                ),
+                settings["icicle"]["options"]["width"] or 100,
             )
-            options["height"] = int(
+            options["height"] = _safe_int_param(
                 self.request.query_params.get(
                     "height", settings["icicle"]["options"]["height"] or 100
-                )
+                ),
+                settings["icicle"]["options"]["height"] or 100,
             )
             inc_counter(FLARE_SUCCESS_COUNTER, labels={"graph_type": graph})
             log.info(
@@ -342,15 +352,17 @@ class GraphHandler(APIView, RepoPropertyMixin, GraphBadgeAPIMixin):
             )
             return icicle(flare, **options)
         elif graph == "sunburst":
-            options["width"] = int(
+            options["width"] = _safe_int_param(
                 self.request.query_params.get(
                     "width", settings["sunburst"]["options"]["width"] or 100
-                )
+                ),
+                settings["sunburst"]["options"]["width"] or 100,
             )
-            options["height"] = int(
+            options["height"] = _safe_int_param(
                 self.request.query_params.get(
                     "height", settings["sunburst"]["options"]["height"] or 100
-                )
+                ),
+                settings["sunburst"]["options"]["height"] or 100,
             )
             inc_counter(FLARE_SUCCESS_COUNTER, labels={"graph_type": graph})
             log.info(
