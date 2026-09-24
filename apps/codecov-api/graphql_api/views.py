@@ -363,6 +363,21 @@ class AsyncGraphqlView(GraphQLAsyncView):
             # (e.g., unauthorized, forbidden) that shouldn't be sent to Sentry
             formatted["message"] = str(original_error.detail)
             formatted["type"] = type(original_error).__name__
+        elif original_error is None:
+            # No original_error means this is a GraphQL engine-level error
+            # (e.g. variable type coercion failure, query validation error).
+            # These are client mistakes, not server bugs — don't log or capture.
+            formatted["message"] = error.message
+            formatted["type"] = "ClientError"
+            inc_counter(
+                GQL_ERROR_TYPE_COUNTER,
+                labels={
+                    "error_type": "variable_coercion_error",
+                    "path": self.request.get_full_path()
+                    if hasattr(self, "request")
+                    else "",
+                },
+            )
         else:
             # otherwise it's not supposed to happen, so we log it
             log.error("GraphQL internal server error", exc_info=original_error)
