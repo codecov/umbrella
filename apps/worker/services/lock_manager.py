@@ -8,6 +8,7 @@ import sentry_sdk
 from redis import Redis  # type: ignore
 from redis.exceptions import ConnectionError as RedisConnectionError  # type: ignore
 from redis.exceptions import LockError
+from redis.exceptions import ReadOnlyError as RedisReadOnlyError  # type: ignore
 from redis.exceptions import TimeoutError as RedisTimeoutError
 
 from database.enums import ReportType
@@ -103,7 +104,7 @@ class LockManager:
         """Clear the lock attempt counter. Log and swallow Redis errors so teardown does not mask other failures."""
         try:
             self.redis_connection.delete(attempt_key)
-        except (RedisConnectionError, RedisTimeoutError, OSError) as e:
+        except (RedisConnectionError, RedisTimeoutError, RedisReadOnlyError, OSError) as e:
             log.warning(
                 "Failed to clear lock attempt counter (Redis unavailable or error)",
                 extra={
@@ -173,12 +174,29 @@ class LockManager:
                         "repoid": self.repoid,
                     },
                 )
-        except LockError:
-            #  incr/expire can raise RedisConnectionError/RedisTimeoutError when Redis
-            # is unavailable; we let those propagate so the task fails once (no infinite loop).
-            attempts = self.redis_connection.incr(attempt_key)
-            if attempts == 1:
-                self.redis_connection.expire(attempt_key, LOCK_ATTEMPTS_TTL_SECONDS)
+        except (LockError, RedisReadOnlyError):
+            # RedisReadOnlyError means the configured Redis URL resolved to a
+            # read-only replica (e.g. after a failover).  Treat it like a
+            # failed lock acquisition so the task retries rather than crashing.
+            # incr/expire can raise RedisConnectionError/RedisTimeoutError/RedisReadOnlyError
+            # when Redis is unavailable or read-only; we swallow those and let the task retry.
+            try:
+                attempts = self.redis_connection.incr(attempt_key)
+                if attempts == 1:
+                    self.redis_connection.expire(attempt_key, LOCK_ATTEMPTS_TTL_SECONDS)
+            except (RedisConnectionError, RedisTimeoutError, RedisReadOnlyError, OSError):
+                log.warning(
+                    "Failed to update lock attempt counter (Redis unavailable or read-only)",
+                    extra={
+                        "attempt_key": attempt_key,
+                        "commitid": self.commitid,
+                        "lock_name": lock_name,
+                        "lock_type": lock_type.value,
+                        "repoid": self.repoid,
+                    },
+                    exc_info=True,
+                )
+                attempts = retry_num + 1  # best-effort fallback: assume one more than current
 
             max_retry_unbounded = self.base_retry_countdown * (
                 RETRY_BACKOFF_MULTIPLIER**retry_num
