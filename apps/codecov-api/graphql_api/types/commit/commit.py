@@ -38,7 +38,11 @@ from graphql_api.types.enums import OrderingDirection, PathContentDisplayType
 from graphql_api.types.errors import MissingCoverage, UnknownPath
 from graphql_api.types.errors.errors import UnknownFlags
 from reports.models import CommitReport
-from services.bundle_analysis import BundleAnalysisComparison, BundleAnalysisReport
+from services.bundle_analysis import (
+    BundleAnalysisComparison,
+    BundleAnalysisReport,
+    BundleData,
+)
 from services.comparison import Comparison, ComparisonReport
 from services.components import Component
 from services.path import Dir, File, ReportPaths
@@ -492,3 +496,43 @@ def resolve_commit_bundle_analysis_report(commit: Commit, info) -> BundleAnalysi
 async def resolve_latest_upload_error(commit, info):
     command = info.context["executor"].get_command("commit")
     return await command.get_latest_upload_error(commit)
+
+
+@commit_bundle_analysis_bindable.field("sizeTotal")
+@sync_to_async
+def resolve_commit_bundle_analysis_size_total(
+    commit: Commit, info: GraphQLResolveInfo
+) -> int | None:
+    report = load_bundle_analysis_report(commit)
+    if isinstance(report, BundleAnalysisReport):
+        return report.size_total
+    return None
+
+
+@commit_bundle_analysis_bindable.field("loadTimeTotal")
+@sync_to_async
+def resolve_commit_bundle_analysis_load_time_total(
+    commit: Commit, info: GraphQLResolveInfo
+) -> int | None:
+    report = load_bundle_analysis_report(commit)
+    if isinstance(report, BundleAnalysisReport):
+        return BundleData(report.size_total).load_time.three_g
+    return None
+
+
+@commit_bundle_analysis_bindable.field("bundles")
+@sync_to_async
+def resolve_commit_bundle_analysis_bundles(
+    commit: Commit, info: GraphQLResolveInfo
+) -> list[dict] | None:
+    report = load_bundle_analysis_report(commit)
+    if isinstance(report, BundleAnalysisReport):
+        return [
+            {
+                "name": bundle.name,
+                "sizeTotal": bundle.size_total,
+                "loadTimeTotal": BundleData(bundle.size_total).load_time.three_g,
+            }
+            for bundle in report.bundles
+        ]
+    return None
