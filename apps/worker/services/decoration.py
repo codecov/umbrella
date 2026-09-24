@@ -1,6 +1,8 @@
 import logging
 from dataclasses import dataclass
 
+from django.db import close_old_connections
+
 from database.enums import Decoration
 from database.models import Owner
 from services.license import requires_license
@@ -109,6 +111,13 @@ def determine_decoration_details(
         org = db_pull.repository.author
 
         db_session = db_pull.get_db_session()
+
+        # Close any stale Django DB connections before querying via PlanService.
+        # The Notify task can run for a long time before reaching this point, and
+        # the `default_read` read-replica connection may have been dropped by the
+        # server due to idle timeout. close_old_connections() forces Django to
+        # discard those stale connections so a fresh one is established on next use.
+        close_old_connections()
 
         # do not access plan directly - only through PlanService
         org_plan = PlanService(current_org=org)
