@@ -353,7 +353,14 @@ class AsyncGraphqlView(GraphQLAsyncView):
         formatted["type"] = "ServerError"
         # if this is one of our own command exception, we can tell a bit more
         original_error = error.original_error
-        if isinstance(original_error, BaseException) or isinstance(
+        if original_error is None:
+            # Native graphql-core errors (validation, coercion, etc.) have no
+            # underlying Python exception. These are client mistakes (e.g. passing
+            # a string where an input object is required) and should not be sent
+            # to Sentry.
+            formatted["message"] = error.message
+            formatted["type"] = "ClientError"
+        elif isinstance(original_error, BaseException) or isinstance(
             original_error, ServiceException
         ):
             formatted["message"] = original_error.message  # type: ignore
