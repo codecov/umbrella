@@ -1599,7 +1599,7 @@ class Github(TorngitBaseAdapter):
                     max=MAX_RESULTS_PER_PAGE,
                     page_n=page_number,
                 )
-                page_results = await self.api(client, "get", url, token=token)
+                page_results = await self.api(client, "get", url, token=token) or []
                 if len(page_results):
                     all_commits.extend(page_results)
                 if len(page_results) < MAX_RESULTS_PER_PAGE:
