@@ -191,8 +191,8 @@ class UploadCoverageView(GetterMixin, APIView):
                 upload_serializer.errors, status=status.HTTP_400_BAD_REQUEST
             )
 
-        commitid = upload.report.commit.commitid
-        upload_repository = upload.report.commit.repository
+        commitid = commit.commitid
+        upload_repository = repository
         url = f"{settings.CODECOV_DASHBOARD_URL}/{upload_repository.author.service}/{upload_repository.author.username}/{upload_repository.name}/commit/{commitid}"
         archive_service = ArchiveService(upload_repository)
         raw_upload_location = archive_service.create_presigned_put(
