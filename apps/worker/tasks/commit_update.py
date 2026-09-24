@@ -1,6 +1,7 @@
 import datetime as dt
 import logging
 
+import requests
 from app import celery_app
 from database.models import Branch, Commit, Pull
 from helpers.exceptions import RepositoryWithoutValidBotError
@@ -142,6 +143,13 @@ class CommitUpdateTask(BaseCodecovTask, name=commit_update_task_name):
                 exc_info=True,
             )
             error = Errors.GIT_CLIENT_ERROR
+        except requests.exceptions.ConnectionError:
+            log.warning(
+                "Unable to reach git provider due to a transient network error",
+                extra={"repoid": repoid, "commit": commitid},
+                exc_info=True,
+            )
+            error = Errors.UNKNOWN
         if was_updated:
             log.info(
                 "Commit updated successfully",
