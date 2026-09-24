@@ -214,10 +214,22 @@ class SyncPlansTask(BaseCodecovTask, name=ghm_sync_plans_task_name):
 
             if owner.stripe_customer_id and owner.stripe_subscription_id:
                 # cancel stripe subscription immediately
-                stripe.Subscription.cancel(
-                    owner.stripe_subscription_id,
-                    prorate=True,
-                )
+                try:
+                    stripe.Subscription.cancel(
+                        owner.stripe_subscription_id,
+                        prorate=True,
+                    )
+                except stripe.InvalidRequestError as e:
+                    if e.code == "resource_missing":
+                        log.warning(
+                            "Stripe subscription not found when cancelling; treating as already cancelled",
+                            extra=dict(
+                                stripe_subscription_id=owner.stripe_subscription_id,
+                                service_id=owner.service_id,
+                            ),
+                        )
+                    else:
+                        raise
                 owner.stripe_subscription_id = None
         else:
             # create the user
