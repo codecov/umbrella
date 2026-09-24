@@ -822,7 +822,7 @@ class Gitlab(TorngitBaseAdapter):
         try:
             result = await self.api("get", url, token=token_to_use)
             return result.get("pipeline", {}).get("sha")
-        except TorngitClientError as err:
+        except (TorngitClientError, TorngitRefreshTokenFailedError) as err:
             log.warning("Failed to get pipeline details", extra={"error": err})
             return None
 
