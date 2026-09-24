@@ -9,6 +9,7 @@ type Comparison {
   baseTotals: CoverageTotals
   headTotals: CoverageTotals
   changeCoverage: Float
+  fileComparisons: [ImpactedFile] @deprecated(reason: "Use impactedFiles instead")
   flagComparisons(filters: FlagComparisonFilters): [FlagComparison]
   componentComparisons(filters: ComponentsFilters): [ComponentComparison!]
   hasDifferentNumberOfHeadAndBaseReports: Boolean!
