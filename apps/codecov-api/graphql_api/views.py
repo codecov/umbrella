@@ -353,7 +353,12 @@ class AsyncGraphqlView(GraphQLAsyncView):
         formatted["type"] = "ServerError"
         # if this is one of our own command exception, we can tell a bit more
         original_error = error.original_error
-        if isinstance(original_error, BaseException) or isinstance(
+        if original_error is None:
+            # No original_error means this is a GraphQL protocol-level error
+            # (e.g. variable coercion failure, syntax error) caused by invalid
+            # client input. These are not server bugs, so don't log or capture.
+            return formatted
+        elif isinstance(original_error, BaseException) or isinstance(
             original_error, ServiceException
         ):
             formatted["message"] = original_error.message  # type: ignore
