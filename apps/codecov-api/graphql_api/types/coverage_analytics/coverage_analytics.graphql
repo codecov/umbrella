@@ -42,8 +42,8 @@ type CoverageAnalytics {
   "Components are the measurements by component for this repository"
   components(
     interval: MeasurementInterval!
-    before: DateTime!
-    after: DateTime!
+    before: DateTime
+    after: DateTime
     branch: String
     filters: ComponentMeasurementsSetFilters
     orderingDirection: OrderingDirection
