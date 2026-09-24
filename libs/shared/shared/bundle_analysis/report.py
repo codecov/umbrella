@@ -632,3 +632,47 @@ class BundleAnalysisReport:
             session.delete(bundle_to_be_deleted)
 
             session.commit()
+
+    @sentry_sdk.trace
+    def delete_bundles_by_names(self, bundle_names: list[str]) -> None:
+        """Batch delete multiple bundles by name in a single database session,
+        avoiding N+1 queries when deleting many bundles at once."""
+        if not bundle_names:
+            return
+        with get_db_session(self.db_path) as session:
+            bundles_to_delete = (
+                session.query(Bundle)
+                .filter(Bundle.name.in_(bundle_names))
+                .all()
+            )
+            if not bundles_to_delete:
+                return
+
+            bundle_ids = [b.id for b in bundles_to_delete]
+
+            sessions_to_delete = (
+                session.query(Session)
+                .filter(Session.bundle_id.in_(bundle_ids))
+                .all()
+            )
+            session_ids = [s.id for s in sessions_to_delete]
+
+            if len(sessions_to_delete) != len(bundles_to_delete):
+                raise Exception(
+                    "Data integrity error - cannot have Bundles without Sessions"
+                )
+
+            # Deletes Asset, Chunk, Module for all matching sessions at once
+            for model in [Asset, Chunk, Module]:
+                stmt = model.__table__.delete().where(
+                    model.session_id.in_(session_ids)
+                )
+                session.execute(stmt)
+
+            # Deletes Sessions and Bundles
+            for session_to_delete in sessions_to_delete:
+                session.delete(session_to_delete)
+            for bundle_to_delete in bundles_to_delete:
+                session.delete(bundle_to_delete)
+
+            session.commit()
