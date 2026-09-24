@@ -76,7 +76,7 @@ def get_test_results_aggregates(
     end_date: datetime,
 ) -> TestResultsAggregates | None:
     if not _should_use_precomputed_aggregates(branch):
-        raise ValueError("Test results aggregates are not precomputed")
+        return None
 
     interval_duration = end_date - start_date
     comparison_start_date = start_date - interval_duration
