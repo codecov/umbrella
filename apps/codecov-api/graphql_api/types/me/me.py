@@ -26,6 +26,11 @@ me = me + build_connection_graphql("UserTokenConnection", "UserToken")
 me_bindable = ObjectType("Me")
 
 
+@me_bindable.field("avatarUrl")
+def resolve_avatar_url(owner: Owner, _) -> str:
+    return owner.avatar_url
+
+
 @me_bindable.field("user")
 def resolve_user(user, _):
     return user

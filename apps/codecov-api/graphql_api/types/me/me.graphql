@@ -1,5 +1,6 @@
 type Me {
   email: String
+  avatarUrl: String!
   businessEmail: String
   onboardingCompleted: Boolean!
   user: User!
