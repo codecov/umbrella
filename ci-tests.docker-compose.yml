@@ -53,14 +53,18 @@ services:
       - codecov
 
   minio:
-    image: quay.io/minio/minio:RELEASE.2025-07-23T15-54-02Z
-    command: server --address ":9002" /export
+    # Official minio/minio was removed from Docker Hub; quay.io/minio/minio has
+    # since disabled anonymous pulls ($disabled). bitnamilegacy still serves
+    # the last public Bitnami builds.
+    image: bitnamilegacy/minio:2025.7.23-debian-12-r5
     environment:
-      - MINIO_ACCESS_KEY=codecov-default-key
-      - MINIO_SECRET_KEY=codecov-default-secret
+      - MINIO_ROOT_USER=codecov-default-key
+      - MINIO_ROOT_PASSWORD=codecov-default-secret
+      - MINIO_API_PORT_NUMBER=9002
+      - MINIO_CONSOLE_PORT_NUMBER=9003
     volumes:
       - type: tmpfs
-        target: /export
+        target: /bitnami/minio/data
         tmpfs:
           size: 256M
     networks:
