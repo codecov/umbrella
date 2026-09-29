@@ -351,6 +351,12 @@ class AsyncGraphqlView(GraphQLAsyncView):
         formatted = error.formatted
         formatted["message"] = "INTERNAL SERVER ERROR"
         formatted["type"] = "ServerError"
+        # Validation/syntax errors (e.g. querying a nonexistent field) have no
+        # original exception: they are client mistakes, not server failures.
+        # Keep the generic message (don't leak schema details to anonymous
+        # users), but don't log/report them as internal errors.
+        if is_bad_query or error.original_error is None:
+            return formatted
         # if this is one of our own command exception, we can tell a bit more
         original_error = error.original_error
         if isinstance(original_error, BaseException) or isinstance(
