@@ -263,9 +263,10 @@ def get_repo_with_github_actions_oidc_token(token: str) -> Repository:
             # GitHub Enterprise Cloud with data residency (*.ghe.com) issues
             # Actions OIDC tokens from token.actions.<subdomain>.ghe.com, which
             # serves its JWKS at the issuer's standard well-known path rather
-            # than the GitHub Enterprise Server /_services/token path. Only the
-            # configured enterprise's token host is trusted here.
-            jwks_url = f"{token_issuer}/.well-known/jwks"
+            # than the GitHub Enterprise Server /_services/token path. The URL
+            # is built from the configured host so nothing from the unverified
+            # token reaches the fetch.
+            jwks_url = f"https://token.actions.{gh_enterprise_host}/.well-known/jwks"
         else:
             # GitHub Enterprise Server appliance.
             jwks_url = f"{github_enterprise_url}/_services/token/.well-known/jwks"
