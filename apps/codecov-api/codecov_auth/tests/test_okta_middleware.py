@@ -6,6 +6,7 @@ from django.test import RequestFactory, override_settings
 from codecov_auth.middleware import okta_admin_samesite_middleware
 
 
+@pytest.mark.django_db
 class TestOktaAdminSameSiteMiddleware:
     """Tests for the Okta admin SameSite middleware."""
 
