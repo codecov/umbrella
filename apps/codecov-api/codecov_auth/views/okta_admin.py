@@ -56,7 +56,16 @@ class OktaAdminLoginView(OktaLoginMixin, StateMixin, View):
         state = request.GET.get("state")
 
         if not self.verify_state(state):
-            log.warning("Invalid state during Okta admin login callback")
+            log.warning(
+                "Invalid state during Okta admin login callback",
+                extra={
+                    "state_param": state,
+                    "has_session_state": bool(
+                        request.session.get(self._session_key(), None)
+                    ),
+                    "session_key": request.session.session_key,
+                },
+            )
             return redirect(f"/{_ADMIN_URL}/login/")
 
         basic_auth = HTTPBasicAuth(
