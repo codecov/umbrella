@@ -52,7 +52,13 @@ def from_xml(xml: Element, report_builder_session: ReportBuilderSession) -> None
                 parsed_datetime = None
                 is_valid_timestamp = False
 
-            if is_valid_timestamp and parsed_datetime < max_age:
+            try:
+                is_expired = is_valid_timestamp and parsed_datetime < max_age
+            except TimestringInvalid:
+                # max_age is not a parseable date string (e.g. "off") - skip expiry check
+                is_expired = False
+
+            if is_expired:
                 # report expired over 12 hours ago
                 raise ReportExpiredException(
                     "Cobertura report expired " + original_timestamp
