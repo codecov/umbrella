@@ -9,7 +9,7 @@ during OAuth callbacks.
 import pytest
 from django.contrib.sessions.middleware import SessionMiddleware
 from django.http import HttpResponse
-from django.test import RequestFactory, override_settings
+from django.test import RequestFactory, TestCase, override_settings
 
 from codecov_auth.middleware import okta_admin_samesite_middleware
 from codecov_auth.views.okta_admin import OktaAdminLoginView
@@ -24,7 +24,7 @@ from codecov_auth.views.okta_admin import OktaAdminLoginView
     SESSION_COOKIE_NAME="sessionid",
     SESSION_COOKIE_DOMAIN=".codecov.io",
 )
-class TestOktaAdminSameSiteIntegration:
+class TestOktaAdminSameSiteIntegration(TestCase):
     """Integration tests for the complete SameSite=None fix."""
 
     @pytest.fixture
