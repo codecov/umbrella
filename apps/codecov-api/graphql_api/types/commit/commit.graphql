@@ -44,6 +44,7 @@ type CommitCoverageAnalytics {
 "fields related to Codecov's Bundle Analysis product offering"
 type CommitBundleAnalysis {
   bundleAnalysisCompareWithParent: BundleAnalysisComparisonResult
+  bundleAnalysisCompareWithBase: BundleAnalysisComparisonResult
   bundleAnalysisReport: BundleAnalysisReportResult
 }
 

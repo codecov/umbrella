@@ -470,6 +470,14 @@ async def resolve_commit_bundle_analysis_compare_with_parent(
     return bundle_analysis_comparison
 
 
+@commit_bundle_analysis_bindable.field("bundleAnalysisCompareWithBase")
+@sentry_sdk.trace
+async def resolve_commit_bundle_analysis_compare_with_base(
+    commit: Commit, info: GraphQLResolveInfo
+) -> BundleAnalysisComparison | Any:
+    return await resolve_commit_bundle_analysis_compare_with_parent(commit, info)
+
+
 @commit_bundle_analysis_bindable.field("bundleAnalysisReport")
 @sync_to_async
 @sentry_sdk.trace
