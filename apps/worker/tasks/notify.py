@@ -2,7 +2,7 @@ import logging
 
 import sentry_sdk
 from asgiref.sync import async_to_sync
-from celery.exceptions import MaxRetriesExceededError
+from celery.exceptions import MaxRetriesExceededError, SoftTimeLimitExceeded
 from sqlalchemy import and_
 from sqlalchemy.orm.session import Session
 
@@ -740,6 +740,17 @@ class NotifyTask(BaseCodecovTask, name=notify_task_name):
                 gh_installation_name_to_use=installation_name_to_use,
             )
             return notifications_service.notify(comparison)
+        except SoftTimeLimitExceeded:
+            # Re-raise immediately without accessing any ORM attributes.
+            # Accessing lazy-loaded attributes like commit.commitid on a
+            # session whose DB connection was killed by the timeout signal
+            # would trigger a new query on the dead connection and cause a
+            # secondary OperationalError that masks the real timeout.
+            log.warning(
+                "SoftTimeLimitExceeded raised during submit_third_party_notifications",
+                exc_info=True,
+            )
+            raise
         except Exception as e:
             self._call_upload_breadcrumb_task(
                 commit_sha=commit.commitid,
