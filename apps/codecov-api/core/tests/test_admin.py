@@ -497,7 +497,7 @@ class CommitAdminTests(TestCase):
         request.user = self.user
         qs = self.commit_admin.get_queryset(request)
         filter_instance = CommitNotificationStatusFilter(
-            request, {"notification_status": "all_passed"}, Commit, self.commit_admin
+            request, {"notification_status": ["all_passed"]}, Commit, self.commit_admin
         )
         filtered = filter_instance.queryset(request, qs)
         self.assertEqual(list(filtered.values_list("pk", flat=True)), [passed.pk])
@@ -519,7 +519,7 @@ class CommitAdminTests(TestCase):
         request.user = self.user
         qs = self.commit_admin.get_queryset(request)
         filter_instance = CommitNotificationStatusFilter(
-            request, {"notification_status": "has_failure"}, Commit, self.commit_admin
+            request, {"notification_status": ["has_failure"]}, Commit, self.commit_admin
         )
         filtered = filter_instance.queryset(request, qs)
         self.assertCountEqual(

@@ -36,6 +36,7 @@ from .families import _decode as _decode_value  # noqa: PLC2701 - shared helper
 from .families import (
     _resolve_celery_queue_names as _celery_queue_names,  # noqa: PLC2701
 )
+from .filter_compat import kwargs_from_filter_args
 
 _UNSET: Any = object()
 
@@ -291,10 +292,10 @@ class RedisQueueQuerySet:
         return new_filters
 
     def filter(self, *args, **kwargs) -> RedisQueueQuerySet:
+        # Django 5 ChangeList always calls filter(Q(...)) for remaining
+        # lookups (including an empty Q() when none remain).
         if args:
-            raise NotImplementedError(
-                "RedisQueueQuerySet.filter does not accept positional Q objects"
-            )
+            kwargs = {**kwargs_from_filter_args(args), **kwargs}
         if not kwargs:
             return self._clone()
         return self._clone(filters=self._interpret_filter_kwargs(kwargs))
@@ -572,14 +573,18 @@ class RedisItemQuerySet:
 
     def filter(self, *args, **kwargs) -> RedisItemQuerySet:
         kwargs = dict(kwargs)
+        # Django 5 ChangeList always calls filter(Q(...)) for remaining
+        # lookups (including an empty Q() when none remain).
+        if args:
+            kwargs = {**kwargs_from_filter_args(args), **kwargs}
         new_queue_name = self.queue_name
         for key in ("queue_name__exact", "queue_name"):
             if key in kwargs:
                 new_queue_name = kwargs.pop(key)
-        if args or kwargs:
+        if kwargs:
             raise NotImplementedError(
                 "RedisItemQuerySet.filter only supports queue_name[/__exact] in M2; "
-                f"got args={args!r}, kwargs={list(kwargs)!r}"
+                f"got kwargs={list(kwargs)!r}"
             )
         return self._clone(queue_name=new_queue_name)
 
@@ -1332,10 +1337,10 @@ class CeleryBrokerQueueQuerySet:
         return new_queue_name, new_filters
 
     def filter(self, *args, **kwargs) -> CeleryBrokerQueueQuerySet:
+        # Django 5 ChangeList always calls filter(Q(...)) for remaining
+        # lookups (including an empty Q() when none remain).
         if args:
-            raise NotImplementedError(
-                "CeleryBrokerQueueQuerySet.filter does not accept positional Q objects"
-            )
+            kwargs = {**kwargs_from_filter_args(args), **kwargs}
         new_queue_name, new_filters = self._interpret_filter_kwargs(kwargs)
         return self._clone(queue_name=new_queue_name, filters=new_filters)
 
@@ -2130,10 +2135,10 @@ class UnackedQueueQuerySet:
         return new_routing_key, new_filters
 
     def filter(self, *args, **kwargs) -> UnackedQueueQuerySet:
+        # Django 5 ChangeList always calls filter(Q(...)) for remaining
+        # lookups (including an empty Q() when none remain).
         if args:
-            raise NotImplementedError(
-                "UnackedQueueQuerySet.filter does not accept positional Q objects"
-            )
+            kwargs = {**kwargs_from_filter_args(args), **kwargs}
         new_routing_key, new_filters = self._interpret_filter_kwargs(kwargs)
         return self._clone(routing_key=new_routing_key, filters=new_filters)
 

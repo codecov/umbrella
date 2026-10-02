@@ -549,6 +549,7 @@ def _parse_search_term(term: str) -> dict[str, str]:
 
 @admin.register(RedisQueue)
 class RedisQueueAdmin(admin.ModelAdmin):
+    show_facets = admin.ShowFacets.NEVER
     list_display = (
         "name",
         "family",
@@ -1148,6 +1149,7 @@ class RedisLockAdmin(admin.ModelAdmin):
     URL-tampering against `RedisQueueAdmin` still can't reach them.
     """
 
+    show_facets = admin.ShowFacets.NEVER
     list_display = (
         "name",
         "family",
@@ -1362,10 +1364,10 @@ class RedisQueueItemAdmin(admin.ModelAdmin):
     def save_model(self, request, obj, form, change):
         raise RuntimeError("RedisQueueItem rows are read-only.")
 
-    def lookup_allowed(self, lookup, value) -> bool:
+    def lookup_allowed(self, lookup, value, request=None) -> bool:
         if lookup == "queue_name__exact":
             return True
-        return super().lookup_allowed(lookup, value)
+        return super().lookup_allowed(lookup, value, request)
 
     def get_queryset(self, request: HttpRequest):
         # Bypass ChangeList's automatic `.filter(**lookup_params)` plumbing so
@@ -1557,6 +1559,7 @@ class CeleryBrokerQueueAdmin(admin.ModelAdmin):
     actions that make sense for that scope.
     """
 
+    show_facets = admin.ShowFacets.NEVER
     summary_list_display = ("queue_name", "depth", "messages_link")
     message_list_display = (
         "index_in_queue",
@@ -1623,7 +1626,7 @@ class CeleryBrokerQueueAdmin(admin.ModelAdmin):
         # commit is superuser-only.
         return bool(request.user and request.user.is_superuser)
 
-    def lookup_allowed(self, lookup, value) -> bool:
+    def lookup_allowed(self, lookup, value, request=None) -> bool:
         if lookup in (
             "queue_name__exact",
             "queue_name",
@@ -1643,7 +1646,7 @@ class CeleryBrokerQueueAdmin(admin.ModelAdmin):
             "pullid__exact",
         ):
             return True
-        return super().lookup_allowed(lookup, value)
+        return super().lookup_allowed(lookup, value, request)
 
     @staticmethod
     def _is_summary_request(request: HttpRequest) -> bool:
@@ -2534,6 +2537,7 @@ class PublicBotUsageBotFilter(admin.SimpleListFilter):
 
 @admin.register(PublicBotUsage)
 class PublicBotUsageAdmin(admin.ModelAdmin):
+    show_facets = admin.ShowFacets.NEVER
     change_list_template = "admin/redis_admin/publicbotusage/change_list.html"
     list_display = (
         "bot",
@@ -2805,6 +2809,7 @@ class UnackedQueueAdmin(admin.ModelAdmin):
       individually.
     """
 
+    show_facets = admin.ShowFacets.NEVER
     summary_list_display = ("routing_key_summary", "depth", "messages_link")
     message_list_display = (
         "delivery_tag_short",
@@ -2873,7 +2878,7 @@ class UnackedQueueAdmin(admin.ModelAdmin):
         # `RedisQueueAdmin`).
         return bool(request.user and request.user.is_superuser)
 
-    def lookup_allowed(self, lookup, value) -> bool:
+    def lookup_allowed(self, lookup, value, request=None) -> bool:
         if lookup in (
             "routing_key__exact",
             "routing_key",
@@ -2897,7 +2902,7 @@ class UnackedQueueAdmin(admin.ModelAdmin):
             "delivery_tag__exact",
         ):
             return True
-        return super().lookup_allowed(lookup, value)
+        return super().lookup_allowed(lookup, value, request)
 
     @staticmethod
     def _is_summary_request(request: HttpRequest) -> bool:

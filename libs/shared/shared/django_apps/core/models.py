@@ -4,7 +4,7 @@ import string
 import uuid
 from datetime import datetime
 
-from django.contrib.postgres.fields import ArrayField, CITextField
+from django.contrib.postgres.fields import ArrayField
 from django.contrib.postgres.indexes import GinIndex, OpClass
 from django.db import models
 from django.db.models.functions import Lower, Substr, Upper
@@ -17,6 +17,7 @@ from model_utils import FieldTracker
 from shared.django_apps.codecov.models import BaseCodecovModel
 from shared.django_apps.core.encoders import ReportJSONEncoder
 from shared.django_apps.core.managers import RepositoryManager
+from shared.django_apps.db_fields import CaseInsensitiveTextField
 from shared.django_apps.utils.config import should_write_data_to_storage_config_check
 from shared.django_apps.utils.model_utils import ArchiveField
 from shared.reports.resources import Report
@@ -96,7 +97,7 @@ class Repository(ExportModelOperationsMixin("core.repository"), models.Model):
         F_SHARP = "f#"
 
     repoid = models.AutoField(primary_key=True)
-    name = CITextField()
+    name = CaseInsensitiveTextField()
     author = models.ForeignKey(
         "codecov_auth.Owner", db_column="ownerid", on_delete=models.CASCADE
     )

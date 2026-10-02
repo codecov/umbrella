@@ -16,6 +16,7 @@ import json as _json
 
 import fakeredis
 import pytest
+from django.contrib import admin
 from django.contrib.admin.models import LogEntry
 from django.test import TestCase
 
@@ -23,6 +24,13 @@ from redis_admin import conn as redis_admin_conn
 from redis_admin.admin import FamilyFilter, LockFamilyFilter, QueueFamilyFilter
 from redis_admin.families import (
     _resolve_celery_queue_names as _celery_queue_names,  # noqa: PLC2701
+)
+from redis_admin.models import (
+    CeleryBrokerQueue,
+    PublicBotUsage,
+    RedisLock,
+    RedisQueue,
+    UnackedQueueItem,
 )
 from redis_admin.tests.test_unacked_queue import (
     _build_envelope as _build_unacked_envelope,  # noqa: PLC2701
@@ -45,6 +53,17 @@ def _family_filter_choices(filter_cls):
 
     instance = filter_cls.__new__(filter_cls)
     return dict(instance.lookups(request=None, model_admin=None))
+
+
+def test_redis_admins_disable_django_facets():
+    for model in (
+        RedisQueue,
+        RedisLock,
+        CeleryBrokerQueue,
+        PublicBotUsage,
+        UnackedQueueItem,
+    ):
+        assert admin.site._registry[model].show_facets is admin.ShowFacets.NEVER
 
 
 def test_queue_family_filter_lookups_omit_celery_broker():

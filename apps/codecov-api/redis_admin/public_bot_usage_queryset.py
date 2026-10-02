@@ -9,6 +9,8 @@ from typing import Any
 from shared.helpers.redis import get_redis_connection
 from shared.rate_limits.public_bot import RepoUsageRow, list_repo_usage
 
+from .filter_compat import kwargs_from_filter_args
+
 
 def _ordering_key(obj: Any, attr: str) -> tuple:
     value = getattr(obj, attr, None)
@@ -94,7 +96,11 @@ class PublicBotUsageQuerySet:
     def order_by(self, *fields: str) -> PublicBotUsageQuerySet:
         return self._clone(ordering=fields or self._ordering)
 
-    def filter(self, **kwargs: Any) -> PublicBotUsageQuerySet:
+    def filter(self, *args, **kwargs: Any) -> PublicBotUsageQuerySet:
+        # Django 5 ChangeList always calls filter(Q(...)) for remaining
+        # lookups (including an empty Q() when none remain).
+        if args:
+            kwargs = {**kwargs_from_filter_args(args), **kwargs}
         bot_filter = kwargs.get("bot") or kwargs.get("bot__exact") or self.bot_filter
         repo_filter = kwargs.get("repo__icontains") or self.repo_filter
         return self._clone(bot_filter=bot_filter, repo_filter=repo_filter)

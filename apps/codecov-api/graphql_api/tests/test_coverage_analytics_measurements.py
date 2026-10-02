@@ -2,7 +2,6 @@ import datetime
 from unittest.mock import patch
 
 from django.test import TestCase, override_settings
-from django.utils import timezone
 
 from shared.django_apps.core.tests.factories import (
     OwnerFactory,
@@ -84,8 +83,8 @@ class TestMeasurement(TestCase, GraphQLTestHelper):
         repository_coverage_measurements_with_fallback.assert_called_once_with(
             self.repo,
             Interval.INTERVAL_1_DAY,
-            start_date=datetime.datetime(2022, 1, 1, 0, 0, 0, tzinfo=timezone.utc),
-            end_date=datetime.datetime(2022, 1, 3, 0, 0, 0, tzinfo=timezone.utc),
+            start_date=datetime.datetime(2022, 1, 1, 0, 0, 0, tzinfo=datetime.UTC),
+            end_date=datetime.datetime(2022, 1, 3, 0, 0, 0, tzinfo=datetime.UTC),
             branch=None,
         )
 
@@ -122,8 +121,8 @@ class TestMeasurement(TestCase, GraphQLTestHelper):
         repository_coverage_measurements_with_fallback.assert_called_once_with(
             self.repo,
             Interval.INTERVAL_1_DAY,
-            start_date=datetime.datetime(2022, 1, 1, 0, 0, 0, tzinfo=timezone.utc),
-            end_date=datetime.datetime(2022, 1, 3, 0, 0, 0, tzinfo=timezone.utc),
+            start_date=datetime.datetime(2022, 1, 1, 0, 0, 0, tzinfo=datetime.UTC),
+            end_date=datetime.datetime(2022, 1, 3, 0, 0, 0, tzinfo=datetime.UTC),
             branch=None,
         )
 
@@ -135,7 +134,7 @@ class TestMeasurement(TestCase, GraphQLTestHelper):
         repository_coverage_measurements_with_fallback.assert_called_once_with(
             self.repo,
             Interval.INTERVAL_1_DAY,
-            start_date=datetime.datetime(2022, 1, 1, 0, 0, 0, tzinfo=timezone.utc),
-            end_date=datetime.datetime(2022, 1, 3, 0, 0, 0, tzinfo=timezone.utc),
+            start_date=datetime.datetime(2022, 1, 1, 0, 0, 0, tzinfo=datetime.UTC),
+            end_date=datetime.datetime(2022, 1, 3, 0, 0, 0, tzinfo=datetime.UTC),
             branch="foo",
         )
