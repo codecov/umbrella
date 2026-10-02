@@ -4,5 +4,6 @@ input RepositorySetFilters {
   active: Boolean
   activated: Boolean
   isPublic: Boolean
+  private: Boolean
   aiEnabled: Boolean
 }
