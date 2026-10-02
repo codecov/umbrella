@@ -1,7 +1,7 @@
 import pytest
 
 from services.cleanup.regular import run_regular_cleanup
-from services.cleanup.utils import CleanupResult, CleanupSummary
+from services.cleanup.utils import CleanupContext, CleanupResult, CleanupSummary
 from shared.api_archive.archive import ArchiveService
 from shared.django_apps.core.tests.factories import CommitFactory, RepositoryFactory
 from shared.django_apps.reports.models import CommitReport
@@ -12,6 +12,15 @@ from shared.django_apps.reports.tests.factories import (
 from shared.django_apps.staticanalysis.tests.factories import (
     StaticAnalysisSingleFileSnapshotFactory,
 )
+
+
+def test_add_progress_accepts_none(mock_storage):
+    context = CleanupContext()
+    try:
+        context.add_progress(cleaned_models=None, cleaned_files=None)
+        assert context.summary.totals == CleanupResult(0, 0)
+    finally:
+        context.threadpool.shutdown()
 
 
 @pytest.mark.django_db

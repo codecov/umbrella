@@ -6,7 +6,12 @@ from shared.django_apps.db_fields import CaseInsensitiveTextField
 def test_case_insensitive_text_field_uses_citext_on_postgres():
     field = CaseInsensitiveTextField()
     assert field.db_type(SimpleNamespace(vendor="postgresql")) == "citext"
-    assert field.db_type(SimpleNamespace(vendor="sqlite")) == "text"
+    sqlite = SimpleNamespace(
+        vendor="sqlite",
+        ops=SimpleNamespace(quote_name=lambda value: value),
+        data_types={"TextField": "text"},
+    )
+    assert field.db_type(sqlite) == "text"
 
 
 def test_case_insensitive_text_field_deconstruct_path():

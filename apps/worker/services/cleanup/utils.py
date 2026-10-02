@@ -52,8 +52,8 @@ class CleanupContext:
 
     def add_progress(
         self,
-        cleaned_models: int = 0,
-        cleaned_files: int = 0,
+        cleaned_models: int | None = 0,
+        cleaned_files: int | None = 0,
         model: type[Model] | None = None,
     ):
         cleaned_models = cleaned_models or 0
