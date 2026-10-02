@@ -35,6 +35,18 @@ def test_kwargs_from_filter_args_rejects_or():
         kwargs_from_filter_args((Q(repoid=1) | Q(repoid=2),))
 
 
+def test_kwargs_from_filter_args_rejects_negated():
+    with pytest.raises(NotImplementedError):
+        kwargs_from_filter_args((~Q(repoid=1),))
+
+
 def test_kwargs_from_filter_args_rejects_non_q():
     with pytest.raises(NotImplementedError):
         kwargs_from_filter_args(("repoid",))
+
+
+def test_kwargs_from_filter_args_rejects_unsupported_child():
+    bad = Q()
+    bad.children.append(["not", "a", "tuple"])
+    with pytest.raises(NotImplementedError):
+        kwargs_from_filter_args((bad,))

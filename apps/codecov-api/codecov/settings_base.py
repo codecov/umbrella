@@ -30,6 +30,7 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "django.contrib.postgres",
+    "csp",  # django-csp 4: register security system checks
     "django_filters",
     "drf_spectacular",
     "drf_spectacular_sidecar",
