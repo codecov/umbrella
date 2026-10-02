@@ -353,6 +353,11 @@ class AsyncGraphqlView(GraphQLAsyncView):
         formatted["type"] = "ServerError"
         # if this is one of our own command exception, we can tell a bit more
         original_error = error.original_error
+        if original_error is None:
+            # No underlying exception means this is a query parsing/validation
+            # error (e.g. "Cannot query field ...") caused by the client, not
+            # a server fault, so don't log or report it.
+            return formatted
         if isinstance(original_error, BaseException) or isinstance(
             original_error, ServiceException
         ):
