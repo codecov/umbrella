@@ -430,6 +430,7 @@ class BaseCodecovTask(celery_app.Task):
                 )
                 log_context.parent_task_name = headers.get("parent_task_name")
 
+            close_old_connections()
             log_context.populate_from_sqlalchemy(db_session)
             set_log_context(log_context)
             load_checkpoints_from_kwargs([UploadFlow, TestResultsFlow], kwargs)
@@ -456,8 +457,6 @@ class BaseCodecovTask(celery_app.Task):
                         task=self.name, queue=queue_name
                     )
                     time_in_queue_timer.observe(delta.total_seconds())
-
-            close_old_connections()
 
             try:
                 with self.task_core_runtime.time():
@@ -512,6 +511,9 @@ class BaseCodecovTask(celery_app.Task):
         `db_session.commit()`, which can leave the session in an unusable state.
         Since we reuse sessions across tasks, this would break future tasks in
         the same process, so we catch both timeout and invalid state exceptions.
+        We also catch any broader `SQLAlchemyError` (e.g. `InternalError` wrapping
+        `psycopg2.errors.InFailedSqlTransaction`) that can arise when a prior task
+        left the transaction in an aborted state.
         """
         try:
             db_session.commit()
@@ -524,13 +526,13 @@ class BaseCodecovTask(celery_app.Task):
             try:
                 db_session.commit()
                 db_session.close()
-            except InvalidRequestError:
+            except SQLAlchemyError:
                 log.warning(
                     "DB session cannot be operated on any longer. Closing it and removing it",
                     exc_info=True,
                 )
                 get_db_session.remove()
-        except InvalidRequestError:
+        except SQLAlchemyError:
             log.warning(
                 "DB session cannot be operated on any longer. Closing it and removing it",
                 exc_info=True,
