@@ -2,6 +2,7 @@ import os
 
 import sentry_sdk
 from corsheaders.defaults import default_headers
+from sentry_sdk.integrations.ariadne import AriadneIntegration
 from sentry_sdk.integrations.celery import CeleryIntegration
 from sentry_sdk.integrations.django import DjangoIntegration
 from sentry_sdk.integrations.httpx import HttpxIntegration
@@ -467,6 +468,11 @@ if SENTRY_DSN is not None:
             RedisIntegration(cache_prefixes=["cache:"]),
             HttpxIntegration(),
         ],
+        # The auto-enabled Ariadne integration reports every GraphQL error in
+        # a response (including client validation errors like unknown fields)
+        # as an unhandled exception. Unexpected resolver errors are still
+        # captured explicitly in GraphQL error_formatter.
+        disabled_integrations=[AriadneIntegration()],
         environment=SENTRY_ENV,
         traces_sampler=make_traces_sampler(
             default_rate=SENTRY_SAMPLE_RATE,
