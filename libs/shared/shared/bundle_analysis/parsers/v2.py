@@ -122,13 +122,64 @@ class ParserV2(ParserTrait):
                     .one_or_none()
                 )
                 if old_session:
-                    for model in [Asset, Chunk, Module]:
-                        to_be_deleted = self.db_session.query(model).filter(
-                            model.session == old_session
+                    # Collect IDs of old records for bulk junction-table cleanup
+                    old_asset_ids = [
+                        row.id
+                        for row in self.db_session.query(Asset.id).filter(
+                            Asset.session_id == old_session.id
                         )
-                        for item in to_be_deleted:
-                            self.db_session.delete(item)
-                            self.db_session.flush()
+                    ]
+                    old_chunk_ids = [
+                        row.id
+                        for row in self.db_session.query(Chunk.id).filter(
+                            Chunk.session_id == old_session.id
+                        )
+                    ]
+                    old_module_ids = [
+                        row.id
+                        for row in self.db_session.query(Module.id).filter(
+                            Module.session_id == old_session.id
+                        )
+                    ]
+
+                    # Bulk-delete junction table rows first to avoid per-row
+                    # relationship loads triggered by ORM cascade deletes
+                    if old_chunk_ids:
+                        self.db_session.execute(
+                            assets_chunks.delete().where(
+                                assets_chunks.c.chunk_id.in_(old_chunk_ids)
+                            )
+                        )
+                    if old_asset_ids:
+                        self.db_session.execute(
+                            assets_chunks.delete().where(
+                                assets_chunks.c.asset_id.in_(old_asset_ids)
+                            )
+                        )
+                    if old_module_ids:
+                        self.db_session.execute(
+                            chunks_modules.delete().where(
+                                chunks_modules.c.module_id.in_(old_module_ids)
+                            )
+                        )
+                    if old_chunk_ids:
+                        self.db_session.execute(
+                            chunks_modules.delete().where(
+                                chunks_modules.c.chunk_id.in_(old_chunk_ids)
+                            )
+                        )
+
+                    # Bulk-delete main records — single DELETE per table
+                    self.db_session.query(Module).filter(
+                        Module.session_id == old_session.id
+                    ).delete(synchronize_session=False)
+                    self.db_session.query(Chunk).filter(
+                        Chunk.session_id == old_session.id
+                    ).delete(synchronize_session=False)
+                    self.db_session.query(Asset).filter(
+                        Asset.session_id == old_session.id
+                    ).delete(synchronize_session=False)
+
                     self.db_session.delete(old_session)
                     self.db_session.flush()
 
