@@ -1291,6 +1291,51 @@ class CommitComparisonService:
         ).select_related("compare_commit", "base_commit")
         return comparison_qs.first()
 
+    @staticmethod
+    def get_commit_comparisons_for_pulls(
+        pulls: list[Pull],
+    ) -> dict[tuple[str, str], CommitComparison]:
+        """
+        Fetch the CommitComparisons for many pulls with a single query.
+        Returns a dict keyed by (compared_to, head). For each pair, the
+        comparison with the lowest id is kept, which matches the ordering
+        `get_commit_comparison_for_pull` gets from `.first()`.
+        """
+        pulls_with_shas = [p for p in pulls if p.compared_to and p.head]
+        if not pulls_with_shas:
+            return {}
+
+        repository_ids = {p.repository_id for p in pulls_with_shas}
+        wanted_pairs = {(p.compared_to, p.head) for p in pulls_with_shas}
+        base_shas = {pair[0] for pair in wanted_pairs}
+        head_shas = {pair[1] for pair in wanted_pairs}
+
+        comparisons = (
+            CommitComparison.objects.filter(
+                base_commit__repository_id__in=repository_ids,
+                compare_commit__repository_id__in=repository_ids,
+                base_commit__commitid__in=base_shas,
+                compare_commit__commitid__in=head_shas,
+            )
+            .select_related("compare_commit", "base_commit")
+            .order_by("id")
+        )
+
+        result: dict[tuple[str, str], CommitComparison] = {}
+        for comparison in comparisons:
+            if (
+                comparison.base_commit.repository_id
+                != comparison.compare_commit.repository_id
+            ):
+                continue
+            key = (
+                comparison.base_commit.commitid,
+                comparison.compare_commit.commitid,
+            )
+            if key in wanted_pairs and key not in result:
+                result[key] = comparison
+        return result
+
     @classmethod
     def fetch_precomputed(self, repo_id: int, keys: list[tuple]) -> QuerySet:
         comparison_table = CommitComparison._meta.db_table
