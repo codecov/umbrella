@@ -122,7 +122,9 @@ def rewrite_or_delete_upload(
 
     elif isinstance(report_info.raw_report, VersionOneParsedRawReport):
         # only a version 1 report needs to be "rewritten readable"
-
+        # Use content_stream() to avoid materializing the entire combined
+        # report into a single in-memory buffer before the archive write,
+        # which can cause SoftTimeLimitExceeded on large uploads.
         archive_service.write_file(
-            archive_url, report_info.raw_report.content().getvalue()
+            archive_url, report_info.raw_report.content_stream()
         )
