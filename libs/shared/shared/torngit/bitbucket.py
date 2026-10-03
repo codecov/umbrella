@@ -44,20 +44,28 @@ class Bitbucket(TorngitBaseAdapter):
     }
 
     async def _send_request(self, client, method, url, kwargs, log_dict):
-        try:
-            res = await client.request(method.upper(), url, **kwargs)
-            logged_body = None
-            if res.status_code >= 300 and res.text is not None:
-                logged_body = res.text
-            log.log(
-                logging.WARNING if res.status_code >= 300 else logging.INFO,
-                "Bitbucket HTTP %s",
-                res.status_code,
-                extra=dict(body=logged_body, **log_dict),
-            )
-            return res
-        except (httpx.NetworkError, httpx.TimeoutException):
-            raise TorngitServerUnreachableError("Bitbucket was not able to be reached.")
+        max_retries = 3
+        for current_retry in range(1, max_retries + 1):
+            try:
+                res = await client.request(method.upper(), url, **kwargs)
+                logged_body = None
+                if res.status_code >= 300 and res.text is not None:
+                    logged_body = res.text
+                log.log(
+                    logging.WARNING if res.status_code >= 300 else logging.INFO,
+                    "Bitbucket HTTP %s",
+                    res.status_code,
+                    extra=dict(body=logged_body, **log_dict),
+                )
+                return res
+            except (httpx.NetworkError, httpx.TimeoutException):
+                if current_retry < max_retries:
+                    log.warning(
+                        "Bitbucket was not able to be reached, retrying",
+                        extra=dict(current_retry=current_retry, **log_dict),
+                    )
+                    continue
+                raise TorngitServerUnreachableError("Bitbucket was not able to be reached.")
 
     async def api(
         self, client, version, method, path, json=False, body=None, token=None, **kwargs
