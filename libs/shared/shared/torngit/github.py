@@ -1066,6 +1066,17 @@ class Github(TorngitBaseAdapter):
             url,
             params=params,
         )
+        if res.status_code >= 500:
+            # GitHub-side failure (e.g. HTML "Server Error" page). This is transient
+            # and unrelated to the validity of the refresh token, so surface it as a
+            # server failure so callers can retry instead of treating it as fatal.
+            log.warning(
+                "Github returned a server error while refreshing token",
+                extra=dict(status_code=res.status_code, original_url=original_url),
+            )
+            raise TorngitServer5xxCodeError(
+                "Github is having 5xx issues while refreshing token"
+            )
         if res.status_code >= 300:
             raise TorngitRefreshTokenFailedError(
                 {
