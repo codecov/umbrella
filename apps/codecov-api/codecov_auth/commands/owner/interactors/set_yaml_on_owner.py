@@ -38,12 +38,15 @@ class SetYamlOnOwnerInteractor(BaseInteractor):
         yaml_safe = html.escape(yaml_input, quote=False)
         try:
             yaml_dict = yaml.safe_load(yaml_safe)
-        except yaml.scanner.ScannerError as e:
-            line = e.problem_mark.line
-            column = e.problem_mark.column
-            message = (
-                f"Syntax error at line {line + 1}, column {column + 1}: {e.problem}"
-            )
+        except yaml.YAMLError as e:
+            if hasattr(e, "problem_mark") and e.problem_mark is not None:
+                line = e.problem_mark.line
+                column = e.problem_mark.column
+                message = (
+                    f"Syntax error at line {line + 1}, column {column + 1}: {e.problem}"
+                )
+            else:
+                message = f"Syntax error: {e}"
             raise ValidationError(message)
         if not yaml_dict:
             return None
