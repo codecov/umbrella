@@ -112,16 +112,25 @@ def from_xml(xml: Element, report_builder_session: ReportBuilderSession) -> None
             for line in source.iter("line"):
                 attr = line.attrib
                 cov: int | str
-                if attr["mb"] != "0":
-                    cov = "{}/{}".format(attr["cb"], int(attr["mb"]) + int(attr["cb"]))
+                mb = attr.get("mb", "0")
+                cb = attr.get("cb", "0")
+                if mb != "0":
+                    cov = "{}/{}".format(cb, int(mb) + int(cb))
                     coverage_type = CoverageType.branch
 
-                elif attr["cb"] != "0":
-                    cov = "{}/{}".format(attr["cb"], attr["cb"])
+                elif cb != "0":
+                    cov = "{}/{}".format(cb, cb)
                     coverage_type = CoverageType.branch
 
                 else:
-                    cov = int(attr["ci"])
+                    ci = attr.get("ci")
+                    if ci is None:
+                        log.warning(
+                            "JaCoCo <line> element missing 'ci' attribute, defaulting to 0",
+                            extra={"line_attrs": dict(attr)},
+                        )
+                        ci = "0"
+                    cov = int(ci)
                     coverage_type = CoverageType.line
 
                 if (
