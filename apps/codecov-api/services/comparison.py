@@ -828,6 +828,8 @@ class Comparison:
 
     @property
     def non_carried_forward_flags(self):
+        if self.head_report is None:
+            return []
         flags_dict = self.head_report.flags
         return [flag for flag, vals in flags_dict.items() if not vals.carriedforward]
 
