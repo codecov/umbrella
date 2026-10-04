@@ -3,6 +3,7 @@ union BundleAnalysisReportResult =
   | MissingHeadReport
 
 type BundleAnalysisReport {
+  total_size: Int!
   bundles: [BundleReport]!
   bundleData: BundleData!
   bundle(name: String!, filters: BundleAnalysisReportFilters): BundleReport
