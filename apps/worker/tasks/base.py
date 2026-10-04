@@ -258,6 +258,20 @@ class BaseCodecovTask(celery_app.Task):
         if caller and caller.request:
             headers.setdefault("parent_task_id", getattr(caller.request, "id", None))
             headers.setdefault("parent_task_name", caller.name)
+
+        # Retry task publish on transient broker connection errors (e.g. stale Redis
+        # connections where the Kombu channel's client is None after a dropped connection).
+        options.setdefault("retry", True)
+        options.setdefault(
+            "retry_policy",
+            {
+                "max_retries": 3,
+                "interval_start": 0,
+                "interval_step": 0.2,
+                "interval_max": 0.5,
+            },
+        )
+
         return super().apply_async(args=args, kwargs=kwargs, headers=headers, **options)
 
     def retry(self, max_retries=None, countdown=None, exc=None, **kwargs):
