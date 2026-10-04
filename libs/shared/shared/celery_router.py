@@ -79,6 +79,9 @@ def route_tasks_based_on_user_plan(task_name: str, user_plan: str, owner: int) -
     Returns:
         Dict containing queue name and any extra configuration
     """
+    if user_plan is None:
+        return {"queue": _get_default_queue(task_name), "extra_config": {}}
+
     plan = Plan.objects.get(name=user_plan)
 
     if not plan.is_enterprise_plan:
