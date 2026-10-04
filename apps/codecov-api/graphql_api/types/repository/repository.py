@@ -236,6 +236,13 @@ def resolve_active(repository: Repository, info: GraphQLResolveInfo) -> bool:
     return repository.active or False
 
 
+@repository_bindable.field("usingIntegration")
+def resolve_using_integration(
+    repository: Repository, info: GraphQLResolveInfo
+) -> bool:
+    return repository.using_integration or False
+
+
 @repository_bindable.field("isATSConfigured")
 def resolve_is_ats_configured(repository: Repository, info: GraphQLResolveInfo) -> bool:
     if not repository.yaml or "flag_management" not in repository.yaml:
