@@ -105,6 +105,8 @@ def resolve_list_uploads(commit: Commit, info: GraphQLResolveInfo, **kwargs):
         queryset = queryset.prefetch_related("flags")
     if "edges.node.errors" in requested_fields:
         queryset = queryset.prefetch_related("errors")
+    if "edges.node.totals" in requested_fields:
+        queryset = queryset.select_related("uploadleveltotals")
 
     if not kwargs:  # temp to override kwargs -> return all current uploads
         kwargs["first"] = 999_999
