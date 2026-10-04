@@ -2,6 +2,11 @@ type Component {
     id: String!
     name: String!
     totals: CoverageTotals
+    componentId: String!
+    percentCovered: Float
+    percentChange: Float
+    lineCount: Int
+    hitsCount: Int
 }
 
 type ComponentMeasurements {
