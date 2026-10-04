@@ -5,6 +5,7 @@ type Comparison {
   impactedFilesCount: Int!
   indirectChangedFilesCount: Int!
   patchTotals: CoverageTotals
+  directChangedFiles(filters: ImpactedFilesFilters): ImpactedFilesResult!
   directChangedFilesCount: Int!
   baseTotals: CoverageTotals
   headTotals: CoverageTotals
