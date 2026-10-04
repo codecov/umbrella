@@ -35,7 +35,7 @@ from shared.celery_config import (
 from shared.helpers.redis import get_redis_connection
 from shared.reports.types import Change
 from shared.torngit.base import TorngitBaseAdapter
-from shared.torngit.exceptions import TorngitClientError
+from shared.torngit.exceptions import TorngitClientError, TorngitServerUnreachableError
 from shared.yaml import UserYaml
 from shared.yaml.user_yaml import OwnerContext
 from tasks.base import BaseCodecovTask
@@ -248,7 +248,7 @@ class PullSyncTask(BaseCodecovTask, name=pulls_task_name):
                 repository,
             )
             db_session.commit()
-        except TorngitClientError:
+        except (TorngitClientError, TorngitServerUnreachableError):
             log.warning(
                 "Unable to fetch information about pull commits",
                 extra={"pullid": pullid, "repoid": repoid},
