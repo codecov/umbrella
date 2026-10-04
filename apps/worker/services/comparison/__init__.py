@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from typing import Any
 
 import sentry_sdk
+from sqlalchemy.exc import IntegrityError
 from asgiref.sync import async_to_sync
 
 from database.enums import CompareCommitState
@@ -396,11 +397,18 @@ def get_or_create_comparison(db_session, base_commit, compare_commit):
         .one_or_none()
     )
     if comparison is None:
-        comparison = CompareCommit(
-            base_commit=base_commit,
-            compare_commit=compare_commit,
-            state=CompareCommitState.pending.value,
-        )
-        db_session.add(comparison)
-        db_session.flush()
+        try:
+            with db_session.begin(nested=True):
+                comparison = CompareCommit(
+                    base_commit=base_commit,
+                    compare_commit=compare_commit,
+                    state=CompareCommitState.pending.value,
+                )
+                db_session.add(comparison)
+        except IntegrityError:
+            comparison = (
+                db_session.query(CompareCommit)
+                .filter_by(base_commit=base_commit, compare_commit=compare_commit)
+                .one()
+            )
     return comparison
