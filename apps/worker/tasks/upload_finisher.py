@@ -711,6 +711,12 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                         },
                     )
                     if commit.pullid:
+                        # Commit any pending state and release the connection back
+                        # to the pool so that the next query checks out a fresh,
+                        # pre-pinged connection. This prevents stale-connection
+                        # errors that occur when the DB server closes a long-held
+                        # connection during the preceding report processing work.
+                        db_session.commit()
                         pull = (
                             db_session.query(Pull)
                             .filter_by(repoid=commit.repoid, pullid=commit.pullid)
