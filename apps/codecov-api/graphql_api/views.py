@@ -221,10 +221,24 @@ class AsyncGraphqlView(GraphQLAsyncView):
 
     validation_rules = get_validation_rules  # type: ignore
 
+    @staticmethod
+    def normalize_query(query: str) -> str:
+        """
+        Normalize a raw GraphQL query string before parsing.
+
+        Some clients (e.g. curl scripts) double-escape newlines, sending the
+        two-character sequence backslash + n instead of an actual newline.  The
+        GraphQL lexer rejects the backslash character, raising GraphQLSyntaxError.
+        Replace those literal escape sequences with spaces so the parser can
+        process the query normally.
+        """
+        return query.replace("\\n", " ").replace("\\t", " ")
+
     def get_clean_query(self, request_body: dict[str, Any]) -> str | None:
         # clean up graphql query to remove new lines and extra spaces
         if "query" in request_body and isinstance(request_body["query"], str):
-            clean_query = request_body["query"].replace("\n", " ")
+            clean_query = self.normalize_query(request_body["query"])
+            clean_query = clean_query.replace("\n", " ")
             clean_query = clean_query.replace("  ", "").strip()
             return clean_query
 
@@ -243,6 +257,15 @@ class AsyncGraphqlView(GraphQLAsyncView):
 
         # get request path information for logging
         req_path = request.get_full_path()
+
+        # Normalize literal escape sequences (e.g. backslash-n from double-escaped JSON)
+        # so the GraphQL parser doesn't choke on invalid characters.  We patch the
+        # cached request body so that the parent view picks up the normalized query.
+        if req_body and "query" in req_body and isinstance(req_body["query"], str):
+            normalized = self.normalize_query(req_body["query"])
+            if normalized != req_body["query"]:
+                req_body["query"] = normalized
+                request._body = json.dumps(req_body).encode("utf-8")
 
         # clean up graphql query for logging, remove new lines and extra spaces
         cleaned_query = self.get_clean_query(req_body)
@@ -346,7 +369,15 @@ class AsyncGraphqlView(GraphQLAsyncView):
         is_anonymous = user.is_anonymous if user else True
         # the only way to check for a malformed query
         is_bad_query = "Cannot query field" in error.formatted["message"]
+        # A GraphQLSyntaxError has no original_error and signals a malformed query from
+        # the client.  Return the error detail as-is without logging an internal error.
+        is_syntax_error = error.original_error is None and "Syntax Error" in error.formatted.get(
+            "message", ""
+        )
         if debug or (not is_anonymous and is_bad_query):
+            return format_error(error, debug)
+        if is_syntax_error:
+            # Client sent an invalid query — surface the error detail, don't treat as 500
             return format_error(error, debug)
         formatted = error.formatted
         formatted["message"] = "INTERNAL SERVER ERROR"
