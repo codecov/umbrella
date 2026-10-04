@@ -100,6 +100,55 @@ class Testrun(ExportModelOperationsMixin("ta_timeseries.testrun"), models.Model)
         ]
 
 
+class TestrunCommitSummary(
+    ExportModelOperationsMixin("ta_timeseries.testrun_commit_summary"),
+    models.Model,
+):
+    """
+    Pre-aggregated per-(repo, commit, test_id) summary table.
+
+    Maintained via upsert during testrun inserts so that PR comment queries
+    (get_pr_comment_agg, get_pr_comment_failures, get_pr_comment_duration)
+    can read a single small row per test instead of scanning all raw timeseries
+    rows and running an expensive LAST() aggregate.
+    """
+
+    __test__ = False
+
+    id = models.BigAutoField(primary_key=True)
+
+    repo_id = models.BigIntegerField(null=False)
+    commit_sha = models.TextField(null=False)
+    test_id = models.BinaryField(null=False)
+
+    # The "last" values per test_id, kept current via upsert
+    last_timestamp = models.DateTimeField(null=False)
+    outcome = models.TextField(null=False)
+    computed_name = models.TextField(null=True)
+    failure_message = models.TextField(null=True)
+    upload_id = models.BigIntegerField(null=True)
+    duration_seconds = models.FloatField(null=True)
+    flags = ArrayField(models.TextField(), null=True)
+
+    __repr__ = sane_repr("repo_id", "commit_sha", "test_id", "outcome")  # type: ignore
+
+    class Meta:
+        app_label = TA_TIMESERIES_APP_LABEL
+        db_table = "ta_testrun_commit_summary"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["repo_id", "commit_sha", "test_id"],
+                name="ta_commit_summary__repo_commit_test_uniq",
+            )
+        ]
+        indexes = [
+            models.Index(
+                name="ta_commit_summary__repo_commit_i",
+                fields=["repo_id", "commit_sha"],
+            ),
+        ]
+
+
 class AggregateHourly(
     ExportModelOperationsMixin("ta_timeseries.aggregate_hourly"),
     models.Model,
