@@ -28,6 +28,7 @@ from helpers.checkpoint_logger import from_kwargs as load_checkpoints_from_kwarg
 from helpers.checkpoint_logger.flows import TestResultsFlow, UploadFlow
 from helpers.clock import get_seconds_to_next_hour
 from helpers.exceptions import NoConfiguredAppsAvailable, RepositoryWithoutValidBotError
+from shared.torngit.exceptions import TorngitServerUnreachableError
 from helpers.log_context import LogContext, set_log_context
 from helpers.save_commit_error import save_commit_error
 from services.repository import get_repo_provider_service
@@ -486,6 +487,23 @@ class BaseCodecovTask(celery_app.Task):
             except SQLAlchemyError as ex:
                 self._analyse_error(ex, args, kwargs)
                 db_session.rollback()
+                retry_count = getattr(self.request, "retries", 0)
+                countdown = TASK_RETRY_BACKOFF_BASE_SECONDS * (2**retry_count)
+                try:
+                    if not self.safe_retry(countdown=countdown):
+                        return None
+                except MaxRetriesExceededError:
+                    if UploadFlow.has_begun():
+                        UploadFlow.log(UploadFlow.UNCAUGHT_RETRY_EXCEPTION)
+                    if TestResultsFlow.has_begun():
+                        TestResultsFlow.log(TestResultsFlow.UNCAUGHT_RETRY_EXCEPTION)
+                    return None
+            except TorngitServerUnreachableError:
+                log.warning(
+                    "Git provider was not reachable, retrying task",
+                    extra={"task_args": args, "task_kwargs": kwargs},
+                    exc_info=True,
+                )
                 retry_count = getattr(self.request, "retries", 0)
                 countdown = TASK_RETRY_BACKOFF_BASE_SECONDS * (2**retry_count)
                 try:
