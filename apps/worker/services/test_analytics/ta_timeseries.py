@@ -76,7 +76,7 @@ def insert_testrun(
                 upload_id=upload_id,
             )
         )
-    Testrun.objects.bulk_create(testruns_to_create)
+    Testrun.objects.bulk_create(testruns_to_create, batch_size=500)
 
 
 class FailedTestInstance(TypedDict):
