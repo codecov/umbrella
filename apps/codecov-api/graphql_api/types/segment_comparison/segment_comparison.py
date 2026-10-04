@@ -12,6 +12,8 @@ class SegmentComparisons:
 
 
 segment_comparison_bindable = ObjectType("SegmentComparison")
+# Deprecated type kept for backward compatibility with clients using the old 'Segments' type name
+segments_bindable = ObjectType("Segments")
 
 
 @segment_comparison_bindable.field("header")
