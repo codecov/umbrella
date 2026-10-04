@@ -26,6 +26,7 @@ from graphql_api.types.enums import OrderingDirection
 from graphql_api.types.enums.enum_types import PullRequestState
 from graphql_api.types.errors.errors import NotFoundError, OwnerNotActivatedError
 from shared.helpers.redis import get_redis_connection
+from timeseries.models import Dataset, MeasurementName
 
 TOKEN_UNAVAILABLE = "Token Unavailable. Please contact your admin."
 
@@ -343,6 +344,20 @@ def resolve_coverage_analytics(
     repository: Repository, info: GraphQLResolveInfo
 ) -> CoverageAnalyticsProps:
     return CoverageAnalyticsProps(repository=repository)
+
+
+@repository_bindable.field("componentsMeasurementsActive")
+@sync_to_async
+def resolve_components_measurements_active_deprecated(
+    repository: Repository, info: GraphQLResolveInfo
+) -> bool:
+    """Deprecated: use coverageAnalytics { componentsMeasurementsActive } instead."""
+    if not settings.TIMESERIES_ENABLED:
+        return False
+    return Dataset.objects.filter(
+        name=MeasurementName.COMPONENT_COVERAGE.value,
+        repository_id=repository.pk,
+    ).exists()
 
 
 @repository_bindable.field("testAnalytics")
