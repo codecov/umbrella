@@ -468,6 +468,42 @@ class BundleAnalysisReport:
             session.commit()
             return session_id, bundle_name
 
+    @staticmethod
+    def _load_asset_module_fingerprints(
+        bundle_report: BundleReport,
+    ) -> dict[str, tuple[AssetType, tuple[str, ...]]]:
+        """
+        Load all asset → module-name fingerprints for a bundle in a single JOIN query.
+
+        Returns a dict mapping asset UUID to (asset_type, sorted_module_names_tuple).
+        This replaces the previous pattern of calling asset.modules() once per asset
+        (N separate queries) with a single batched query, preventing timeouts on large bundles.
+
+        Uses LEFT JOINs so that assets with no chunks or no modules are included with
+        an empty module-name tuple, preserving the same matching behaviour as the old
+        per-asset code (where asset.modules() returned [] for such assets).
+        """
+        with get_db_session(bundle_report.db_path) as session:
+            rows = (
+                session.query(Asset.uuid, Asset.asset_type, Module.name)
+                .join(Asset.session)
+                .join(Session.bundle)
+                .outerjoin(Asset.chunks)
+                .outerjoin(Chunk.modules)
+                .filter(Bundle.id == bundle_report.bundle.id)
+                .all()
+            )
+        asset_modules: dict[str, list[str]] = defaultdict(list)
+        asset_types: dict[str, AssetType] = {}
+        for asset_uuid, asset_type, module_name in rows:
+            asset_types[asset_uuid] = asset_type
+            if module_name is not None:
+                asset_modules[asset_uuid].append(module_name)
+        return {
+            uuid: (asset_types[uuid], tuple(sorted(frozenset(asset_modules[uuid]))))
+            for uuid in asset_types
+        }
+
     def _associate_bundle_report_assets_by_name(
         self, curr_bundle_report: BundleReport, prev_bundle_report: BundleReport
     ) -> set[tuple[str, str]]:
@@ -500,32 +536,28 @@ class BundleAnalysisReport:
         Returns a set of pairs of UUIDs (the current asset UUID and prev asset UUID)
         representing that the curr asset UUID should be updated to the prev asset UUID
         because there exists a prev asset where all its module names are the same as the
-        curr asset module names
-        """
-        ret = set()
-        prev_module_asset_mapping = {}
-        for prev_asset in prev_bundle_report.asset_reports():
-            if prev_asset.asset_type == AssetType.JAVASCRIPT:
-                prev_modules = tuple(
-                    sorted(frozenset([m.name for m in prev_asset.modules()]))
-                )
-                # NOTE: Assume two non-related assets CANNOT have the same set of modules
-                # though in reality there can be rare cases of this but we
-                # will deal with that later if it becomes a prevalent problem
-                prev_module_asset_mapping[prev_modules] = prev_asset.uuid
+        curr asset module names.
 
-        for curr_asset in curr_bundle_report.asset_reports():
-            if curr_asset.asset_type == AssetType.JAVASCRIPT:
-                curr_modules = tuple(
-                    sorted(frozenset([m.name for m in curr_asset.modules()]))
-                )
+        Uses a single batched JOIN query per bundle (via _load_asset_module_fingerprints)
+        instead of one query per asset, preventing O(n) DB round-trips on large bundles.
+        """
+        prev_fingerprints = self._load_asset_module_fingerprints(prev_bundle_report)
+        curr_fingerprints = self._load_asset_module_fingerprints(curr_bundle_report)
+
+        # Build a mapping from module-name fingerprint → prev asset UUID
+        # NOTE: Assume two non-related assets CANNOT have the same set of modules
+        # though in reality there can be rare cases of this but we
+        # will deal with that later if it becomes a prevalent problem
+        prev_module_asset_mapping: dict[tuple[str, ...], str] = {}
+        for prev_uuid, (prev_type, prev_modules) in prev_fingerprints.items():
+            if prev_type == AssetType.JAVASCRIPT:
+                prev_module_asset_mapping[prev_modules] = prev_uuid
+
+        ret = set()
+        for curr_uuid, (curr_type, curr_modules) in curr_fingerprints.items():
+            if curr_type == AssetType.JAVASCRIPT:
                 if curr_modules in prev_module_asset_mapping:
-                    ret.add(
-                        (
-                            prev_module_asset_mapping[curr_modules],
-                            curr_asset.uuid,
-                        )
-                    )
+                    ret.add((prev_module_asset_mapping[curr_modules], curr_uuid))
         return ret
 
     @sentry_sdk.trace
