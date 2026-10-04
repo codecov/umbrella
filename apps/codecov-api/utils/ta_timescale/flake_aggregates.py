@@ -61,7 +61,7 @@ def get_flake_aggregates(
     end_date: datetime,
 ) -> FlakeAggregates | None:
     if not _should_use_precomputed_aggregates(branch):
-        raise ValueError("Flake aggregates are not precomputed")
+        return None
 
     interval_duration = end_date - start_date
     comparison_start_date = start_date - interval_duration
