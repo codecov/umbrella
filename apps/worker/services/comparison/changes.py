@@ -166,7 +166,7 @@ def get_changes(
                 # Diff says it's because it's new
                 # This is expected
                 continue
-            r = get_segment_offsets(diff["segments"])
+            r = get_segment_offsets(diff.get("segments") or [])
             additions: set[int] = set(r[1])
             if any(ln not in additions for ln, _ in _file.lines):
                 # file has new coverage lines that are not accounted by the diff
