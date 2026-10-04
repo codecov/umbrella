@@ -81,7 +81,10 @@ def from_xml(xml: Element, report_builder_session: ReportBuilderSession) -> None
             ln: str | int = _line["number"]
             if ln == "undefined":
                 continue
-            ln = int(ln)
+            try:
+                ln = int(ln)
+            except ValueError:
+                continue
             if ln > 0:
                 coverage: str | int
                 _type = CoverageType.line
