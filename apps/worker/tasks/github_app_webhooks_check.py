@@ -1,7 +1,7 @@
 import asyncio
 import logging
 from collections.abc import Iterable
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from itertools import groupby
 
 from asgiref.sync import async_to_sync
@@ -51,12 +51,12 @@ class GitHubAppWebhooksCheckTask(CodecovCronTask, name=gh_app_webhook_check_task
         Apply a time filter to the deliveries, so that we only consider webhook deliveries from the past 25h.
         So that we skip deliveries that we probably already analysed in the past.
         """
-        now = datetime.now()
+        now = datetime.now(tz=timezone.utc)
         eight_hours_ago = now - timedelta(hours=8)
 
         def time_filter(item: object) -> bool:
             return (
-                datetime.strptime(item["delivered_at"], "%Y-%m-%dT%H:%M:%SZ")
+                datetime.fromisoformat(item["delivered_at"].replace("Z", "+00:00"))
                 >= eight_hours_ago
             )
 
