@@ -54,10 +54,11 @@ class TaskService:
         ).apply_async(**apply_async_kwargs)
 
     def compute_comparison(self, comparison_id):
-        self._create_signature(
-            celery_config.compute_comparison_task_name,
-            kwargs={"comparison_id": comparison_id},
-        ).apply_async()
+        with celery_app.connection_or_connect() as conn:
+            self._create_signature(
+                celery_config.compute_comparison_task_name,
+                kwargs={"comparison_id": comparison_id},
+            ).apply_async(connection=conn)
 
     def compute_comparisons(self, comparison_ids: list[int]):
         """
@@ -94,7 +95,8 @@ class TaskService:
                     "Triggering compute comparison task",
                     extra={"comparison_id": comparison_id},
                 )
-            group(signatures).apply_async()
+            with celery_app.connection_or_connect() as conn:
+                group(signatures).apply_async(connection=conn)
 
     def upload_signature(
         self,
