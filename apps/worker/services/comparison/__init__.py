@@ -170,8 +170,11 @@ class ComparisonProxy:
         Patch coverage refers to looking at the coverage in HEAD report filtered by the git diff HEAD..BASE.
         """
         if self._patch_totals is NOT_RESOLVED:
-            diff = self.get_diff(use_original_base=True)
-            self._patch_totals = self.head.report.apply_diff(diff)
+            if not self.has_head_report():
+                self._patch_totals = None
+            else:
+                diff = self.get_diff(use_original_base=True)
+                self._patch_totals = self.head.report.apply_diff(diff)
 
         return self._patch_totals
 
@@ -362,6 +365,8 @@ class FilteredComparison:
         """
         if self._patch_totals:
             return self._patch_totals
+        if self.head.report is None:
+            return None
         diff = self.get_diff(use_original_base=True)
         self._patch_totals = self.head.report.apply_diff(diff)
         return self._patch_totals
