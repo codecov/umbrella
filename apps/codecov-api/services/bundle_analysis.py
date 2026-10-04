@@ -301,6 +301,10 @@ class BundleReport:
     def info(self) -> dict:
         return self.report.info()
 
+    @cached_property
+    def output_path(self) -> str | None:
+        return self.report.output_path()
+
     @sync_to_async
     def cache_config(self, repo_id: int) -> bool:
         return BundleAnalysisCacheConfigService.get_cache_option(
