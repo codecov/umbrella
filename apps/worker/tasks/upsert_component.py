@@ -7,7 +7,10 @@ from database.models import Commit
 from services.report import ReportService
 from services.timeseries import ComponentForMeasurement, upsert_components_measurements
 from services.yaml import get_repo_yaml
-from shared.celery_config import timeseries_upsert_component_task_name
+from shared.celery_config import (
+    UPSERT_COMPONENT_MAX_RETRIES,
+    timeseries_upsert_component_task_name,
+)
 from shared.reports.readonly import ReadOnlyReport
 from tasks.base import BaseCodecovTask
 
@@ -15,6 +18,8 @@ log = logging.getLogger(__name__)
 
 
 class UpsertComponentTask(BaseCodecovTask, name=timeseries_upsert_component_task_name):
+    max_retries = UPSERT_COMPONENT_MAX_RETRIES
+
     def run_impl(
         self,
         db_session: Session,

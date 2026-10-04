@@ -308,6 +308,19 @@ UPLOAD_FINISHER_MAX_RETRIES = int(
     get_config("setup", "tasks", "upload", "finisher_max_retries", default=10)
 )
 
+# Upsert component task max_retries (max total attempts)
+# Transient DB outages require more retries to survive brief connectivity blips
+# Default: matches TASK_MAX_RETRIES_DEFAULT
+UPSERT_COMPONENT_MAX_RETRIES = int(
+    get_config(
+        "setup",
+        "tasks",
+        "timeseries",
+        "upsert_component_max_retries",
+        default=TASK_MAX_RETRIES_DEFAULT,
+    )
+)
+
 # Bundle analysis processor max_retries (max total attempts)
 # Default: matches TASK_MAX_RETRIES_DEFAULT
 BUNDLE_ANALYSIS_PROCESSOR_MAX_RETRIES = int(
