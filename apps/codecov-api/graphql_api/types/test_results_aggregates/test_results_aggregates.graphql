@@ -9,4 +9,5 @@ type TestResultsAggregates {
   totalSkipsPercentChange: Float
   totalSlowTests: Int!
   totalSlowTestsPercentChange: Float
+  flakyTests: Int!
 }
