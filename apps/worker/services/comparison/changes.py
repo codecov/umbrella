@@ -166,7 +166,7 @@ def get_changes(
                 # Diff says it's because it's new
                 # This is expected
                 continue
-            r = get_segment_offsets(diff["segments"])
+            r = get_segment_offsets(diff.get("segments", []))
             additions: set[int] = set(r[1])
             if any(ln not in additions for ln, _ in _file.lines):
                 # file has new coverage lines that are not accounted by the diff
@@ -210,7 +210,7 @@ def get_changes(
             # and are possibly accounted by the diff
             # But to know that for sure we need to know that every line lost is accounted
             # by the diff
-            if diff.get("type") != "deleted":
+            if diff.get("type") != "deleted" and "segments" in diff:
                 base_report_file = base_report.get(possibly_deleted_filename)
                 present_lines_on_base = {x[0] for x in base_report_file.lines}
                 _, _, line_removals = get_segment_offsets(diff["segments"])
@@ -249,7 +249,7 @@ def iter_changed_lines(
     """
     if not diff or diff["type"] == "modified":
         offsets, skip_lines, removed_lines = (
-            get_segment_offsets(diff["segments"]) if diff else (None, None, None)
+            get_segment_offsets(diff.get("segments", [])) if diff else (None, None, None)
         )
         base_ln = 0
         base_report_file_eof = (
