@@ -226,6 +226,7 @@ class BaseCodecovTask(celery_app.Task):
 
     @sentry_sdk.trace
     def apply_async(self, args=None, kwargs=None, **options):
+        close_old_connections()
         db_session = get_db_session()
         user_plan = _get_user_plan_from_task(db_session, self.name, kwargs)
         ownerid = _get_ownerid_from_task(db_session, self.name, kwargs)
