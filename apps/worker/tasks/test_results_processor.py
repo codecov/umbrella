@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 
 from app import celery_app
+from django.db import close_old_connections
 from services.processing.types import UploadArguments
 from services.test_analytics.ta_processor import ta_processor
 from shared.celery_config import test_results_processor_task_name
@@ -26,6 +27,7 @@ class TestResultsProcessorTask(BaseCodecovTask, name=test_results_processor_task
         **kwargs,
     ) -> bool:
         for argument in arguments_list:
+            close_old_connections()
             ta_processor(
                 repoid=repoid,
                 commitid=commitid,
