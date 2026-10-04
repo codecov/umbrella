@@ -9,14 +9,14 @@ from shared.plan.constants import DEFAULT_FREE_PLAN
 def _get_user_plan_from_ownerid(ownerid, *args, **kwargs) -> str:
     owner = Owner.objects.filter(ownerid=ownerid).first()
     if owner:
-        return owner.plan
+        return owner.plan or DEFAULT_FREE_PLAN
     return DEFAULT_FREE_PLAN
 
 
 def _get_user_plan_from_repoid(repoid, *args, **kwargs) -> str:
     repo = Repository.objects.filter(repoid=repoid).select_related("author").first()
     if repo and repo.author:
-        return repo.author.plan
+        return repo.author.plan or DEFAULT_FREE_PLAN
     return DEFAULT_FREE_PLAN
 
 
@@ -32,7 +32,7 @@ def _get_user_plan_from_comparison_id(comparison_id, *args, **kwargs) -> str:
         and compare_commit.compare_commit.repository
         and compare_commit.compare_commit.repository.author
     ):
-        return compare_commit.compare_commit.repository.author.plan
+        return compare_commit.compare_commit.repository.author.plan or DEFAULT_FREE_PLAN
     return DEFAULT_FREE_PLAN
 
 
