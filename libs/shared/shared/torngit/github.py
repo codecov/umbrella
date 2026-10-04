@@ -678,8 +678,23 @@ class Github(TorngitBaseAdapter):
     def _parse_response(self, res: Response):
         if res.status_code == 204:
             return None
-        elif res.headers.get("Content-Type")[:16] == "application/json":
-            return res.json()
+        elif res.headers.get("Content-Type", "")[:16] == "application/json":
+            try:
+                return res.json()
+            except ValueError:
+                log.warning(
+                    "Unable to parse Github JSON response",
+                    extra={
+                        "status_code": res.status_code,
+                        "content_type": res.headers.get("Content-Type"),
+                        "response_text": res.text[:200],
+                    },
+                )
+                raise TorngitClientGeneralError(
+                    res.status_code,
+                    None,
+                    "Response from GitHub could not be parsed as JSON",
+                )
         else:
             try:
                 return res.text
