@@ -16,6 +16,7 @@ from shared.torngit import Github
 from shared.torngit.exceptions import (
     TorngitRateLimitError,
     TorngitServer5xxCodeError,
+    TorngitServerUnreachableError,
     TorngitUnauthorizedError,
 )
 from tasks.crontasks import CodecovCronTask
@@ -185,6 +186,7 @@ class GitHubAppWebhooksCheckTask(CodecovCronTask, name=gh_app_webhook_check_task
             TorngitUnauthorizedError,
             TorngitServer5xxCodeError,
             TorngitRateLimitError,
+            TorngitServerUnreachableError,
         ) as exp:
             log.error(
                 "Failed to check github app webhooks",
