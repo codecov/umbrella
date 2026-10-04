@@ -76,12 +76,20 @@ def resolve_author(repository: Repository, info: GraphQLResolveInfo) -> Owner:
 
 
 @repository_bindable.field("commit")
-def resolve_commit(repository: Repository, info: GraphQLResolveInfo, id: str) -> Commit:
+def resolve_commit(
+    repository: Repository,
+    info: GraphQLResolveInfo,
+    id: str = None,
+    commitid: str = None,
+) -> Commit:
+    commit_sha = id or commitid
+    if not commit_sha:
+        raise ValueError("Either 'id' or 'commitid' argument must be provided")
     loader = CommitLoader.loader(info, repository.pk)
-    commit = loader.load(id)
+    commit = loader.load(commit_sha)
 
     if commit:
-        sentry_sdk.set_tag("commit_sha", id)
+        sentry_sdk.set_tag("commit_sha", commit_sha)
 
     return commit
 
