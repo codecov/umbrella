@@ -1,11 +1,16 @@
 import fnmatch
+import logging
 import re
 from collections import OrderedDict
 from collections.abc import Mapping
 
+from django.db import InterfaceError, OperationalError, connections
+
 from shared.celery_config import BaseCeleryConfig, get_task_group
 from shared.config import get_config
 from shared.django_apps.codecov_auth.models import Plan
+
+log = logging.getLogger(__name__)
 
 Pattern = re.Pattern
 
@@ -79,7 +84,33 @@ def route_tasks_based_on_user_plan(task_name: str, user_plan: str, owner: int) -
     Returns:
         Dict containing queue name and any extra configuration
     """
-    plan = Plan.objects.get(name=user_plan)
+    try:
+        plan = Plan.objects.get(name=user_plan)
+    except Plan.DoesNotExist:
+        log.warning(
+            "Plan not found while routing task; falling back to default queue",
+            extra={"task_name": task_name, "user_plan": user_plan},
+        )
+        return {"queue": _get_default_queue(task_name), "extra_config": {}}
+    except (OperationalError, InterfaceError):
+        # The DB connection may be broken (e.g. server closed it mid-task).
+        # Close and reset all connections so Django can reconnect on the next
+        # attempt, then retry the query once before falling back to the default
+        # queue so that error-handling paths (e.g. breadcrumb tasks) can still
+        # be enqueued.
+        log.warning(
+            "DB connection error while routing task; resetting connections and retrying",
+            extra={"task_name": task_name, "user_plan": user_plan},
+        )
+        connections.close_all()
+        try:
+            plan = Plan.objects.get(name=user_plan)
+        except (Plan.DoesNotExist, OperationalError, InterfaceError):
+            log.warning(
+                "Failed to look up plan while routing task; falling back to default queue",
+                extra={"task_name": task_name, "user_plan": user_plan},
+            )
+            return {"queue": _get_default_queue(task_name), "extra_config": {}}
 
     if not plan.is_enterprise_plan:
         return {"queue": _get_default_queue(task_name), "extra_config": {}}
