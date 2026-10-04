@@ -188,6 +188,7 @@ class ComputeComparisonTask(BaseCodecovTask, name=compute_comparison_task_name):
             .all()
         }
 
+        new_flag_comparisons = []
         for flag_name in flag_names:
             totals = self.get_flag_comparison_totals(flag_name, comparison_proxy)
             repositoryflag = repository_flags_by_name[flag_name]
@@ -198,8 +199,8 @@ class ComputeComparisonTask(BaseCodecovTask, name=compute_comparison_task_name):
                     "No previous flag comparisons; adding flag comparisons",
                     extra={"repoid": repository_id},
                 )
-                self.store_flag_comparison(
-                    db_session, comparison, repositoryflag, totals
+                new_flag_comparisons.append(
+                    self.build_flag_comparison(comparison, repositoryflag, totals)
                 )
             else:
                 log.debug(
@@ -209,6 +210,9 @@ class ComputeComparisonTask(BaseCodecovTask, name=compute_comparison_task_name):
                 flag_comparison_entry.head_totals = totals["head_totals"]
                 flag_comparison_entry.base_totals = totals["base_totals"]
                 flag_comparison_entry.patch_totals = totals["patch_totals"]
+        if new_flag_comparisons:
+            db_session.add_all(new_flag_comparisons)
+            db_session.flush()
         log.info(
             "Flag comparisons stored successfully",
             extra={"number_stored": len(head_report_flags)},
@@ -239,22 +243,19 @@ class ComputeComparisonTask(BaseCodecovTask, name=compute_comparison_task_name):
                 totals["patch_totals"] = patch_totals.asdict()
         return totals
 
-    def store_flag_comparison(
+    def build_flag_comparison(
         self,
-        db_session,
         comparison: CompareCommit,
         repositoryflag: RepositoryFlag,
         totals,
-    ):
-        flag_comparison = CompareFlag(
+    ) -> CompareFlag:
+        return CompareFlag(
             commit_comparison=comparison,
             repositoryflag=repositoryflag,
             patch_totals=totals["patch_totals"],
             head_totals=totals["head_totals"],
             base_totals=totals["base_totals"],
         )
-        db_session.add(flag_comparison)
-        db_session.flush()
 
     @sentry_sdk.trace
     def compute_component_comparisons(
@@ -285,14 +286,20 @@ class ComputeComparisonTask(BaseCodecovTask, name=compute_comparison_task_name):
                 .filter(CompareComponent.commit_comparison_id == comparison.id)
                 .all()
             }
+            component_comparisons = []
             for component in components:
-                self.compute_component_comparison(
-                    db_session,
-                    comparison,
-                    comparison_proxy,
-                    component,
-                    existing_component_comparisons,
+                component_comparisons.append(
+                    self.compute_component_comparison(
+                        db_session,
+                        comparison,
+                        comparison_proxy,
+                        component,
+                        existing_component_comparisons,
+                    )
                 )
+            if component_comparisons:
+                db_session.add_all(component_comparisons)
+                db_session.flush()
 
     @sentry_sdk.trace
     def parallel_compute_component_comparison(
@@ -317,7 +324,7 @@ class ComputeComparisonTask(BaseCodecovTask, name=compute_comparison_task_name):
         comparison_proxy: ComparisonProxy,
         component: Component,
         existing_component_comparisons: dict[str, CompareComponent],
-    ):
+    ) -> CompareComponent:
         component_comparison = existing_component_comparisons.get(
             component.component_id
         )
@@ -345,8 +352,7 @@ class ComputeComparisonTask(BaseCodecovTask, name=compute_comparison_task_name):
             if patch_totals:
                 component_comparison.patch_totals = patch_totals.asdict()
 
-        db_session.add(component_comparison)
-        db_session.flush()
+        return component_comparison
 
     @sentry_sdk.trace
     def store_results(self, comparison: CompareCommit, impacted_files):
