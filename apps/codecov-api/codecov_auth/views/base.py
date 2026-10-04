@@ -216,7 +216,11 @@ class LoginMixin:
                     )
                     owner.user = current_user
                     owner.save()
-                    login(request, current_user)
+                    login(
+                        request,
+                        current_user,
+                        backend="django.contrib.auth.backends.ModelBackend",
+                    )
                 else:
                     # assign the owner to the currently authenticated user
                     owner.user = request.user
@@ -235,7 +239,11 @@ class LoginMixin:
                 # we'll just logout the current user and login the user that controls the owner
                 # that just OAuth-ed.
                 logout(request)
-                login(request, owner.user)
+                login(
+                    request,
+                    owner.user,
+                    backend="django.contrib.auth.backends.ModelBackend",
+                )
                 return
         # else we do not have a currently authenticated user
         else:
@@ -252,7 +260,11 @@ class LoginMixin:
                 owner.user = current_user
                 owner.save()
 
-            login(request, current_user)
+            login(
+                request,
+                current_user,
+                backend="django.contrib.auth.backends.ModelBackend",
+            )
             log.info(
                 "User logged in",
                 extra={"user_id": request.user.pk, "ownerid": owner.ownerid},
