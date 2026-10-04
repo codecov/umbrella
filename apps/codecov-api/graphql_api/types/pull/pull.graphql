@@ -17,4 +17,5 @@ type Pull {
     before: String
   ): CommitConnection @cost(complexity: 10, multipliers: ["first", "last"])
   firstPull: Boolean!
+  impactedFiles(filters: ImpactedFilesFilters): ImpactedFilesResult @deprecated(reason: "Use compareWithBase { ... on Comparison { impactedFiles } } instead")
 }
