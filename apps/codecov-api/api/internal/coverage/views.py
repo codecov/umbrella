@@ -3,7 +3,7 @@ from typing import Any
 from django.http import HttpRequest
 from rest_framework import viewsets
 from rest_framework.decorators import action
-from rest_framework.exceptions import NotFound
+from rest_framework.exceptions import NotFound, ValidationError
 from rest_framework.response import Response
 
 import services.components as components_service
@@ -18,8 +18,12 @@ class CoverageViewSet(viewsets.ViewSet, RepoPropertyMixin):
 
     def get_object(self) -> ReportPaths:
         commit_sha = self.request.query_params.get("sha")
+        if commit_sha and "\x00" in commit_sha:
+            raise ValidationError("Invalid commit SHA.")
         if not commit_sha:
             branch_name = self.request.query_params.get("branch", self.repo.branch)
+            if branch_name and "\x00" in branch_name:
+                raise ValidationError("Invalid branch name.")
             branch = self.repo.branches.filter(name=branch_name).first()
             if branch is None:
                 raise NotFound(
