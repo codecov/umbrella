@@ -363,6 +363,11 @@ class BaseCeleryConfig:
     # Can be overridden via: setup.tasks.celery.visibility_timeout config
     broker_transport_options = {
         "visibility_timeout": TASK_VISIBILITY_TIMEOUT_SECONDS,
+        # Retry Redis broker operations on transient errors (e.g. during a primary failover).
+        # A 5-second timeout covers brief failover windows without stalling the worker indefinitely.
+        "retry_policy": {
+            "timeout": 5,
+        },
     }
     result_extended = True
     task_default_queue = get_config(
