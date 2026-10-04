@@ -20,9 +20,9 @@ class Component:
         return Component(
             component_id=component_dict.get("component_id", ""),
             name=component_dict.get("name", ""),
-            flag_regexes=component_dict.get("flag_regexes", []),
-            paths=component_dict.get("paths", []),
-            statuses=component_dict.get("statuses", []),
+            flag_regexes=component_dict.get("flag_regexes") or [],
+            paths=component_dict.get("paths") or [],
+            statuses=component_dict.get("statuses") or [],
         )
 
     def get_display_name(self) -> str:
