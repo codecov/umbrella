@@ -4,4 +4,6 @@ type ComponentComparison {
     baseTotals: CoverageTotals
     headTotals: CoverageTotals
     patchTotals: CoverageTotals
+    base: CoverageTotals @deprecated(reason: "Use baseTotals instead")
+    head: CoverageTotals @deprecated(reason: "Use headTotals instead")
 }
