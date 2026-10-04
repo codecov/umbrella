@@ -68,7 +68,7 @@ def from_xml(xml: Element, report_builder_session: ReportBuilderSession) -> None
     )
 
     for _class in xml.iter("class"):
-        filename = _class.attrib["filename"]
+        filename = _class.attrib.get("filename")
         if not filename:
             continue
         _file = report_builder_session.create_coverage_file(filename, do_fix_path=False)
@@ -205,7 +205,9 @@ def from_xml(xml: Element, report_builder_session: ReportBuilderSession) -> None
     path_name_fixing = []
 
     for _class in xml.iter("class"):
-        filename = _class.attrib["filename"]
+        filename = _class.attrib.get("filename")
+        if not filename:
+            continue
         fixed_name = path_fixer(filename, bases_to_try=source_path_list)
         path_name_fixing.append((filename, fixed_name))
 
