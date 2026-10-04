@@ -142,7 +142,15 @@ class UploadProcessorTask(BaseCodecovTask, name=upload_processor_task_name):
                 UserYaml(commit_yaml),
                 arguments,
             )
-        except SoftTimeLimitExceeded as e:
+        except SoftTimeLimitExceeded:
+            log.warning(
+                "Upload processor task exceeded soft time limit",
+                extra={
+                    "repoid": repoid,
+                    "commitid": commitid,
+                    "upload_id": arguments.get("upload_id"),
+                },
+            )
             self._call_upload_breadcrumb_task(
                 commit_sha=commitid,
                 repo_id=repoid,
@@ -150,7 +158,11 @@ class UploadProcessorTask(BaseCodecovTask, name=upload_processor_task_name):
                 upload_ids=[arguments["upload_id"]],
                 error=Errors.TASK_TIMED_OUT,
             )
-            raise
+            # Return a failed result instead of re-raising, so that chord members
+            # do not enter FAILURE state and break the entire chord/finisher pipeline.
+            # The upload will be recorded as timed out; the finisher will run without
+            # this upload's intermediate report.
+            return {"successful": False, "error": "SoftTimeLimitExceeded"}
         except Exception as e:
             self._call_upload_breadcrumb_task(
                 commit_sha=commitid,

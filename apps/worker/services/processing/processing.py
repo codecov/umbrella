@@ -2,7 +2,7 @@ import logging
 from collections.abc import Callable
 
 import sentry_sdk
-from celery.exceptions import CeleryError
+from celery.exceptions import CeleryError, SoftTimeLimitExceeded
 from sqlalchemy.orm import Session as DbSession
 
 from app import celery_app
@@ -68,7 +68,16 @@ def process_upload(
         log.info("Finished processing upload", extra={"result": result})
 
         if processing_result.report:
-            save_intermediate_report(upload_id, processing_result.report)
+            try:
+                save_intermediate_report(upload_id, processing_result.report)
+            except SoftTimeLimitExceeded:
+                log.warning(
+                    "Soft time limit hit during save_intermediate_report; "
+                    "intermediate report will not be saved for this upload",
+                    extra={"upload_id": upload_id},
+                )
+                state.mark_upload_as_processed(upload_id)
+                raise
         state.mark_upload_as_processed(upload_id)
 
         # Check if all uploads are now processed and trigger finisher if needed
