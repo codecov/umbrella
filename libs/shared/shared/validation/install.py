@@ -293,6 +293,7 @@ config_schema = {
                 "schema": {"conn_max_age": {"type": "integer"}},
             },
             "redis_url": {"type": "string"},
+            "redis_primary_url": {"type": "string"},
             "github_marketplace": {
                 "type": "dict",
                 "schema": {"use_stubbed": {"type": "boolean"}},
