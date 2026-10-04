@@ -33,6 +33,7 @@ from helpers.save_commit_error import save_commit_error
 from services.repository import get_repo_provider_service
 from shared.celery_config import (
     TASK_RETRY_BACKOFF_BASE_SECONDS,
+    TASK_RETRY_BACKOFF_MAX_SECONDS,
     upload_breadcrumb_task_name,
 )
 from shared.celery_router import route_tasks_based_on_user_plan
@@ -347,7 +348,10 @@ class BaseCodecovTask(celery_app.Task):
             getattr(self.request, "retries", 0) if hasattr(self, "request") else 0
         )
         if countdown is None:
-            countdown = TASK_RETRY_BACKOFF_BASE_SECONDS * (2**retry_count)
+            countdown = min(
+                TASK_RETRY_BACKOFF_BASE_SECONDS * (2**retry_count),
+                TASK_RETRY_BACKOFF_MAX_SECONDS,
+            )
 
         try:
             self.retry(
@@ -473,7 +477,10 @@ class BaseCodecovTask(celery_app.Task):
                 )
                 db_session.rollback()
                 retry_count = getattr(self.request, "retries", 0)
-                countdown = TASK_RETRY_BACKOFF_BASE_SECONDS * (2**retry_count)
+                countdown = min(
+                    TASK_RETRY_BACKOFF_BASE_SECONDS * (2**retry_count),
+                    TASK_RETRY_BACKOFF_MAX_SECONDS,
+                )
                 try:
                     if not self.safe_retry(countdown=countdown):
                         return None
@@ -487,7 +494,10 @@ class BaseCodecovTask(celery_app.Task):
                 self._analyse_error(ex, args, kwargs)
                 db_session.rollback()
                 retry_count = getattr(self.request, "retries", 0)
-                countdown = TASK_RETRY_BACKOFF_BASE_SECONDS * (2**retry_count)
+                countdown = min(
+                    TASK_RETRY_BACKOFF_BASE_SECONDS * (2**retry_count),
+                    TASK_RETRY_BACKOFF_MAX_SECONDS,
+                )
                 try:
                     if not self.safe_retry(countdown=countdown):
                         return None
