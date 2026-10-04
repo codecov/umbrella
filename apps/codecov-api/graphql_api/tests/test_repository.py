@@ -61,7 +61,7 @@ default_fields = """
     oldestCommitAt
     uploadToken
     token
-    defaultBranch
+    defaultBranch { name }
     author { username }
     graphToken
     yaml
@@ -137,7 +137,7 @@ class TestFetchRepository(GraphQLTestHelper, TestCase):
             "updatedAt": "2021-01-01T00:00:00+00:00",
             "uploadToken": repo.upload_token,
             "token": "Token Unavailable. Please contact your admin.",
-            "defaultBranch": "main",
+            "defaultBranch": None,
             "author": {"username": "codecov-user"},
             "graphToken": graphToken,
             "yaml": "test: test\n",
@@ -199,7 +199,7 @@ class TestFetchRepository(GraphQLTestHelper, TestCase):
             "updatedAt": "2021-01-01T00:00:00+00:00",
             "uploadToken": repo.upload_token,
             "token": "Token Unavailable. Please contact your admin.",
-            "defaultBranch": "main",
+            "defaultBranch": None,
             "author": {"username": "codecov-user"},
             "graphToken": graphToken,
             "yaml": "test: test\n",
