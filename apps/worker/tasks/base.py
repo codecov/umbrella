@@ -12,6 +12,7 @@ from sqlalchemy.exc import (
     DataError,
     IntegrityError,
     InvalidRequestError,
+    OperationalError,
     SQLAlchemyError,
 )
 
@@ -533,6 +534,12 @@ class BaseCodecovTask(celery_app.Task):
         except InvalidRequestError:
             log.warning(
                 "DB session cannot be operated on any longer. Closing it and removing it",
+                exc_info=True,
+            )
+            get_db_session.remove()
+        except OperationalError:
+            log.warning(
+                "DB connection was lost during session wrap-up (e.g. server terminated). Removing session.",
                 exc_info=True,
             )
             get_db_session.remove()
