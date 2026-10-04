@@ -476,7 +476,14 @@ class BundleAnalysisProcessorTask(
                 "uploadid": upload.id_,
                 "commit_yaml": commit_yaml.to_dict(),
                 "previous_result": processing_results,
-            }
+            },
+            retry=True,
+            retry_policy={
+                "max_retries": 3,
+                "interval_start": 0,
+                "interval_step": 1,
+                "interval_max": 5,
+            },
         )
 
         log.info(
