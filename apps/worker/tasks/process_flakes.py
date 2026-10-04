@@ -2,6 +2,7 @@ import logging
 from typing import Any
 
 import sentry_sdk
+from django.db import OperationalError, connections
 from sqlalchemy.orm import Session
 
 from app import celery_app
@@ -29,6 +30,15 @@ class ProcessFlakesTask(BaseCodecovTask, name=process_flakes_task_name):
         try:
             process_flakes_for_repo(repo_id)
             return {"successful": True}
+        except OperationalError as e:
+            log.warning(
+                "Transient DB connection error processing flakes for repo %s, retrying: %s",
+                repo_id,
+                str(e),
+            )
+            # Close the stale ta_timeseries connection so the retry gets a fresh one
+            connections["ta_timeseries"].close()
+            raise self.retry(exc=e, countdown=30, max_retries=3)
         except Exception as e:
             log.error("Error processing flakes for repo %s: %s", repo_id, str(e))
             sentry_sdk.capture_exception(e)
