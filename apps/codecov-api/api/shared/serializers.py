@@ -37,7 +37,7 @@ class CommitRefQueryParamSerializer(serializers.Serializer):
 
 
 class PullIDQueryParamSerializer(serializers.Serializer):
-    pullid = serializers.CharField(required=True)
+    pullid = serializers.IntegerField(required=True)
 
     def validate(self, obj):
         repo = self.context.get("repo")
