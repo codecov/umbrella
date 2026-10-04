@@ -4,6 +4,7 @@ type Me {
   onboardingCompleted: Boolean!
   user: User!
   owner: Owner!
+  ownerid: Int!
   sessions(
     first: Int
     after: String
