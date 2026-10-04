@@ -1,5 +1,6 @@
 import logging
 
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm.session import Session
 
 from database.enums import NotificationState
@@ -43,15 +44,6 @@ def create_or_update_commit_notification_from_notification_result(
 
     db_session: Session = commit.get_db_session()
 
-    commit_notification = (
-        db_session.query(CommitNotification)
-        .filter(
-            CommitNotification.commit_id == commit.id_,
-            CommitNotification.notification_type == notifier.notification_type,
-        )
-        .first()
-    )
-
     notification_state = (
         NotificationState.error if failed else NotificationState.success
     )
@@ -59,18 +51,28 @@ def create_or_update_commit_notification_from_notification_result(
         notification_result.github_app_used if notification_result else None
     )
 
-    if not commit_notification:
-        commit_notification = CommitNotification(
+    # Use an atomic upsert to avoid a deadlock-prone SELECT+INSERT race condition
+    # when two concurrent Notify tasks process the same commit simultaneously.
+    stmt = (
+        insert(CommitNotification)
+        .values(
             commit_id=commit.id_,
             notification_type=notifier.notification_type,
             decoration_type=notifier.decoration_type,
             gh_app_id=github_app_used,
             state=notification_state,
         )
-        db_session.add(commit_notification)
-        db_session.flush()
-        return commit_notification
-
-    commit_notification.decoration_type = notifier.decoration_type
-    commit_notification.state = notification_state
-    return commit_notification
+        .on_conflict_do_update(
+            constraint="commit_notifications_commit_id_notification_type",
+            set_={
+                "decoration_type": notifier.decoration_type,
+                "gh_app_id": github_app_used,
+                "state": notification_state,
+            },
+        )
+        .returning(CommitNotification.id)
+    )
+    result = db_session.execute(stmt)
+    notification_id = result.scalar()
+    db_session.flush()
+    return db_session.get(CommitNotification, notification_id)
