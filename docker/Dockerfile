@@ -13,7 +13,9 @@ FROM golang:1.26-bookworm as berglas
 ARG BERGLAS_VERSION
 RUN git clone --depth 1 --branch v${BERGLAS_VERSION} https://github.com/GoogleCloudPlatform/berglas.git /src
 WORKDIR /src
-RUN go get golang.org/x/crypto@v0.57.0 golang.org/x/net@v0.59.0 google.golang.org/grpc@v1.84.0 && go mod tidy
+# v1.84.0 contains the patch but still matches the Go vuln DB range for
+# CVE-2026-84445 (GO-2026-6443). v1.86.0-dev is outside that range.
+RUN go get golang.org/x/crypto@v0.57.0 golang.org/x/net@v0.59.0 google.golang.org/grpc@v1.86.0-dev && go mod tidy
 RUN CGO_ENABLED=0 go build -trimpath -o /bin/berglas .
 
 FROM $REQUIREMENTS_IMAGE as app
