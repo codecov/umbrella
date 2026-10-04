@@ -29,7 +29,7 @@ def cleanup_files_batched(
 ) -> int:
     def delete_file(bucket_path: tuple[str, str]) -> bool:
         try:
-            return context.storage.delete_file(bucket_path[0], bucket_path[1])
+            return context.storage.delete_file(bucket_path[0], bucket_path[1].strip())
         except FileNotInStorageError:
             return False
         except Exception as e:
@@ -139,7 +139,7 @@ def cleanup_commitreport(context: CleanupContext, query: QuerySet):
                 path = MinioEndpoints.chunks.get_path(
                     version="v4",
                     repo_hash=repo_hash,
-                    commitid=commit_sha,
+                    commitid=commit_sha.strip(),
                     chunks_file_name=chunks_file_name,
                 )
                 buckets_paths[context.default_bucket].append(path)
