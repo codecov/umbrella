@@ -245,6 +245,7 @@ def get_sorted_path_contents(
 
 
 @commit_bindable.field("pathContents")
+@commit_bindable.field("pathContent")
 @sync_to_async
 def resolve_path_contents(
     commit: Commit,

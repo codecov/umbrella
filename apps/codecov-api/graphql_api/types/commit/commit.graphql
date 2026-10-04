@@ -18,6 +18,7 @@ type Commit {
     before: String
   ): UploadConnection @cost(complexity: 10, multipliers: ["first", "last"])
   pathContents(path: String, filters: PathContentsFilters): PathContentsResult
+  pathContent(path: String, filters: PathContentsFilters): PathContentsResult @deprecated(reason: "Use pathContents instead")
   deprecatedPathContents(path: String, filters: PathContentsFilters, first: Int, after: String, last: Int, before: String): DeprecatedPathContentsResult
   errors(errorType: CommitErrorType!): CommitErrorsConnection!
   totalUploads: Int!
