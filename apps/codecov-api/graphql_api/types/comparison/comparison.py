@@ -19,7 +19,7 @@ from graphql_api.types.errors import (
     MissingHeadCommit,
     MissingHeadReport,
 )
-from graphql_api.types.errors.errors import UnknownFlags
+from graphql_api.types.errors.errors import UnknownFlags, UnknownPath
 from reports.models import ReportLevelTotals
 from services.comparison import (
     Comparison,
@@ -84,8 +84,11 @@ def resolve_indirect_changed_files_count(
 @sync_to_async
 def resolve_impacted_file(
     comparison: ComparisonReport, info: GraphQLResolveInfo, path
-) -> ImpactedFile:
-    return comparison.impacted_file(path)
+) -> ImpactedFile | UnknownPath:
+    result = comparison.impacted_file(path)
+    if result is None:
+        return UnknownPath(f"path does not exist: {path}")
+    return result
 
 
 # TODO: rename `changeCoverage`
