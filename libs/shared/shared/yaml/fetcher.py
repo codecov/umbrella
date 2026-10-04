@@ -3,7 +3,7 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 
 from shared.torngit.base import TorngitBaseAdapter
-from shared.torngit.exceptions import TorngitObjectNotFoundError
+from shared.torngit.exceptions import TorngitCommitNotFoundError, TorngitObjectNotFoundError
 
 log = logging.getLogger(__name__)
 
@@ -26,6 +26,11 @@ async def fetch_current_yaml_from_provider_via_reference(
     try:
         content = await repository_service.get_source(location, ref)
         return content["content"]
+    except TorngitCommitNotFoundError:
+        # Commit is not yet available on the provider (transient replication lag).
+        # Re-raise so callers can retry the operation rather than silently
+        # proceeding with no YAML configuration.
+        raise
     except TorngitObjectNotFoundError:
         log.exception(
             "File not in %s for commit", extra={"commit": ref, "location": location}
