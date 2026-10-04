@@ -1,7 +1,7 @@
 type Comparison {
   state: String!
   impactedFile(path: String!): ImpactedFile
-  impactedFiles(filters: ImpactedFilesFilters): ImpactedFilesResult!
+  impactedFiles(filters: FiltersInput): ImpactedFilesResult!
   impactedFilesCount: Int!
   indirectChangedFilesCount: Int!
   patchTotals: CoverageTotals
