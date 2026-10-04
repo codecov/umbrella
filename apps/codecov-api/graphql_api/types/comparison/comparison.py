@@ -13,11 +13,14 @@ from compare.models import ComponentComparison, FlagComparison
 from graphql_api.actions.flags import get_flag_comparisons
 from graphql_api.dataloader.commit import CommitLoader
 from graphql_api.types.errors import (
+    ComparisonError,
+    ComponentsComparisonError,
     MissingBaseCommit,
     MissingBaseReport,
     MissingComparison,
     MissingHeadCommit,
     MissingHeadReport,
+    MissingReports,
 )
 from graphql_api.types.errors.errors import UnknownFlags
 from reports.models import ReportLevelTotals
@@ -280,3 +283,9 @@ def resolve_comparison_result_type(obj, *_):
         return "MissingHeadReport"
     elif isinstance(obj, FirstPullRequest):
         return "FirstPullRequest"
+    elif isinstance(obj, ComparisonError):
+        return "ComparisonError"
+    elif isinstance(obj, ComponentsComparisonError):
+        return "ComponentsComparisonError"
+    elif isinstance(obj, MissingReports):
+        return "MissingReports"
