@@ -83,3 +83,10 @@ def resolve_bundle_data(
 @bundle_analysis_report_bindable.field("isCached")
 def resolve_is_cached(bundle_report: BundleReport, info: GraphQLResolveInfo) -> bool:
     return bundle_report.is_cached
+
+
+@bundle_analysis_report_bindable.field("builtAt")
+def resolve_built_at(
+    bundles_analysis_report: BundleAnalysisReport, info: GraphQLResolveInfo
+) -> str | None:
+    return bundles_analysis_report.built_at
