@@ -12,6 +12,8 @@ type CoverageAnalytics {
   commitSha: String # formerly repository.coverageSha
   "PercentCovered is percent of lines covered (e.g., 87.25)"
   percentCovered: Float # formerly repository.coverage
+  "TotalCoverage is an alias for percentCovered, kept for backwards compatibility"
+  totalCoverage: Float @deprecated(reason: "Use percentCovered instead")
 
   "Measurements are points in the time series for coverage over time"
   measurements(
