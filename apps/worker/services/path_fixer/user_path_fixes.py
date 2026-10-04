@@ -56,7 +56,7 @@ class UserPathFixes:
 
     def _replacement_fn(self, group: re.Match) -> str:
         for group, replacement in zip(group.groups(), self.sub_replacements):
-            if group:
+            if group is not None:
                 return replacement
         assert False, "unreachable"  # this is only ever called with one truthy group
 
