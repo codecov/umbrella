@@ -492,6 +492,36 @@ class BundleAnalysisReport:
                     )
         return ret
 
+    @staticmethod
+    def _get_asset_module_names_bulk(
+        bundle_report: BundleReport,
+    ) -> dict[str, tuple[str, ...]]:
+        """
+        Returns a mapping of asset UUID -> sorted tuple of module names for all
+        JavaScript assets in the given bundle report, using a single bulk SQL query
+        instead of one query per asset.
+        """
+        asset_modules: dict[str, list[str]] = defaultdict(list)
+        with get_db_session(bundle_report.db_path) as session:
+            rows = (
+                session.query(Asset.uuid, Module.name)
+                .join(Asset.chunks)
+                .join(Chunk.modules)
+                .join(Asset.session)
+                .join(Session.bundle)
+                .filter(
+                    Bundle.id == bundle_report.bundle.id,
+                    Asset.asset_type == AssetType.JAVASCRIPT,
+                )
+                .all()
+            )
+            for asset_uuid, module_name in rows:
+                asset_modules[asset_uuid].append(module_name)
+        return {
+            uuid: tuple(sorted(frozenset(names)))
+            for uuid, names in asset_modules.items()
+        }
+
     def _associate_bundle_report_assets_by_module_names(
         self, curr_bundle_report: BundleReport, prev_bundle_report: BundleReport
     ) -> set[tuple[str, str]]:
@@ -503,29 +533,27 @@ class BundleAnalysisReport:
         curr asset module names
         """
         ret = set()
-        prev_module_asset_mapping = {}
-        for prev_asset in prev_bundle_report.asset_reports():
-            if prev_asset.asset_type == AssetType.JAVASCRIPT:
-                prev_modules = tuple(
-                    sorted(frozenset([m.name for m in prev_asset.modules()]))
-                )
-                # NOTE: Assume two non-related assets CANNOT have the same set of modules
-                # though in reality there can be rare cases of this but we
-                # will deal with that later if it becomes a prevalent problem
-                prev_module_asset_mapping[prev_modules] = prev_asset.uuid
 
-        for curr_asset in curr_bundle_report.asset_reports():
-            if curr_asset.asset_type == AssetType.JAVASCRIPT:
-                curr_modules = tuple(
-                    sorted(frozenset([m.name for m in curr_asset.modules()]))
-                )
-                if curr_modules in prev_module_asset_mapping:
-                    ret.add(
-                        (
-                            prev_module_asset_mapping[curr_modules],
-                            curr_asset.uuid,
-                        )
+        # Bulk-fetch modules for all JS assets in each bundle with a single query each
+        prev_asset_modules = self._get_asset_module_names_bulk(prev_bundle_report)
+        curr_asset_modules = self._get_asset_module_names_bulk(curr_bundle_report)
+
+        # Build reverse mapping: module-names-tuple -> prev asset UUID
+        prev_module_asset_mapping: dict[tuple[str, ...], str] = {}
+        for prev_uuid, prev_modules in prev_asset_modules.items():
+            # NOTE: Assume two non-related assets CANNOT have the same set of modules
+            # though in reality there can be rare cases of this but we
+            # will deal with that later if it becomes a prevalent problem
+            prev_module_asset_mapping[prev_modules] = prev_uuid
+
+        for curr_uuid, curr_modules in curr_asset_modules.items():
+            if curr_modules in prev_module_asset_mapping:
+                ret.add(
+                    (
+                        prev_module_asset_mapping[curr_modules],
+                        curr_uuid,
                     )
+                )
         return ret
 
     @sentry_sdk.trace
