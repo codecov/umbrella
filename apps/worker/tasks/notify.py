@@ -56,7 +56,11 @@ from shared.django_apps.upload_breadcrumbs.models import Errors, Milestones
 from shared.helpers.redis import Redis, get_redis_connection
 from shared.reports.readonly import ReadOnlyReport
 from shared.torngit.base import TokenType, TorngitBaseAdapter
-from shared.torngit.exceptions import TorngitClientError, TorngitServerFailureError
+from shared.torngit.exceptions import (
+    TorngitClientError,
+    TorngitServer5xxCodeError,
+    TorngitServerFailureError,
+)
 from shared.typings.torngit import OwnerInfo, RepoInfo, TorngitInstanceData
 from shared.yaml import UserYaml
 from tasks.base import BaseCodecovTask
@@ -487,23 +491,36 @@ class NotifyTask(BaseCodecovTask, name=notify_task_name):
                 },
             )
 
-            notifications = self.submit_third_party_notifications(
-                current_yaml,
-                base_commit,
-                commit,
-                base_report,
-                head_report,
-                enriched_pull,
-                repository_service,
-                empty_upload,
-                all_tests_passed=all_tests_passed,
-                test_results_error=ta_error_msg,
-                installation_name_to_use=installation_name_to_use,
-                gh_is_using_codecov_commenter=self.is_using_codecov_commenter(
-                    repository_service
-                ),
-                gitlab_extra_shas_to_notify=gitlab_extra_shas_to_notify,
-            )
+            try:
+                notifications = self.submit_third_party_notifications(
+                    current_yaml,
+                    base_commit,
+                    commit,
+                    base_report,
+                    head_report,
+                    enriched_pull,
+                    repository_service,
+                    empty_upload,
+                    all_tests_passed=all_tests_passed,
+                    test_results_error=ta_error_msg,
+                    installation_name_to_use=installation_name_to_use,
+                    gh_is_using_codecov_commenter=self.is_using_codecov_commenter(
+                        repository_service
+                    ),
+                    gitlab_extra_shas_to_notify=gitlab_extra_shas_to_notify,
+                )
+            except TorngitServer5xxCodeError:
+                log.warning(
+                    "Git provider 5xx error during notifications. Retrying.",
+                    extra={"repoid": commit.repoid, "commit": commit.commitid},
+                )
+                return self._attempt_retry(
+                    max_retries=3,
+                    countdown=60 * 2**self.request.retries,
+                    commit=commit,
+                    current_yaml=current_yaml,
+                    **kwargs,
+                )
             self.log_checkpoint(UploadFlow.NOTIFIED)
             self._call_upload_breadcrumb_task(
                 commit_sha=commit.commitid,
