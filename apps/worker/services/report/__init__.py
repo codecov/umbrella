@@ -868,6 +868,8 @@ def delete_uploads_by_sessionid(
     )
     db_session.flush()
 
+    return upload_ids
+
 
 def legacy_totals(report: Report) -> dict:
     totals = dict(zip(TOTALS_MAP, report.totals))
