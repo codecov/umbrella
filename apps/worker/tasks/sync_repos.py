@@ -18,7 +18,11 @@ from shared.celery_config import (
 from shared.config import get_config
 from shared.helpers.redis import get_redis_connection
 from shared.torngit.base import TorngitBaseAdapter
-from shared.torngit.exceptions import TorngitClientError, TorngitServerFailureError
+from shared.torngit.exceptions import (
+    TorngitClientError,
+    TorngitRefreshTokenFailedError,
+    TorngitServerFailureError,
+)
 from tasks.base import BaseCodecovTask
 
 log = logging.getLogger(__name__)
@@ -319,10 +323,16 @@ class SyncReposTask(BaseCodecovTask, name=sync_repos_task_name):
         # So we should still run it just in case and possibly update GithubInstallation.repository_service_ids
         # Instead of relying exclusively on the webhooks to do that
         # TODO: Maybe we don't need to run this every time, but once in a while just in case...
-        async for page in git.list_repos_using_installation_generator(username):
-            if page:
-                received_repos = True
-                process_repos(page)
+        try:
+            async for page in git.list_repos_using_installation_generator(username):
+                if page:
+                    received_repos = True
+                    process_repos(page)
+        except TorngitRefreshTokenFailedError:
+            log.warning(
+                "Failed to refresh token while listing repos using installation; skipping full repo sync",
+                extra={"ownerid": ownerid, "username": username},
+            )
 
         # If the installation returned no repos, we were probably disabled and
         # should indicate as much on this owner's repositories.
