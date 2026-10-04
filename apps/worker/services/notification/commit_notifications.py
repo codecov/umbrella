@@ -1,5 +1,6 @@
 import logging
 
+from sqlalchemy.exc import InvalidRequestError
 from sqlalchemy.orm.session import Session
 
 from database.enums import NotificationState
@@ -36,7 +37,14 @@ def create_or_update_commit_notification_from_notification_result(
     if not_pull and (not_head_commit or not_github_app_info or failed):
         return None
 
-    commit = pull.get_head_commit() if pull else comparison.head.commit
+    try:
+        commit = pull.get_head_commit() if pull else comparison.head.commit
+    except InvalidRequestError:
+        log.warning(
+            "DB session in invalid state when fetching head commit for commit notification; skipping",
+            exc_info=True,
+        )
+        return None
     if not commit:
         log.warning("Head commit not found for pull", extra={"pull": pull})
         return None
