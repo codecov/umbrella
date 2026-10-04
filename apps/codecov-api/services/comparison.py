@@ -839,11 +839,17 @@ class FlagComparison:
 
     @cached_property
     def head_report(self):
-        return self.comparison.head_report.flags.get(self.flag_name)
+        head = self.comparison.head_report
+        if head is None:
+            return None
+        return head.flags.get(self.flag_name)
 
     @cached_property
     def base_report(self):
-        return self.comparison.base_report.flags.get(self.flag_name)
+        base = self.comparison.base_report
+        if base is None:
+            return None
+        return base.flags.get(self.flag_name)
 
     @cached_property
     def diff_totals(self):
