@@ -145,3 +145,8 @@ def resolve_bitbucket_server_url(_, info):
 
     if settings.BITBUCKET_SERVER_CLIENT_ID:
         return settings.BITBUCKET_SERVER_URL
+
+
+@config_bindable.field("codecovVersion")
+def resolve_codecov_version(_, info):
+    return getattr(settings, "CODECOV_VERSION", None)
