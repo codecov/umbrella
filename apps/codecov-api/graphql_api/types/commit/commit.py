@@ -381,11 +381,28 @@ def resolve_coverage_flags(commit: Commit, info: GraphQLResolveInfo) -> list[str
 @commit_coverage_analytics_bindable.field("coverageFile")
 @sync_to_async
 @sentry_sdk.trace
-def resolve_coverage_file(commit, info, path, flags=None, components=None):
+def resolve_coverage_file(
+    parent_commit, info, path, flags=None, components=None, commit=None
+):
+    # If a target commit SHA is provided, look it up in the same repository;
+    # otherwise fall back to the parent commit already resolved in context.
+    if commit is not None:
+        from core.models import Commit as CommitModel
+
+        target_commit = (
+            CommitModel.objects.filter(
+                commitid=commit,
+                repository=parent_commit.repository,
+            ).first()
+            or parent_commit
+        )
+    else:
+        target_commit = parent_commit
+
     fallback_file, paths = None, []
     if components:
         all_components = components_service.commit_components(
-            commit,
+            target_commit,
             info.context["request"].current_owner,
             should_use_sentry_app=getattr(
                 info.context["request"], USE_SENTRY_APP_INDICATOR, False
@@ -398,13 +415,13 @@ def resolve_coverage_file(commit, info, path, flags=None, components=None):
             paths.extend(fc.paths)
         fallback_file = FilteredReportFile(ReportFile(path), [])
 
-    commit_report = commit.full_report.filter(flags=flags, paths=paths)
+    commit_report = target_commit.full_report.filter(flags=flags, paths=paths)
     file_report = commit_report.get(path) or fallback_file
 
     return {
         "commit_report": commit_report,
         "file_report": file_report,
-        "commit": commit,
+        "commit": target_commit,
         "path": path,
         "flags": flags,
         "components": components,
