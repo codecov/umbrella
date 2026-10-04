@@ -9,6 +9,8 @@ NEW_TA_TASKS = Feature("new_ta_tasks")
 
 PARALLEL_COMPONENT_COMPARISON = Feature("parallel_component_comparison")
 
+PARALLEL_FLAG_COMPARISON = Feature("parallel_flag_comparison")
+
 TA_TIMESERIES = Feature("ta_timeseries")
 
 DISABLE_CROSS_POLLINATION_MESSAGE = Feature("disable_cross_pollination_message")

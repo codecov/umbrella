@@ -14,7 +14,7 @@ from database.models.core import Commit, Repository
 from database.models.reports import RepositoryFlag
 from helpers.comparison import minimal_totals
 from helpers.github_installation import get_installation_name_for_owner_for_task
-from rollouts import PARALLEL_COMPONENT_COMPARISON
+from rollouts import PARALLEL_COMPONENT_COMPARISON, PARALLEL_FLAG_COMPARISON
 from services.comparison import ComparisonProxy, FilteredComparison
 from services.comparison_utils import get_comparison_proxy
 from services.report import ReportService
@@ -27,6 +27,7 @@ from shared.torngit.exceptions import TorngitRateLimitError
 from shared.yaml import UserYaml
 from tasks.base import BaseCodecovTask
 from tasks.compute_component_comparison import compute_component_comparison_task
+from tasks.compute_flag_comparison import compute_flag_comparison_task
 
 log = logging.getLogger(__name__)
 
@@ -130,12 +131,30 @@ class ComputeComparisonTask(BaseCodecovTask, name=compute_comparison_task_name):
         if not head_report_flags:
             log.info("Head report does not have any flags", extra=log_extra)
             return
-        self.create_or_update_flag_comparisons(
-            db_session,
-            head_report_flags,
-            comparison,
-            comparison_proxy,
+        repo_id = comparison.compare_commit.repoid
+        if PARALLEL_FLAG_COMPARISON.check_value(repo_id, default=False):
+            self.parallel_compute_flag_comparison(comparison.id, list(head_report_flags.keys()))
+        else:
+            self.create_or_update_flag_comparisons(
+                db_session,
+                head_report_flags,
+                comparison,
+                comparison_proxy,
+            )
+
+    @sentry_sdk.trace
+    def parallel_compute_flag_comparison(
+        self,
+        comparison_id: int,
+        flag_names: list[str],
+    ):
+        task_group = group(
+            [
+                compute_flag_comparison_task.s(comparison_id, flag_name)
+                for flag_name in flag_names
+            ]
         )
+        task_group.apply_async()
 
     @sentry_sdk.trace
     def create_or_update_flag_comparisons(
