@@ -25,6 +25,8 @@ class CoberturaProcessor(BaseLanguageProcessor):
 
 
 def Int(value):
+    if value is None:
+        return 0
     try:
         return int(value)
     except ValueError:
