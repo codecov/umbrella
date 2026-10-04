@@ -1,0 +1,7 @@
+type Notification {
+  notificationType: String!
+  state: String
+  decorationType: String
+  createdAt: DateTime
+  updatedAt: DateTime
+}
