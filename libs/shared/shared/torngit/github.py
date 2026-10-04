@@ -2127,7 +2127,7 @@ class Github(TorngitBaseAdapter):
                 ).substitute(slug=self.slug, commit=commit)
                 res = await self.api(client, "get", url, token=token)
                 prs_with_commit = [
-                    data["number"] for data in res if data["state"] == state
+                    data["number"] for data in (res or []) if data["state"] == state
                 ]
                 if prs_with_commit:
                     if len(prs_with_commit) > 1:
