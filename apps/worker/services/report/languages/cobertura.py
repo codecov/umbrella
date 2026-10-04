@@ -97,7 +97,7 @@ def from_xml(xml: Element, report_builder_session: ReportBuilderSession) -> None
                     coverage = condition_coverage.split(" ", 1)[1][1:-1]  # 1/2
                     _type = CoverageType.branch
                 else:
-                    coverage = Int(_line.get("hits"))
+                    coverage = Int(_line.get("hits") or 0)
 
                 # [python] [scoverage] [groovy] Conditions
                 conditions_text = _line.get("missing-branches", None)
