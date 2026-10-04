@@ -108,6 +108,8 @@ class CompareViewSetMixin(CompareSlugMixin, viewsets.GenericViewSet):
     def file(self, request, *args, **kwargs):
         comparison = self.get_object()
         file_path = kwargs.get("file_path")
+        if comparison.head_report is None:
+            raise NotFound("No coverage report found for head commit.")
         if file_path not in comparison.head_report:
             raise NotFound("File not found in head report.")
         return Response(
