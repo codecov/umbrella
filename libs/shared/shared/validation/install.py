@@ -290,7 +290,13 @@ config_schema = {
             "timeseries_database_url": {"type": "string"},
             "database": {
                 "type": "dict",
-                "schema": {"conn_max_age": {"type": "integer"}},
+                "schema": {
+                    "conn_max_age": {"type": "integer"},
+                    "connect_timeout": {"type": "integer"},
+                    "keepalives_idle": {"type": "integer"},
+                    "keepalives_interval": {"type": "integer"},
+                    "keepalives_count": {"type": "integer"},
+                },
             },
             "redis_url": {"type": "string"},
             "github_marketplace": {
