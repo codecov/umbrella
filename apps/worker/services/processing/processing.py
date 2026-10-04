@@ -1,9 +1,11 @@
 import logging
+import time
 from collections.abc import Callable
 
 import sentry_sdk
 from celery.exceptions import CeleryError
 from sqlalchemy.orm import Session as DbSession
+from urllib3.exceptions import ProtocolError
 
 from app import celery_app
 from database.models.core import Commit
@@ -123,6 +125,25 @@ def rewrite_or_delete_upload(
     elif isinstance(report_info.raw_report, VersionOneParsedRawReport):
         # only a version 1 report needs to be "rewritten readable"
 
-        archive_service.write_file(
-            archive_url, report_info.raw_report.content().getvalue()
-        )
+        max_attempts = 3
+        for attempt in range(max_attempts):
+            try:
+                archive_service.write_file(
+                    archive_url, report_info.raw_report.content().getvalue()
+                )
+                break
+            except (ProtocolError, ConnectionError) as e:
+                if attempt == max_attempts - 1:
+                    raise
+                delay = 2**attempt  # 1s, 2s
+                log.warning(
+                    "Transient connection error writing report to storage, retrying",
+                    extra={
+                        "attempt": attempt + 1,
+                        "max_attempts": max_attempts,
+                        "delay": delay,
+                        "error": repr(e),
+                        "archive_url": archive_url,
+                    },
+                )
+                time.sleep(delay)
