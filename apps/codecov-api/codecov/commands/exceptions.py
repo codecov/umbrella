@@ -27,6 +27,10 @@ class MissingService(BaseException):
     message = "Missing required service"
 
 
+class ServiceUnavailable(BaseException):
+    message = "Service temporarily unavailable, please try again"
+
+
 class UnauthorizedGuestAccess(GraphQLError):
     def __init__(self):
         super().__init__("Unauthorized", extensions={"status": 403})

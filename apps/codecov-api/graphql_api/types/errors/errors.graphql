@@ -41,3 +41,7 @@ type OwnerNotActivatedError implements ResolverError {
 type MissingService implements ResolverError {
   message: String!
 }
+
+type ServiceUnavailableError implements ResolverError {
+  message: String!
+}
