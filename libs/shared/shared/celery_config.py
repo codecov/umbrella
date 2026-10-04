@@ -364,6 +364,24 @@ class BaseCeleryConfig:
     broker_transport_options = {
         "visibility_timeout": TASK_VISIBILITY_TIMEOUT_SECONDS,
     }
+
+    # Redis result backend connection resilience options.
+    # Prevents stale/closed connections from being returned by the connection pool,
+    # which would cause TimeoutError during chord state updates and propagate as
+    # ChordError to the entire chord group.
+    result_backend_transport_options = {
+        # Retry automatically on socket timeout instead of storing FAILURE in Redis
+        "retry_on_timeout": True,
+        # Periodic health check (seconds) to detect and evict idle stale connections
+        "health_check_interval": 30,
+        # Timeout (seconds) for read operations — fail fast on dead connections
+        "socket_timeout": 5,
+        # Timeout (seconds) when establishing new connections
+        "socket_connect_timeout": 5,
+        # Enable TCP keepalive probes so the OS detects dead connections
+        "socket_keepalive": True,
+    }
+
     result_extended = True
     task_default_queue = get_config(
         "setup", "tasks", "celery", "default_queue", default="celery"
