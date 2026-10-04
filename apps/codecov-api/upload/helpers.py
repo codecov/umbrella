@@ -11,6 +11,7 @@ from asgiref.sync import async_to_sync
 from cerberus import Validator
 from django.conf import settings
 from django.core.exceptions import ObjectDoesNotExist
+from django.db import transaction
 from django.db.models import Q
 from django.http import HttpRequest
 from django.http.request import HttpHeaders
@@ -795,15 +796,15 @@ def dispatch_upload_task(
         pipeline.setex(latest_upload_key, 3600, timezone.now().timestamp())
         pipeline.execute()
 
-    countdown = 4
-    TaskService().upload(
-        repoid=repoid,
-        commitid=commitid,
-        report_type=str(report_type),
-        arguments=task_arguments,
-        countdown=max(
-            countdown, int(get_config("setup", "upload_processing_delay") or 0)
-        ),
+    countdown = max(4, int(get_config("setup", "upload_processing_delay") or 0))
+    transaction.on_commit(
+        lambda: TaskService().upload(
+            repoid=repoid,
+            commitid=commitid,
+            report_type=str(report_type),
+            arguments=task_arguments,
+            countdown=countdown,
+        )
     )
 
 
