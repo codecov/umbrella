@@ -401,7 +401,7 @@ class GithubWebhookHandler(APIView):
         **kwargs,
     ):
         installation = request.data["installation"]
-        if not installation.get("account", None):
+        if not installation or not installation.get("account", None):
             # Non-2xx responses feed automated GitHub App redelivery loops.
             log.warning(
                 "Ignoring installation webhook with missing account",
@@ -412,8 +412,8 @@ class GithubWebhookHandler(APIView):
                         GitHubHTTPHeaders.HOOK_INSTALLATION_TARGET_ID
                     ),
                     "action": request.data.get("action"),
-                    "app_id": installation.get("app_id"),
-                    "installation_id": installation.get("id"),
+                    "app_id": installation.get("app_id") if installation else None,
+                    "installation_id": installation.get("id") if installation else None,
                 },
             )
             return Response(status=status.HTTP_200_OK)
