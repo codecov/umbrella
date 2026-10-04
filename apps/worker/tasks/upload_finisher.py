@@ -688,28 +688,50 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                         "current_yaml": commit_yaml.to_dict(),
                     }
                     notify_kwargs = UploadFlow.save_to_kwargs(notify_kwargs)
-                    task = self.app.tasks[notify_task_name].apply_async(
-                        kwargs=notify_kwargs
-                    )
-                    self._call_upload_breadcrumb_task(
-                        commit_sha=commitid,
-                        repo_id=repoid,
-                        milestone=Milestones.NOTIFICATIONS_TRIGGERED,
-                        upload_ids=[
-                            upload["upload_id"] for upload in processing_results
-                        ],
-                    )
-                    log.info(
-                        "Scheduling notify task",
-                        extra={
-                            "repoid": repoid,
-                            "commit": commitid,
-                            "commit_yaml": commit_yaml.to_dict(),
-                            "processing_results": processing_results,
-                            "notify_task_id": task.id,
-                            "parent_task": self.request.parent_id,
-                        },
-                    )
+                    try:
+                        task = self.app.tasks[notify_task_name].apply_async(
+                            kwargs=notify_kwargs
+                        )
+                    except Exception as e:
+                        log.error(
+                            "Failed to dispatch notify task due to broker error",
+                            extra={
+                                "repoid": repoid,
+                                "commit": commitid,
+                                "error": str(e),
+                            },
+                            exc_info=True,
+                        )
+                        self._call_upload_breadcrumb_task(
+                            commit_sha=commitid,
+                            repo_id=repoid,
+                            milestone=Milestones.NOTIFICATIONS_TRIGGERED,
+                            upload_ids=[
+                                upload["upload_id"] for upload in processing_results
+                            ],
+                            error=Errors.UNKNOWN,
+                            error_text=str(e),
+                        )
+                    else:
+                        self._call_upload_breadcrumb_task(
+                            commit_sha=commitid,
+                            repo_id=repoid,
+                            milestone=Milestones.NOTIFICATIONS_TRIGGERED,
+                            upload_ids=[
+                                upload["upload_id"] for upload in processing_results
+                            ],
+                        )
+                        log.info(
+                            "Scheduling notify task",
+                            extra={
+                                "repoid": repoid,
+                                "commit": commitid,
+                                "commit_yaml": commit_yaml.to_dict(),
+                                "processing_results": processing_results,
+                                "notify_task_id": task.id,
+                                "parent_task": self.request.parent_id,
+                            },
+                        )
                     if commit.pullid:
                         pull = (
                             db_session.query(Pull)
