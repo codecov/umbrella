@@ -25,7 +25,21 @@ type Commit {
   coverageStatus: CommitStatus
   coverageAnalytics: CommitCoverageAnalytics
   bundleAnalysis: CommitBundleAnalysis
+  bundleAnalysisMeasurements: CommitBundleAnalysisMeasurements
   latestUploadError: LatestUploadError
+}
+
+"Simplified bundle analysis summary for a commit, providing top-level size metrics"
+type CommitBundleAnalysisMeasurements {
+  sizeTotal: Int
+  loadTimeTotal: Int
+  bundles: [CommitBundleSummary!]!
+}
+
+type CommitBundleSummary {
+  name: String!
+  sizeTotal: Int
+  loadTimeTotal: Int
 }
 
 type LatestUploadError {
