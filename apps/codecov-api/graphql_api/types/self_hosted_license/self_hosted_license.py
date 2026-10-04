@@ -14,3 +14,11 @@ def resolve_expiration_date(license: LicenseInformation, info) -> datetime.date 
         return None
 
     return license.expires
+
+
+@self_hosted_license_bindable.field("numberOfLicenses")
+def resolve_number_of_licenses(license: LicenseInformation, info) -> int | None:
+    if not settings.IS_ENTERPRISE:
+        return None
+
+    return license.number_allowed_users
