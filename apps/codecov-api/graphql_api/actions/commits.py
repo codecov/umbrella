@@ -58,15 +58,19 @@ def load_commit_statuses(
     return results
 
 
-def commit_status(
+async def commit_status(
     info: GraphQLResolveInfo, commit: Commit, report_type: CommitReport.ReportType
 ) -> str | None:
+    # Imported lazily to avoid a circular import with the dataloader module.
+    from graphql_api.dataloader.commit_status import CommitStatusLoader
+
     commit_statuses = info.context.setdefault("commit_statuses", {})
     commit_status = commit_statuses.get(commit.id)
     if commit_status is None:
-        updated_statuses = load_commit_statuses([commit.id])
-        commit_statuses.update(updated_statuses)
-        commit_status = updated_statuses[commit.id]
+        # Batch the status lookups for all commits resolved in the same tick
+        # (e.g. the `head` commits of every pull in `GetPulls`).
+        commit_status = await CommitStatusLoader.loader(info).load(commit.id)
+        commit_statuses[commit.id] = commit_status
 
     return commit_status.get(report_type)
 
