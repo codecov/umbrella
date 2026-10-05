@@ -1,6 +1,7 @@
 import os
 
 import sentry_sdk
+from sentry_sdk.integrations.ariadne import AriadneIntegration
 from corsheaders.defaults import default_headers
 from csp.constants import NONE, SELF
 from sentry_sdk.integrations.celery import CeleryIntegration
@@ -470,6 +471,10 @@ if SENTRY_DSN is not None:
             CeleryIntegration(),
             RedisIntegration(cache_prefixes=["cache:"]),
             HttpxIntegration(),
+        # GraphQL errors are formatted (and unexpected ones explicitly captured)
+        # in CodecovGraphQLView.error_formatter. The auto-enabled Ariadne
+        # integration would otherwise report client validation errors.
+        disabled_integrations=[AriadneIntegration()],
         ],
         environment=SENTRY_ENV,
         traces_sampler=make_traces_sampler(
