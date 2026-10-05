@@ -225,6 +225,21 @@ async def resolve_repository(
     return repository
 
 
+@owner_bindable.field("repositoryDeprecated")
+async def resolve_repository_deprecated(
+    owner: Owner, info: GraphQLResolveInfo, name: str
+) -> Repository | None:
+    command = info.context["executor"].get_command("repository")
+    repository: Repository | None = await command.fetch_repository(owner, name)
+
+    if repository is not None:
+        current_owner = info.context["request"].current_owner
+        if repository.private:
+            await sync_to_async(activation.try_auto_activate)(owner, current_owner)
+
+    return repository
+
+
 @owner_bindable.field("numberOfUploads")
 @require_part_of_org
 async def resolve_number_of_uploads(
