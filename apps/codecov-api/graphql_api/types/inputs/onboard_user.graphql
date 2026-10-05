@@ -1,7 +1,7 @@
 input OnboardUserInput {
   email: String
   businessEmail: String
-  typeProjects: [TypeProjectOnboarding]!
-  goals: [GoalOnboarding]!
+  typeProjects: [TypeProjectOnboarding]
+  goals: [GoalOnboarding]
   otherGoal: String
 }
