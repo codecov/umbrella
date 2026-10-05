@@ -66,6 +66,8 @@ def resolve_oldest_commit_at(
 def resolve_branch(
     repository: Repository, info: GraphQLResolveInfo, name: str
 ) -> Branch:
+    if "\x00" in name:
+        return None
     command = info.context["executor"].get_command("branch")
     return command.fetch_branch(repository, name)
 
