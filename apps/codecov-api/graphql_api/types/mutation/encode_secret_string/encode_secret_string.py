@@ -20,5 +20,5 @@ async def resolve_encode_secret_string(_, info, input) -> None:
     return {"value": value}
 
 
-error_encode_secret_string = UnionType("EraseRepositoryError")
+error_encode_secret_string = UnionType("EncodeSecretStringError")
 error_encode_secret_string.type_resolver(resolve_union_error_type)
