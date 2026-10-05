@@ -18,6 +18,11 @@ class FetchRepositoryInteractor(BaseInteractor):
         needs_coverage: bool = True,
         needs_commits: bool = True,
     ) -> Repository | None:
+        # Postgres cannot store or compare strings containing NUL bytes, so no
+        # repository can match such a name. Return early to avoid a DB error.
+        if "\x00" in name:
+            return None
+
         queryset = Repository.objects.viewable_repos(self.current_owner)
         if exclude_okta_enforced_repos:
             queryset = queryset.exclude_accounts_enforced_okta(
