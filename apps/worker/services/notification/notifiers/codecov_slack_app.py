@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 from decimal import Decimal
 
@@ -17,6 +18,9 @@ from services.yaml.reader import round_number
 
 CODECOV_INTERNAL_TOKEN = os.environ.get("CODECOV_INTERNAL_TOKEN")
 CODECOV_SLACK_APP_URL = os.environ.get("CODECOV_SLACK_APP_URL")
+CODECOV_SLACK_APP_REQUEST_TIMEOUT_SECONDS = 10
+
+log = logging.getLogger(__name__)
 
 
 class CodecovSlackAppNotifier(AbstractBaseNotifier):
@@ -117,9 +121,28 @@ class CodecovSlackAppNotifier(AbstractBaseNotifier):
         compare_dict = self.build_payload(comparison)
         data = {
             "repository": self.repository.name,
-            "owner": self.repository.author.username,
-            "comparison": compare_dict,
-        }
+        try:
+            response = requests.post(
+                request_url,
+                headers=headers,
+                data=json.dumps(data, cls=EnhancedJSONEncoder),
+                timeout=CODECOV_SLACK_APP_REQUEST_TIMEOUT_SECONDS,
+            )
+        except requests.exceptions.RequestException as exc:
+            log.warning(
+                "Failed to reach codecov slack app",
+                extra={
+                    "repoid": self.repository.repoid,
+                    "error_type": type(exc).__name__,
+                    "error": str(exc),
+                },
+            )
+            return NotificationResult(
+                data_sent=data,
+                notification_attempted=True,
+                notification_successful=False,
+                explanation=f"Failed to notify slack app\n{type(exc).__name__}: {exc}",
+            )
         response = requests.post(
             request_url, headers=headers, data=json.dumps(data, cls=EnhancedJSONEncoder)
         )
