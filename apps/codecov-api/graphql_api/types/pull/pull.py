@@ -168,3 +168,10 @@ def resolve_behind_by_commit(
 def resolve_first_pull(pull: Pull, info: GraphQLResolveInfo) -> bool:
     # returns true if this pull is/was the 1st for a repo
     return pull.repository.pull_requests.order_by("id").first() == pull
+
+
+@pull_bindable.field("coverage")
+def resolve_coverage(pull: Pull, info: GraphQLResolveInfo) -> float | None:
+    if pull.head_totals:
+        return pull.head_totals.coverage
+    return None
