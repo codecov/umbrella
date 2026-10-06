@@ -64,6 +64,7 @@ ARG APP_DIR
 RUN apt-get update \
     && apt-get -y upgrade \
     && apt-get install -y --no-install-recommends \
+    perl-base=5.36.0-7+deb12u4 \
     libpcre2-8-0 \
     libxml2-dev \
     libxslt-dev \
