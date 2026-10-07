@@ -4,6 +4,7 @@ RepositoryWithoutValidBotError = shared.bots.exceptions.RepositoryWithoutValidBo
 OwnerWithoutValidBotError = shared.bots.exceptions.OwnerWithoutValidBotError
 RequestedGithubAppNotFound = shared.bots.exceptions.RequestedGithubAppNotFound
 NoConfiguredAppsAvailable = shared.bots.exceptions.NoConfiguredAppsAvailable
+UnsupportedRepoProviderError = shared.bots.exceptions.UnsupportedRepoProviderError
 
 
 class ReportExpiredException(Exception):
