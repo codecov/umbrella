@@ -14,7 +14,10 @@ from database.models import Commit, Pull
 from database.models.core import GITHUB_APP_INSTALLATION_DEFAULT_NAME
 from database.models.reports import Upload
 from helpers.checkpoint_logger.flows import UploadFlow
-from helpers.exceptions import RepositoryWithoutValidBotError
+from helpers.exceptions import (
+    RepositoryWithoutValidBotError,
+    UnsupportedRepoProviderError,
+)
 from helpers.github_installation import get_installation_name_for_owner_for_task
 from helpers.save_commit_error import save_commit_error
 from services.comparison import get_or_create_comparison
@@ -956,6 +959,12 @@ def load_commit_diff(commit: Commit, task_name: str | None = None) -> dict | Non
         # then we assume having the rest of the report saved there is better than the
         # alternative of refusing an otherwise "good" report because of the lack of diff
         log.warning(
+    except UnsupportedRepoProviderError as exc:
+        # e.g. the owner was marked for deletion (service == "to_be_deleted")
+        log.warning(
+            "Could not apply diff to report because the repository provider is unsupported",
+            extra={"repoid": repository.repoid, "service": exc.service},
+        )
             "Could not apply diff to report because there was an error fetching diff from provider",
             exc_info=True,
         )
