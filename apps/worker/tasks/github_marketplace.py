@@ -9,6 +9,11 @@ from services.github_marketplace import GitHubMarketplaceService
 from services.owner import clear_identical_owners
 from services.stripe import stripe
 from shared.celery_config import ghm_sync_plans_task_name
+from shared.plan.change_log import (
+    plan_change_context,
+    record_plan_change,
+    remember_plan_change_actor,
+)
 from shared.plan.constants import DEFAULT_FREE_PLAN
 from tasks.base import BaseCodecovTask
 
@@ -33,6 +38,17 @@ class SyncPlansTask(BaseCodecovTask, name=ghm_sync_plans_task_name):
             extra={"sender": sender, "account": account, "action": action},
         )
 
+        with plan_change_context(
+            source="github_marketplace",
+            github_action=action,
+            github_sender_id=(sender or {}).get("id"),
+            github_sender_login=(sender or {}).get("login"),
+            github_account_id=(account or {}).get("id"),
+            github_account_login=(account or {}).get("login"),
+        ):
+            return self._sync_marketplace_plans(db_session, sender, account, action)
+
+    def _sync_marketplace_plans(self, db_session, sender, account, action):
         # make sure sender and account owner entries exist
         if sender:
             self.upsert_owner(db_session, sender["id"], sender["login"])
@@ -163,6 +179,7 @@ class SyncPlansTask(BaseCodecovTask, name=ghm_sync_plans_task_name):
             createstamp=datetime.now(),
         )
         db_session.add(owner)
+        remember_plan_change_actor(owner, source="github_marketplace")
         db_session.flush()
         return owner
 
@@ -172,12 +189,39 @@ class SyncPlansTask(BaseCodecovTask, name=ghm_sync_plans_task_name):
         """
         active_account_ids = list(map(str, active_account_ids))
 
-        db_session.query(Owner).filter(
-            Owner.service == "github",
-            Owner.plan == "users",
-            Owner.plan_provider == "github",
-            Owner.service_id.notin_(active_account_ids),
-        ).update({Owner.plan: None}, synchronize_session=False)
+        inactive_owners = (
+            db_session.query(Owner)
+            .filter(
+                Owner.service == "github",
+                Owner.plan == "users",
+                Owner.plan_provider == "github",
+                Owner.service_id.notin_(active_account_ids),
+            )
+            .all()
+        )
+        for owner in inactive_owners:
+            record_plan_change(
+                entity="owner",
+                entity_id=owner.ownerid,
+                old_plan=owner.plan,
+                new_plan=None,
+                changes={"plan": {"old": owner.plan, "new": None}},
+                snapshot={
+                    "service": owner.service,
+                    "username": owner.username,
+                    "service_id": owner.service_id,
+                    "plan_provider": owner.plan_provider,
+                    "plan_user_count": owner.plan_user_count,
+                    "stripe_customer_id": owner.stripe_customer_id,
+                    "stripe_subscription_id": owner.stripe_subscription_id,
+                },
+                extra={"source": "github_marketplace_disable_inactive"},
+                bind=db_session,
+            )
+        if inactive_owners:
+            db_session.query(Owner).filter(
+                Owner.ownerid.in_([owner.ownerid for owner in inactive_owners])
+            ).update({Owner.plan: None}, synchronize_session=False)
 
     def deactivate_repos(self, db_session, ownerid):
         """
@@ -211,6 +255,7 @@ class SyncPlansTask(BaseCodecovTask, name=ghm_sync_plans_task_name):
             owner.plan_auto_activate = True
             owner.plan_activated_users = None
             owner.plan_user_count = purchase_object["unit_count"]
+            remember_plan_change_actor(owner, source="github_marketplace")
 
             if owner.stripe_customer_id and owner.stripe_subscription_id:
                 # cancel stripe subscription immediately
@@ -235,6 +280,7 @@ class SyncPlansTask(BaseCodecovTask, name=ghm_sync_plans_task_name):
             new_owner.plan_provider = "github"
             new_owner.plan_auto_activate = True
             new_owner.plan_user_count = purchase_object["unit_count"]
+            remember_plan_change_actor(new_owner, source="github_marketplace")
 
     def create_or_update_to_free_plan(self, db_session, ghm_service, service_id):
         """
@@ -253,6 +299,7 @@ class SyncPlansTask(BaseCodecovTask, name=ghm_sync_plans_task_name):
             owner.plan = DEFAULT_FREE_PLAN
             owner.plan_user_count = 1
             owner.plan_activated_users = None
+            remember_plan_change_actor(owner, source="github_marketplace")
 
             self.deactivate_repos(db_session, owner.ownerid)
         else:

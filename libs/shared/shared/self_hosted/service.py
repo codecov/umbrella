@@ -8,6 +8,7 @@ from django.db.models import F, Func, Q, QuerySet
 from shared.config import get_config
 from shared.django_apps.codecov_auth.models import Owner
 from shared.license import get_current_license
+from shared.plan.change_log import plan_change_context, record_owner_bulk_update
 
 
 class LicenseException(Exception):
@@ -151,6 +152,23 @@ def deactivate_owner(owner: Owner):
     )
 
 
+def _log_autoactivation(enabled: bool) -> None:
+    rows = list(
+        Owner.objects.exclude(plan_auto_activate=enabled).values(
+            "ownerid",
+            "service",
+            "username",
+            "plan",
+            "plan_user_count",
+            "plan_auto_activate",
+        )
+    )
+    with plan_change_context(
+        source="enable_autoactivation" if enabled else "disable_autoactivation"
+    ):
+        record_owner_bulk_update(rows, {"plan_auto_activate": enabled})
+
+
 def enable_autoactivation():
     """
     Enable auto-activation for the entire instance.
@@ -158,6 +176,7 @@ def enable_autoactivation():
     There's no good place to store this instance-wide so we're just saving this
     for all owners.
     """
+    _log_autoactivation(True)
     Owner.objects.all().update(plan_auto_activate=True)
 
 
@@ -168,6 +187,7 @@ def disable_autoactivation():
     There's no good place to store this instance-wide so we're just saving this
     for all owners.
     """
+    _log_autoactivation(False)
     Owner.objects.all().update(plan_auto_activate=False)
 
 

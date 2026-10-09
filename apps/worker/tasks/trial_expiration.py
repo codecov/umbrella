@@ -3,6 +3,7 @@ import logging
 from app import celery_app
 from celery_config import trial_expiration_task_name
 from shared.django_apps.codecov_auth.models import Owner
+from shared.plan.change_log import plan_change_context
 from shared.plan.service import PlanService
 from tasks.base import BaseCodecovTask
 
@@ -20,7 +21,13 @@ class TrialExpirationTask(BaseCodecovTask, name=trial_expiration_task_name):
             "Expiring owner's trial and setting back to basic plan", extra=log_extra
         )
         owner_plan = PlanService(current_org=owner)
-        owner_plan.cancel_trial()
+        with plan_change_context(
+            source="trial_expiration",
+            target_owner_id=owner.ownerid,
+            target_username=owner.username,
+            trial_end_date=owner.trial_end_date,
+        ):
+            owner_plan.cancel_trial()
         return {"successful": True}
 
 

@@ -32,11 +32,31 @@ from shared.django_apps.core.managers import RepositoryManager
 from shared.django_apps.core.models import DateTimeWithoutTZField, Repository
 from shared.django_apps.db_fields import CaseInsensitiveTextField
 from shared.helpers.github_apps import is_configured
+from shared.plan.change_log import (
+    ACCOUNT_PLAN_FIELDS,
+    ACCOUNT_SNAPSHOT_FIELDS,
+    OWNER_PLAN_FIELDS,
+    OWNER_SNAPSHOT_FIELDS,
+    collect_model_plan_change,
+    emit_collected_plan_change,
+)
 from shared.plan.constants import DEFAULT_FREE_PLAN, PlanName, TierName, TrialDaysAmount
 
 # Added to avoid 'doesn't declare an explicit app_label and isn't in an application in INSTALLED_APPS' error\
 # Needs to be called the same as the API app
 CODECOV_AUTH_APP_LABEL = "codecov_auth"
+
+
+def _pending_plan_change(instance, **kwargs):
+    try:
+        return collect_model_plan_change(instance, **kwargs)
+    except Exception:
+        log.exception(
+            "Failed to collect plan change",
+            extra={"model": instance.__class__.__name__, "pk": instance.pk},
+        )
+        return None
+
 
 # Large number to represent Infinity as float('int') is not JSON serializable
 INFINITY = 99999999
@@ -230,6 +250,7 @@ class Account(BaseModel):
     users = models.ManyToManyField(
         User, through="AccountsUsers", related_name="accounts"
     )
+    tracker = FieldTracker(fields=list(ACCOUNT_PLAN_FIELDS))
 
     class Meta:
         ordering = ["-updated_at"]
@@ -238,6 +259,18 @@ class Account(BaseModel):
     def __str__(self):
         str_representation_of_is_active = "Active" if self.is_active else "Inactive"
         return f"{str_representation_of_is_active} Account: {self.name}"
+
+    def save(self, *args, **kwargs):
+        pending = _pending_plan_change(
+            self,
+            entity="account",
+            trigger_fields=ACCOUNT_PLAN_FIELDS,
+            snapshot_fields=ACCOUNT_SNAPSHOT_FIELDS,
+            update_fields=kwargs.get("update_fields"),
+        )
+        result = super().save(*args, **kwargs)
+        emit_collected_plan_change(self, pending)
+        return result
 
     def _student_count_helper(self) -> QuerySet:
         # This method creates the query to annotate a user as a student.
@@ -495,7 +528,12 @@ class Owner(ExportModelOperationsMixin("codecov_auth.owner"), models.Model):
 
     objects = OwnerManager()
     tracker = FieldTracker(
-        fields=["username", "service", "upload_token_required_for_public_repos"]
+        fields=[
+            "username",
+            "service",
+            "upload_token_required_for_public_repos",
+            *OWNER_PLAN_FIELDS,
+        ]
     )
     repository_set = RepositoryManager()
 
@@ -504,7 +542,16 @@ class Owner(ExportModelOperationsMixin("codecov_auth.owner"), models.Model):
 
     def save(self, *args, **kwargs):
         self.updatestamp = timezone.now()
-        super().save(*args, **kwargs)
+        pending = _pending_plan_change(
+            self,
+            entity="owner",
+            trigger_fields=OWNER_PLAN_FIELDS,
+            snapshot_fields=OWNER_SNAPSHOT_FIELDS,
+            update_fields=kwargs.get("update_fields"),
+        )
+        result = super().save(*args, **kwargs)
+        emit_collected_plan_change(self, pending)
+        return result
 
     @property
     def has_yaml(self):
@@ -1219,6 +1266,45 @@ class Tier(BaseModel):
 
     def __str__(self):
         return self.tier_name
+
+
+class PlanChange(BaseModel):
+    """One row per plan, trial, or billing-field change on an owner or account."""
+
+    class Entity(models.TextChoices):
+        OWNER = "owner"
+        ACCOUNT = "account"
+
+    entity = models.CharField(max_length=16, choices=Entity.choices)
+    # Plain ids, not foreign keys, so the row remains after the owner is deleted.
+    owner_id = models.IntegerField(null=True, blank=True)
+    account_id = models.BigIntegerField(null=True, blank=True)
+    service = models.TextField(null=True, blank=True)
+    username = models.TextField(null=True, blank=True)
+    old_plan = models.TextField(null=True, blank=True)
+    new_plan = models.TextField(null=True, blank=True)
+    changes = models.JSONField(default=dict, blank=True)
+    snapshot = models.JSONField(default=dict, blank=True)
+    actor = models.JSONField(default=dict, blank=True)
+    source = models.TextField(null=True, blank=True)
+    caller = models.JSONField(default=list, blank=True)
+
+    class Meta:
+        app_label = CODECOV_AUTH_APP_LABEL
+        db_table = "codecov_auth_planchange"
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(
+                fields=["owner_id", "created_at"], name="plan_change_owner_idx"
+            ),
+            models.Index(
+                fields=["account_id", "created_at"], name="plan_change_account_idx"
+            ),
+        ]
+
+    def __str__(self):
+        subject = self.username or self.owner_id or self.account_id
+        return f"{self.old_plan} -> {self.new_plan} ({subject})"
 
 
 class OwnerToBeDeleted(BaseModel):

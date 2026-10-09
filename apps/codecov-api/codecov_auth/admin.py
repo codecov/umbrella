@@ -51,6 +51,7 @@ from shared.django_apps.codecov_auth.models import (
     OwnerExport,
     OwnerToBeDeleted,
     Plan,
+    PlanChange,
     Service,
     StripeBilling,
     Tier,
@@ -58,6 +59,7 @@ from shared.django_apps.codecov_auth.models import (
 )
 from shared.django_apps.codecov_auth.models import User as CodecovUser
 from shared.owner_data_export.config import EXPORT_DAYS_DEFAULT
+from shared.plan.change_log import plan_change_context
 from shared.plan.service import PlanService
 from utils.services import get_short_service_name
 
@@ -83,10 +85,18 @@ def extend_trial(self, request, queryset):
             for org in queryset:
                 plan_service = PlanService(current_org=org)
                 try:
-                    plan_service.start_trial_manually(
-                        current_owner=request.current_owner,
-                        end_date=form.cleaned_data["end_date"],
-                    )
+                    with plan_change_context(
+                        source="admin_extend_trial",
+                        admin_user_id=_originator_user_id(request),
+                        trial_end_date=form.cleaned_data["end_date"],
+                        initiated_by_owner_id=getattr(
+                            request.current_owner, "ownerid", None
+                        ),
+                    ):
+                        plan_service.start_trial_manually(
+                            current_owner=request.current_owner,
+                            end_date=form.cleaned_data["end_date"],
+                        )
                 except ValidationError as e:
                     self.message_user(
                         request,
@@ -683,6 +693,14 @@ class AccountAdmin(AdminMixin, admin.ModelAdmin):
     search_help_text = "Search by name (can use regex), or id (exact)"
     inlines = [OwnerOrgInline, StripeBillingInline, InvoiceBillingInline]
     actions = ["seat_check", "link_users_to_account", "deactivate_stale_users"]
+
+    def save_model(self, request, obj, form, change):
+        with plan_change_context(
+            source="django_admin",
+            admin_user_id=_originator_user_id(request),
+            admin_path=request.path,
+        ):
+            super().save_model(request, obj, form, change)
 
     readonly_fields = ["id", "created_at", "updated_at", "users"]
 
@@ -1298,6 +1316,14 @@ class OwnerAdmin(AdminMixin, admin.ModelAdmin):
     def get_deleted_objects(self, objs, request):
         return [], {}, set(), []
 
+    def save_model(self, request, obj, form, change):
+        with plan_change_context(
+            source="django_admin",
+            admin_user_id=_originator_user_id(request),
+            admin_path=request.path,
+        ):
+            super().save_model(request, obj, form, change)
+
     def save_related(self, request: HttpRequest, form, formsets, change: bool) -> None:
         if formsets:
             formset = formsets[0]
@@ -1907,3 +1933,60 @@ class OwnerToBeDeletedAdmin(admin.ModelAdmin):
                 "candidates": candidates,
             },
         )
+
+
+@admin.register(PlanChange)
+class PlanChangeAdmin(AdminMixin, admin.ModelAdmin):
+    list_display = (
+        "created_at",
+        "entity",
+        "owner_id",
+        "account_id",
+        "service",
+        "username",
+        "old_plan",
+        "new_plan",
+        "source",
+    )
+    list_filter = ("entity", "source", "service")
+    search_fields = ("username", "old_plan", "new_plan", "source", "service")
+    readonly_fields = (
+        "created_at",
+        "updated_at",
+        "entity",
+        "owner_id",
+        "account_id",
+        "service",
+        "username",
+        "old_plan",
+        "new_plan",
+        "changes",
+        "snapshot",
+        "actor",
+        "source",
+        "caller",
+    )
+    ordering = ("-created_at",)
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    def has_view_permission(self, request, obj=None):
+        return bool(request.user and request.user.is_staff)
+
+    def get_search_results(self, request, queryset, search_term):
+        queryset, use_distinct = super().get_search_results(
+            request, queryset, search_term
+        )
+        if search_term.isdigit():
+            owner_id = int(search_term)
+            queryset |= self.model.objects.filter(
+                Q(owner_id=owner_id) | Q(account_id=owner_id)
+            )
+        return queryset, use_distinct

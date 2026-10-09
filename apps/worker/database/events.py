@@ -4,9 +4,15 @@ import logging
 from google.cloud import pubsub_v1
 from sqlalchemy import event, inspect, select
 
-from database.models.core import Owner, Repository
+from database.models.core import Account, Owner, Repository
 from helpers.environment import is_enterprise
 from shared.config import get_config
+from shared.plan.change_log import (
+    ACCOUNT_PLAN_FIELDS,
+    OWNER_PLAN_FIELDS,
+    record_plan_change,
+)
+from shared.plan.constants import DEFAULT_FREE_PLAN
 
 _pubsub_publisher = None
 
@@ -101,6 +107,93 @@ def after_update_repo(mapper, connection, target: Repository):
                     log.info("After update signal", extra={"repoid": target.repoid})
                     _sync_repo(target)
                     break
+
+
+def _mapped_history_changes(target, fields: tuple[str, ...]) -> dict:
+    state = inspect(target)
+    changes = {}
+    for field in fields:
+        if field not in state.mapper.attrs:
+            continue
+        history = state.attrs[field].history
+        if not history.has_changes():
+            continue
+        old = history.deleted[0] if history.deleted else None
+        new = history.added[0] if history.added else getattr(target, field)
+        if old != new:
+            changes[field] = {"old": old, "new": new}
+    return changes
+
+
+def _record_orm_plan_change(
+    target, entity: str, entity_id: int | None, changes: dict, bind
+) -> None:
+    if not changes:
+        return
+    state = inspect(target)
+    snapshot = {}
+    for field in (*OWNER_PLAN_FIELDS, *ACCOUNT_PLAN_FIELDS, "plan_activated_users"):
+        if field in state.mapper.attrs:
+            snapshot[field] = getattr(target, field, None)
+    record_plan_change(
+        entity=entity,
+        entity_id=entity_id,
+        old_plan=changes.get("plan", {}).get("old", snapshot.get("plan")),
+        new_plan=changes.get("plan", {}).get("new", snapshot.get("plan")),
+        changes=changes,
+        snapshot=snapshot,
+        extra={"actor": state.info.get("plan_change_actor")},
+        bind=bind,
+    )
+
+
+def _inserted_plan_is_interesting(target) -> bool:
+    plan = getattr(target, "plan", None)
+    if plan and plan != DEFAULT_FREE_PLAN:
+        return True
+    if getattr(target, "plan_provider", None):
+        return True
+    if getattr(target, "stripe_subscription_id", None):
+        return True
+    trial_status = getattr(target, "trial_status", None)
+    return bool(trial_status and trial_status != "not_started")
+
+
+@event.listens_for(Owner, "after_insert")
+def log_owner_plan_insert(mapper, connection, target: Owner):
+    if not _inserted_plan_is_interesting(target):
+        return
+    changes = {}
+    state = inspect(target)
+    for field in OWNER_PLAN_FIELDS:
+        if field not in state.mapper.attrs:
+            continue
+        value = getattr(target, field, None)
+        if value is not None:
+            changes[field] = {"old": None, "new": value}
+    _record_orm_plan_change(target, "owner", target.ownerid, changes, connection)
+
+
+@event.listens_for(Owner, "after_update")
+def log_owner_plan_update(mapper, connection, target: Owner):
+    _record_orm_plan_change(
+        target,
+        "owner",
+        target.ownerid,
+        _mapped_history_changes(target, OWNER_PLAN_FIELDS),
+        connection,
+    )
+
+
+@event.listens_for(Account, "after_update")
+def log_account_plan_update(mapper, connection, target: Account):
+    _record_orm_plan_change(
+        target,
+        "account",
+        target.id_,
+        _mapped_history_changes(target, ACCOUNT_PLAN_FIELDS),
+        connection,
+    )
 
 
 @event.listens_for(Owner, "after_update")

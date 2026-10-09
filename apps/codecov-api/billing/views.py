@@ -14,6 +14,7 @@ from rest_framework.views import APIView
 from billing.helpers import get_admins_for_owners
 from codecov_auth.models import Owner, Plan
 from services.task.task import TaskService
+from shared.plan.change_log import plan_change_context, record_owner_bulk_update
 from shared.plan.service import PlanService
 
 from .constants import StripeHTTPHeaders, StripeWebhookEvents
@@ -23,6 +24,54 @@ if settings.STRIPE_API_KEY:
     stripe.api_version = "2024-12-18.acacia"
 
 log = logging.getLogger(__name__)
+
+
+def _stripe_plan_change_actor(event) -> dict:
+    obj = event.data.object
+    metadata = getattr(obj, "metadata", None) or {}
+    try:
+        metadata = dict(metadata)
+    except (TypeError, ValueError):
+        metadata = {}
+    customer = getattr(obj, "customer", None)
+    if customer is not None and not isinstance(customer, str):
+        customer = getattr(customer, "id", None)
+    if event.type.startswith("customer.subscription"):
+        subscription_id = getattr(obj, "id", None)
+    else:
+        subscription_id = getattr(obj, "subscription", None)
+    return {
+        "source": "stripe_webhook",
+        "stripe_event_type": event.type,
+        "stripe_event_id": getattr(event, "id", None),
+        "stripe_customer_id": customer,
+        "stripe_subscription_id": subscription_id,
+        "stripe_obo_owner_id": metadata.get("obo"),
+        "stripe_obo_name": metadata.get("obo_name"),
+        "stripe_obo_email": metadata.get("obo_email"),
+        "stripe_obo_organization": metadata.get("obo_organization"),
+        "stripe_username": metadata.get("username"),
+        "stripe_service": metadata.get("service"),
+    }
+
+
+def _log_delinquency_update(owners: QuerySet[Owner], *, delinquent: bool) -> None:
+    rows = list(
+        owners.values(
+            "ownerid",
+            "service",
+            "username",
+            "plan",
+            "plan_user_count",
+            "plan_provider",
+            "trial_status",
+            "stripe_customer_id",
+            "stripe_subscription_id",
+            "delinquent",
+            "account_id",
+        )
+    )
+    record_owner_bulk_update(rows, {"delinquent": delinquent})
 
 
 class StripeWebhookHandler(APIView):
@@ -56,6 +105,7 @@ class StripeWebhookHandler(APIView):
             owner.update_admins()
 
         admins: list[Owner] = get_admins_for_owners(owners)
+        _log_delinquency_update(owners, delinquent=False)
         owners.update(delinquent=False)
         self._log_updated(list(owners))
 
@@ -114,6 +164,7 @@ class StripeWebhookHandler(APIView):
             stripe_customer_id=invoice.customer,
             stripe_subscription_id=invoice.subscription,
         )
+        _log_delinquency_update(owners, delinquent=True)
         owners.update(delinquent=True)
         self._log_updated(list(owners))
 
@@ -417,6 +468,7 @@ class StripeWebhookHandler(APIView):
         indication_of_payment_failure = getattr(subscription, "pending_update", None)
         if indication_of_payment_failure:
             # payment failed, raise this to user by setting as delinquent
+            _log_delinquency_update(owners, delinquent=True)
             owners.update(delinquent=True)
             log.info(
                 "Stripe subscription upgrade failed",
@@ -649,6 +701,7 @@ class StripeWebhookHandler(APIView):
 
         # Converts event names of the format X.Y.Z into X_Y_Z, and calls
         # the relevant method in this class
-        getattr(self, self.event.type.replace(".", "_"))(self.event.data.object)
+        with plan_change_context(**_stripe_plan_change_actor(self.event)):
+            getattr(self, self.event.type.replace(".", "_"))(self.event.data.object)
 
         return Response(status=status.HTTP_204_NO_CONTENT)

@@ -9,6 +9,7 @@ from django.conf import settings
 
 from billing.constants import REMOVED_INVOICE_STATUSES
 from codecov_auth.models import Owner, Plan
+from shared.plan.change_log import plan_change_context
 from shared.plan.constants import PlanBillingRate, TierName
 from shared.plan.service import PlanService
 
@@ -19,6 +20,18 @@ SCHEDULE_RELEASE_OFFSET = 10
 if settings.STRIPE_API_KEY:
     stripe.api_key = settings.STRIPE_API_KEY
     stripe.api_version = "2024-12-18.acacia"
+
+
+def _billing_plan_actor(requesting_user, owner, source: str) -> dict:
+    return {
+        "source": source,
+        "actor_owner_id": getattr(requesting_user, "ownerid", None),
+        "actor_username": getattr(requesting_user, "username", None),
+        "actor_service": getattr(requesting_user, "service", None),
+        "actor_email": getattr(requesting_user, "email", None),
+        "target_owner_id": getattr(owner, "ownerid", None),
+        "target_username": getattr(owner, "username", None),
+    }
 
 
 def _log_stripe_error(method):
@@ -388,7 +401,12 @@ class StripeService(AbstractPaymentService):
             if indication_of_payment_failure:
                 # payment failed, raise this to user by setting as delinquent
                 owner.delinquent = True
-                owner.save()
+                with plan_change_context(
+                    **_billing_plan_actor(
+                        self.requesting_user, owner, "stripe_upgrade_failed"
+                    )
+                ):
+                    owner.save()
                 log.info(
                     f"Stripe subscription upgrade failed for owner {owner.ownerid} by user #{self.requesting_user.ownerid}",
                     extra={"pending_update": indication_of_payment_failure},
@@ -396,9 +414,16 @@ class StripeService(AbstractPaymentService):
             else:
                 # payment successful
                 plan_service = PlanService(current_org=owner)
-                plan_service.update_plan(
-                    name=desired_plan["value"], user_count=desired_plan["quantity"]
-                )
+                with plan_change_context(
+                    **_billing_plan_actor(
+                        self.requesting_user, owner, "stripe_subscription_modify"
+                    ),
+                    desired_plan=desired_plan["value"],
+                    desired_quantity=desired_plan["quantity"],
+                ):
+                    plan_service.update_plan(
+                        name=desired_plan["value"], user_count=desired_plan["quantity"]
+                    )
                 log.info(
                     f"Stripe subscription upgraded successfully for owner {owner.ownerid} by user #{self.requesting_user.ownerid}"
                 )
@@ -828,7 +853,12 @@ class StripeService(AbstractPaymentService):
             )
 
             owner.stripe_coupon_id = coupon.id
-            owner.save()
+            with plan_change_context(
+                **_billing_plan_actor(
+                    self.requesting_user, owner, "cancellation_discount"
+                )
+            ):
+                owner.save()
 
             log.info(
                 f"Applying cancellation coupon to Stripe subscription for owner {owner.ownerid}"
@@ -1006,6 +1036,14 @@ class BillingService:
         on current state, might create a stripe checkout session and return
         the checkout session's ID, which is a string. Otherwise returns None.
         """
+        with plan_change_context(
+            **_billing_plan_actor(self.requesting_user, owner, "billing_update_plan"),
+            desired_plan=desired_plan.get("value"),
+            desired_quantity=desired_plan.get("quantity"),
+        ):
+            return self._apply_plan_update(owner, desired_plan)
+
+    def _apply_plan_update(self, owner, desired_plan):
         try:
             plan = Plan.objects.get(name=desired_plan["value"])
         except Plan.DoesNotExist:
