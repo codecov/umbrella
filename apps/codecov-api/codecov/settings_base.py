@@ -74,6 +74,7 @@ MIDDLEWARE = [
     "core.middleware.ServiceMiddleware",
     "codecov_auth.middleware.current_owner_middleware",
     "codecov_auth.middleware.impersonation_middleware",
+    "codecov_auth.middleware.plan_change_actor_middleware",
     "csp.middleware.CSPMiddleware",
     "core.middleware.AppMetricsAfterMiddlewareWithUA",
 ]

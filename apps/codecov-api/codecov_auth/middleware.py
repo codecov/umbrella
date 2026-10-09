@@ -16,6 +16,7 @@ from rest_framework import exceptions
 from codecov_auth.constants import USE_SENTRY_APP_INDICATOR
 from codecov_auth.models import Owner, Service, User
 from codecov_auth.utils import get_sentry_jwt_payload
+from shared.plan.change_log import plan_change_context
 from utils.services import get_long_service_name
 
 log = logging.getLogger(__name__)
@@ -159,6 +160,38 @@ def impersonation_middleware(get_response):
             request.impersonation = False
 
         return get_response(request)
+
+    return middleware
+
+
+def plan_change_actor_middleware(get_response):
+    """Attach the request user to plan-change logs emitted while handling it."""
+
+    def middleware(request):
+        user = getattr(request, "user", None)
+        current_owner = getattr(request, "current_owner", None)
+        actor = {
+            "request_method": request.method,
+            "request_path": request.path,
+        }
+        if user is not None and getattr(user, "is_authenticated", False):
+            actor.update(
+                user_id=getattr(user, "id", None),
+                user_email=getattr(user, "email", None),
+                is_staff=getattr(user, "is_staff", None),
+                staff_role=getattr(user, "staff_role", None),
+            )
+        if current_owner is not None:
+            actor.update(
+                actor_owner_id=current_owner.ownerid,
+                actor_username=current_owner.username,
+                actor_service=current_owner.service,
+                actor_email=current_owner.email,
+            )
+        if getattr(request, "impersonation", False):
+            actor["impersonating"] = True
+        with plan_change_context(**actor):
+            return get_response(request)
 
     return middleware
 

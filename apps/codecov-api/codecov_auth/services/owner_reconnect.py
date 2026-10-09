@@ -15,6 +15,7 @@ from django.db import IntegrityError, transaction
 
 from codecov_auth.models import Owner
 from shared.django_apps.codecov_auth.models import OwnerToBeDeleted
+from shared.plan.change_log import plan_change_context, record_owner_bulk_update
 
 log = logging.getLogger(__name__)
 
@@ -112,7 +113,9 @@ def _repoint_rows_individually(
             obj.delete()
 
 
-def _repoint_id_references(source_id: int, target_id: int) -> None:
+def _repoint_id_references(
+    source_id: int, target_id: int, actor_user_id: int | None = None
+) -> None:
     """Swap ownerid references stored in Owner array fields."""
     for field in OWNER_ID_ARRAY_FIELDS:
         owners = Owner.objects.select_for_update().filter(
@@ -125,6 +128,18 @@ def _repoint_id_references(source_id: int, target_id: int) -> None:
             setattr(owner, field, deduped)
             owner.save(update_fields=[field])
 
+    trial_rows = list(
+        Owner.objects.filter(trial_fired_by=source_id).values(
+            "ownerid",
+            "service",
+            "username",
+            "plan",
+            "trial_status",
+            "trial_fired_by",
+        )
+    )
+    with plan_change_context(source="owner_reconnect", actor_user_id=actor_user_id):
+        record_owner_bulk_update(trial_rows, {"trial_fired_by": target_id})
     Owner.objects.filter(trial_fired_by=source_id).update(trial_fired_by=target_id)
 
 
@@ -145,7 +160,9 @@ def reconnect_owner(
     source = Owner.objects.select_for_update().get(ownerid=source_ownerid)
 
     _repoint_fk_relations(source, original)
-    _repoint_id_references(source.ownerid, original.ownerid)
+    _repoint_id_references(
+        source.ownerid, original.ownerid, actor_user_id=actor_user_id
+    )
 
     identity = {field: getattr(source, field) for field in IDENTITY_FIELDS}
     source_user = source.user
