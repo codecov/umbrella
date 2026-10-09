@@ -63,17 +63,6 @@ jobs:
             ./requirements.tar
           key: ${{ runner.os }}-${{ runner.arch }}-${{ env.cache-name }}-${{ hashFiles('uv.lock') }}-${{ hashFiles('docker/Dockerfile.requirements') }}-${{ hashFiles('libs/shared/**') }}
 
-      - name: Cache Self hosted
-        id: cache-self-hosted
-        uses: actions/cache@v4
-        env:
-          cache-name: ${{ inputs.repo }}-self-hosted
-        with:
-          path: |
-            ${{ inputs.output_directory }}/self-hosted-runtime.tar
-            ${{ inputs.output_directory }}/self-hosted.tar
-          key: ${{ runner.os }}-${{ env.cache-name }}-${{ github.run_id }}
-
       - name: Load requirements from cache
         if: ${{ steps.cache-requirements.outputs.cache-hit == 'true' }}
         run: |
@@ -87,16 +76,42 @@ jobs:
           make build.requirements
           make save.requirements
 
+      - name: Compute artifact name
+        id: artifact
+        run: echo "name=self-hosted-$(echo '${{ inputs.output_directory }}' | tr '/.' '--')" >> "$GITHUB_OUTPUT"
+
+      # A second invocation in the same run reuses the image the first one uploaded.
+      - name: Download image built earlier in this run
+        id: download-self-hosted
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: ${{ steps.artifact.outputs.name }}
+          path: ${{ inputs.output_directory }}
+
       - name: Load built image
-        if: ${{ steps.cache-self-hosted.outputs.cache-hit == 'true' }}
+        if: ${{ steps.download-self-hosted.outcome == 'success' }}
         run: |
           make ${{ inputs.make_target_prefix }}load.self-hosted
 
       - name: Build self hosted
-        if: ${{ steps.cache-self-hosted.outputs.cache-hit != 'true' }}
+        if: ${{ steps.download-self-hosted.outcome != 'success' }}
         run: |
           make ${{ inputs.make_target_prefix }}build.self-hosted
           make ${{ inputs.make_target_prefix }}save.self-hosted
+
+      # Artifact, not cache: a merged release PR's run gets a read-only cache token.
+      - name: Upload self hosted image
+        if: ${{ steps.download-self-hosted.outcome != 'success' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.artifact.outputs.name }}
+          path: |
+            ${{ inputs.output_directory }}/self-hosted-runtime.tar
+            ${{ inputs.output_directory }}/self-hosted.tar
+          retention-days: 1
+          compression-level: 0
+          if-no-files-found: error
 
   self-hosted:
     name: Push Self Hosted Image
@@ -110,25 +125,17 @@ jobs:
         with:
           fetch-depth: 0
           submodules: 'recursive'
-      - name: Cache Self hosted
-        id: cache-self-hosted
-        uses: actions/cache@v4
-        env:
-          cache-name: ${{ inputs.repo }}-self-hosted
+      - name: Compute artifact name
+        id: artifact
+        run: echo "name=self-hosted-$(echo '${{ inputs.output_directory }}' | tr '/.' '--')" >> "$GITHUB_OUTPUT"
+      - name: Download self hosted image
+        uses: actions/download-artifact@v4
         with:
-          path: |
-            ${{ inputs.output_directory }}/self-hosted-runtime.tar
-            ${{ inputs.output_directory }}/self-hosted.tar
-          key: ${{ runner.os }}-${{ env.cache-name }}-${{ github.run_id }}
+          name: ${{ steps.artifact.outputs.name }}
+          path: ${{ inputs.output_directory }}
       - name: Load built image
-        if: ${{ steps.cache-self-hosted.outputs.cache-hit == 'true' }}
         run: |
           make ${{ inputs.make_target_prefix }}load.self-hosted
-      - name: Fail on cache miss
-        if: ${{ steps.cache-self-hosted.outputs.cache-hit != 'true' }}
-        run: |
-          echo "::error::Self hosted image cache miss for key ${{ runner.os }}-${{ env.cache-name }}-${{ github.run_id }}; the build-self-hosted job should have populated this cache in the same run."
-          exit 1
       - name: Log in to Docker Hub
         uses: docker/login-action@v3.1.0
         with:
@@ -150,25 +157,17 @@ jobs:
         with:
           fetch-depth: 0
           submodules: 'recursive'
-      - name: Cache Self hosted
-        id: cache-self-hosted
-        uses: actions/cache@v4
-        env:
-          cache-name: ${{ inputs.repo }}-self-hosted
+      - name: Compute artifact name
+        id: artifact
+        run: echo "name=self-hosted-$(echo '${{ inputs.output_directory }}' | tr '/.' '--')" >> "$GITHUB_OUTPUT"
+      - name: Download self hosted image
+        uses: actions/download-artifact@v4
         with:
-          path: |
-            ${{ inputs.output_directory }}/self-hosted-runtime.tar
-            ${{ inputs.output_directory }}/self-hosted.tar
-          key: ${{ runner.os }}-${{ env.cache-name }}-${{ github.run_id }}
+          name: ${{ steps.artifact.outputs.name }}
+          path: ${{ inputs.output_directory }}
       - name: Load built image
-        if: ${{ steps.cache-self-hosted.outputs.cache-hit == 'true' }}
         run: |
           make ${{ inputs.make_target_prefix }}load.self-hosted
-      - name: Fail on cache miss
-        if: ${{ steps.cache-self-hosted.outputs.cache-hit != 'true' }}
-        run: |
-          echo "::error::Self hosted image cache miss for key ${{ runner.os }}-${{ env.cache-name }}-${{ github.run_id }}; the build-self-hosted job should have populated this cache in the same run."
-          exit 1
       - name: Log in to Docker Hub
         uses: docker/login-action@v3.1.0
         with:
@@ -178,4 +177,3 @@ jobs:
         run: |
           make ${{ inputs.make_target_prefix }}tag.self-hosted-release
           make ${{ inputs.make_target_prefix }}push.self-hosted-release
-
