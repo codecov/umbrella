@@ -43,7 +43,12 @@ from shared.django_apps.upload_breadcrumbs.models import Errors, Milestones
 from shared.django_apps.user_measurements.models import UserMeasurement
 from shared.helpers.redis import get_redis_connection
 from shared.metrics import Counter, Histogram, inc_counter
-from shared.torngit.exceptions import TorngitClientError, TorngitRepoNotFoundError
+from shared.torngit.exceptions import (
+    TorngitClientError,
+    TorngitRefreshTokenFailedError,
+    TorngitRepoNotFoundError,
+    TorngitServerFailureError,
+)
 from shared.upload.types import UploaderType
 from shared.upload.utils import bulk_insert_coverage_measurements
 from shared.yaml import UserYaml
@@ -492,6 +497,21 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
             except TorngitClientError:
                 log.warning(
                     "Unable to reach git provider because there was a 4xx error",
+                    extra=upload_context.log_extra(),
+                    exc_info=True,
+                )
+                self._call_upload_breadcrumb_task(
+                    commit_sha=commit.commitid,
+                    repo_id=repository.repoid,
+                    milestone=Milestones.COMPILING_UPLOADS,
+                    error=Errors.GIT_CLIENT_ERROR,
+                )
+            except (TorngitRefreshTokenFailedError, TorngitServerFailureError):
+                # Updating commit info / webhooks from the provider is best-effort.
+                # Transient provider failures (e.g. GitHub 5xx while refreshing a
+                # token) must not fail the whole upload.
+                log.warning(
+                    "Unable to reach git provider because of a server error or failed token refresh",
                     extra=upload_context.log_extra(),
                     exc_info=True,
                 )
