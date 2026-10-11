@@ -6,7 +6,14 @@ from services.report.report_builder import ReportBuilderSession
 
 class ElmProcessor(BaseLanguageProcessor):
     def matches_content(self, content: dict, first_line: str, name: str) -> bool:
-        return isinstance(content, dict) and bool(content.get("coverageData"))
+        if not isinstance(content, dict):
+            return False
+        coverage_data = content.get("coverageData")
+        return (
+            isinstance(coverage_data, dict)
+            and bool(coverage_data)
+            and isinstance(content.get("moduleMap"), dict)
+        )
 
     @sentry_sdk.trace
     def process(
