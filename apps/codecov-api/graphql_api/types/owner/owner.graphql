@@ -47,4 +47,10 @@ type Owner {
   aiEnabledRepos: [String]
   uploadTokenRequired: Boolean
   activatedUserCount: Int
+  notifications(
+    first: Int
+    after: String
+    last: Int
+    before: String
+  ): NotificationConnection!
 }

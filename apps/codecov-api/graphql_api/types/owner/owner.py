@@ -25,7 +25,7 @@ from codecov_auth.models import (
     Plan,
 )
 from codecov_auth.views.okta_cloud import OKTA_SIGNED_IN_ACCOUNTS_SESSION_KEY
-from core.models import Repository
+from core.models import CommitNotification, Repository
 from graphql_api.actions.repository import list_repository_for_owner
 from graphql_api.helpers.ariadne import ariadne_load_local_graphql
 from graphql_api.helpers.connection import (
@@ -54,6 +54,7 @@ from utils.config import get_config
 
 owner = ariadne_load_local_graphql(__file__, "owner.graphql")
 owner = owner + build_connection_graphql("RepositoryConnection", "Repository")
+owner = owner + build_connection_graphql("NotificationConnection", "Notification")
 owner_bindable = ObjectType("Owner")
 AI_FEATURES_GH_APP_ID = get_config("github", "ai_features_app_id")
 
@@ -485,3 +486,19 @@ def resolve_activated_user_count(owner: Owner, info: GraphQLResolveInfo) -> int:
 @require_part_of_org
 def resolve_billing(owner: Owner, info: GraphQLResolveInfo) -> dict | None:
     return owner
+
+
+@owner_bindable.field("notifications")
+@sync_to_async
+def resolve_notifications(
+    owner: Owner, info: GraphQLResolveInfo, **kwargs: Any
+):
+    queryset = CommitNotification.objects.filter(
+        commit__repository__author=owner
+    ).order_by("id")
+    return queryset_to_connection_sync(
+        queryset,
+        ordering=("id",),
+        ordering_direction=OrderingDirection.ASC,
+        **kwargs,
+    )
