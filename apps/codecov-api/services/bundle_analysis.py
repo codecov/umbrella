@@ -364,6 +364,13 @@ class BundleAnalysisReport:
     def is_cached(self) -> bool:
         return self.report.is_cached()
 
+    @cached_property
+    def built_at(self) -> str | None:
+        bundles = self.bundles
+        if bundles:
+            return BundleReportInfo(bundles[0].info).built_at
+        return None
+
 
 @dataclass
 class BundleAnalysisComparison:
