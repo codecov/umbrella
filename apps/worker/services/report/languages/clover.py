@@ -1,6 +1,10 @@
+import logging
+
 import sentry_sdk
 from lxml.etree import Element
 from timestring import Date
+
+log = logging.getLogger(__name__)
 
 from helpers.exceptions import ReportExpiredException
 from services.report.languages.base import BaseLanguageProcessor, normalize_timestamp
@@ -73,7 +77,14 @@ def from_xml(xml: Element, report_builder_session: ReportBuilderSession) -> None
         # process coverage
         for line in file.iter("line"):
             attribs = line.attrib
-            ln = int(attribs["num"])
+            try:
+                ln = int(attribs["num"])
+            except (ValueError, KeyError):
+                log.warning(
+                    "Clover parser skipping line with invalid num attribute",
+                    extra={"filename": filename, "num": attribs.get("num")},
+                )
+                continue
             complexity = None
 
             # skip line
