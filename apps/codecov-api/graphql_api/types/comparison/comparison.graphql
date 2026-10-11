@@ -8,6 +8,7 @@ type Comparison {
   directChangedFilesCount: Int!
   baseTotals: CoverageTotals
   headTotals: CoverageTotals
+  head: Commit
   changeCoverage: Float
   flagComparisons(filters: FlagComparisonFilters): [FlagComparison]
   componentComparisons(filters: ComponentsFilters): [ComponentComparison!]
