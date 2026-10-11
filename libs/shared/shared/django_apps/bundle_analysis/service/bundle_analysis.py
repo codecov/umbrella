@@ -1,3 +1,5 @@
+from typing import List
+
 from shared.django_apps.bundle_analysis.models import CacheConfig
 
 
@@ -12,6 +14,18 @@ class BundleAnalysisCacheConfigService:
     def create_if_not_exists(repo_id: int, name: str, is_caching: bool = True) -> None:
         CacheConfig.objects.get_or_create(
             repo_id=repo_id, bundle_name=name, defaults={"is_caching": is_caching}
+        )
+
+    @staticmethod
+    def bulk_create_if_not_exists(
+        repo_id: int, names: List[str], is_caching: bool = True
+    ) -> None:
+        CacheConfig.objects.bulk_create(
+            [
+                CacheConfig(repo_id=repo_id, bundle_name=name, is_caching=is_caching)
+                for name in names
+            ],
+            ignore_conflicts=True,
         )
 
     @staticmethod
