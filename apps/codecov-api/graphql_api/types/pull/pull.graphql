@@ -4,6 +4,7 @@ type Pull {
   title: String
   state: PullRequestState!
   pullId: Int!
+  id: Int!
   author: Owner
   updatestamp: DateTime
   head: Commit
