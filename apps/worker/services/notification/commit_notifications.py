@@ -36,7 +36,7 @@ def create_or_update_commit_notification_from_notification_result(
     if not_pull and (not_head_commit or not_github_app_info or failed):
         return None
 
-    commit = pull.get_head_commit() if pull else comparison.head.commit
+    commit = comparison.head.commit
     if not commit:
         log.warning("Head commit not found for pull", extra={"pull": pull})
         return None
