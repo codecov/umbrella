@@ -351,6 +351,32 @@ class BaseCeleryConfig:
     result_backend = get_config("services", "celery_broker") or get_config(
         "services", "redis_url"
     )
+
+    # Enable TCP socket keepalive on the Redis result backend connection pool so
+    # the OS detects and evicts stale connections before Celery uses them in a
+    # chord pipeline transaction.  Without this, a connection reset by the Redis
+    # server mid-pipeline causes the ConnectionError to be stored as a task
+    # FAILURE, which then surfaces as a ChordError in the chord callback even
+    # though the underlying UploadProcessor task completed successfully.
+    # redis_socket_keepalive_options keys must be integer socket constants.
+    redis_socket_keepalive = True
+    redis_socket_keepalive_options = {
+        4: 60,  # TCP_KEEPIDLE  – start probing after 60 s idle
+        5: 10,  # TCP_KEEPINTVL – probe every 10 s
+        6: 5,   # TCP_KEEPCNT   – drop after 5 consecutive failed probes
+    }
+
+    # Periodically health-check result backend connections so dead connections
+    # are evicted from the pool before they are handed to on_chord_part_return.
+    result_backend_transport_options = {
+        "health_check_interval": 30,
+    }
+
+    # Retry on timeout / connection errors for the result backend so that a
+    # transient reset triggers a reconnect rather than being recorded as a
+    # chord dependency failure.
+    redis_retry_on_timeout = True
+
     worker_send_task_events = bool(
         get_config("setup", "tasks", "celery", "worker_send_task_events", default=False)
     )
