@@ -55,5 +55,14 @@ class PullViewSet(
 
     def perform_update(self, serializer: PullSerializer) -> Pull:
         result = super().perform_update(serializer)
-        TaskService().pulls_sync(repoid=self.repo.repoid, pullid=self.kwargs.get("pk"))
+        repoid = self.repo.repoid
+        pullid = self.kwargs.get("pk")
+        try:
+            TaskService().pulls_sync(repoid=repoid, pullid=pullid)
+        except Exception:
+            log.warning(
+                "Failed to dispatch pulls_sync task after pull update",
+                extra={"repoid": repoid, "pullid": pullid},
+                exc_info=True,
+            )
         return result
