@@ -28,6 +28,7 @@ from shared.torngit.exceptions import (
     TorngitClientError,
     TorngitError,
     TorngitObjectNotFoundError,
+    TorngitServerUnreachableError,
 )
 from shared.torngit.response_types import ProviderPull
 from shared.typings.torngit import (
@@ -464,7 +465,7 @@ async def fetch_and_update_pull_request_information_from_commit(
             pullid = await repository_service.find_pull_request(
                 commit=commit.commitid, branch=commit.branch
             )
-        except TorngitClientError:
+        except (TorngitClientError, TorngitServerUnreachableError):
             log.warning(
                 "Unable to fetch what pull request the commit belongs to",
                 exc_info=True,
