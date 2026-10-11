@@ -3,6 +3,7 @@ type File {
   coverage: [CoverageAnnotation]
   totals: CoverageTotals
   hashedPath: String!
+  isCriticalFile: Boolean @deprecated(reason: "Impact Analysis has been removed.")
 }
 
 type CoverageAnnotation {
