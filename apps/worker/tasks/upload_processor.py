@@ -5,6 +5,7 @@ from celery.exceptions import SoftTimeLimitExceeded
 from sqlalchemy.orm import Session as DbSession
 
 from app import celery_app
+from database.models import Commit
 from services.processing.processing import UploadArguments, process_upload
 from services.report import ProcessingError
 from shared.celery_config import upload_processor_task_name
@@ -12,6 +13,7 @@ from shared.config import get_config
 from shared.django_apps.upload_breadcrumbs.models import Errors, Milestones
 from shared.upload.constants import UploadErrorCode
 from shared.yaml import UserYaml
+from shared.yaml.user_yaml import OwnerContext
 from tasks.base import BaseCodecovTask
 
 log = logging.getLogger(__name__)
@@ -54,14 +56,44 @@ class UploadProcessorTask(BaseCodecovTask, name=upload_processor_task_name):
         *args,
         repoid: int,
         commitid: str,
-        commit_yaml: dict,
+        commit_yaml: dict | None = None,
         arguments: UploadArguments,
         **kwargs,
     ):
         log.info(
             "Received upload processor task",
-            extra={"arguments": arguments, "commit_yaml": commit_yaml},
+            extra={"arguments": arguments},
         )
+
+        if commit_yaml is None:
+            # Fetch commit yaml from DB to avoid passing large payloads as task arguments
+            commit = (
+                db_session.query(Commit)
+                .filter(Commit.repoid == repoid, Commit.commitid == commitid)
+                .first()
+            )
+            if commit is not None:
+                repository = commit.repository
+                context = OwnerContext(
+                    owner_onboarding_date=repository.author.createstamp,
+                    owner_plan=repository.author.plan,
+                    ownerid=repository.ownerid,
+                )
+                user_yaml = UserYaml.get_final_yaml(
+                    owner_yaml=repository.author.yaml,
+                    repo_yaml=repository.yaml,
+                    commit_yaml=None,
+                    owner_context=context,
+                )
+            else:
+                log.warning(
+                    "Commit not found when fetching yaml, using empty yaml",
+                    extra={"repoid": repoid, "commitid": commitid},
+                )
+                user_yaml = UserYaml({})
+        else:
+            # Backward compatibility: commit_yaml passed directly as task argument
+            user_yaml = UserYaml(commit_yaml)
 
         self._call_upload_breadcrumb_task(
             commit_sha=commitid,
@@ -139,7 +171,7 @@ class UploadProcessorTask(BaseCodecovTask, name=upload_processor_task_name):
                 db_session,
                 int(repoid),
                 commitid,
-                UserYaml(commit_yaml),
+                user_yaml,
                 arguments,
             )
         except SoftTimeLimitExceeded as e:
