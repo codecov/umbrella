@@ -361,6 +361,11 @@ class BundleAnalysisReport:
         return sum([bundle.size_total for bundle in self.bundles])
 
     @cached_property
+    def load_time_total(self) -> int:
+        size_in_bits = self.size_total * 8
+        return int((size_in_bits / BundleLoadTime.THREE_G_SPEED) * 1000)
+
+    @cached_property
     def is_cached(self) -> bool:
         return self.report.is_cached()
 
