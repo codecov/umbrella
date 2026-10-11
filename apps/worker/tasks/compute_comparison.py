@@ -209,6 +209,7 @@ class ComputeComparisonTask(BaseCodecovTask, name=compute_comparison_task_name):
                 flag_comparison_entry.head_totals = totals["head_totals"]
                 flag_comparison_entry.base_totals = totals["base_totals"]
                 flag_comparison_entry.patch_totals = totals["patch_totals"]
+        db_session.flush()
         log.info(
             "Flag comparisons stored successfully",
             extra={"number_stored": len(head_report_flags)},
@@ -254,7 +255,6 @@ class ComputeComparisonTask(BaseCodecovTask, name=compute_comparison_task_name):
             base_totals=totals["base_totals"],
         )
         db_session.add(flag_comparison)
-        db_session.flush()
 
     @sentry_sdk.trace
     def compute_component_comparisons(
@@ -293,6 +293,7 @@ class ComputeComparisonTask(BaseCodecovTask, name=compute_comparison_task_name):
                     component,
                     existing_component_comparisons,
                 )
+            db_session.flush()
 
     @sentry_sdk.trace
     def parallel_compute_component_comparison(
@@ -346,7 +347,6 @@ class ComputeComparisonTask(BaseCodecovTask, name=compute_comparison_task_name):
                 component_comparison.patch_totals = patch_totals.asdict()
 
         db_session.add(component_comparison)
-        db_session.flush()
 
     @sentry_sdk.trace
     def store_results(self, comparison: CompareCommit, impacted_files):
