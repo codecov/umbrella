@@ -32,6 +32,10 @@ type Owner {
   plan: Plan
   pretrialPlan: PlanRepresentation
   repository(name: String!): RepositoryResult!
+  repositoryDeprecated(name: String!): Repository
+    @deprecated(
+      reason: "Use repository field with inline fragment on Repository type instead: `... on Repository { <fields> }`"
+    )
   repositories(
     filters: RepositorySetFilters
     ordering: RepositoryOrdering
