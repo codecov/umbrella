@@ -10,6 +10,7 @@ from typing import Any
 import sentry_sdk
 import sqlalchemy.orm
 from asgiref.sync import async_to_sync
+from celery.exceptions import SoftTimeLimitExceeded
 from redis.exceptions import LockError
 
 from app import celery_app
@@ -120,6 +121,42 @@ class PullSyncTask(BaseCodecovTask, name=pulls_task_name):
         commit_updates_done = {"merged_count": 0, "soft_deleted_count": 0}
         repository = db_session.query(Repository).filter_by(repoid=repoid).first()
         assert repository
+        extra_info = {"pullid": pullid, "repoid": repoid}
+        try:
+            return self._run_impl_within_lock_inner(
+                db_session,
+                redis_connection,
+                repository=repository,
+                repoid=repoid,
+                pullid=pullid,
+                should_send_notifications=should_send_notifications,
+                **kwargs,
+            )
+        except SoftTimeLimitExceeded:
+            log.warning(
+                "PullSyncTask timed out (soft limit exceeded). Exiting gracefully to avoid hard-timeout SIGKILL.",
+                extra=extra_info,
+                exc_info=True,
+            )
+            return {
+                "notifier_called": False,
+                "commit_updates_done": {"merged_count": 0, "soft_deleted_count": 0},
+                "pull_updated": False,
+                "reason": "soft_timeout",
+            }
+
+    def _run_impl_within_lock_inner(
+        self,
+        db_session: sqlalchemy.orm.Session,
+        redis_connection,
+        *,
+        repository,
+        repoid: int = None,
+        pullid: int = None,
+        should_send_notifications: bool = True,
+        **kwargs,
+    ):
+        commit_updates_done = {"merged_count": 0, "soft_deleted_count": 0}
         extra_info = {"pullid": pullid, "repoid": repoid}
         try:
             installation_name_to_use = get_installation_name_for_owner_for_task(
