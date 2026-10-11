@@ -83,7 +83,7 @@ def from_xml(xml: Element, report_builder_session: ReportBuilderSession) -> None
             # [typescript] https://github.com/gotwarlost/istanbul/blob/89e338fcb1c8a7dea3b9e8f851aa55de2bc3abee/lib/report/clover.js#L108-L110
             if attribs["type"] == "cond":
                 _type = CoverageType.branch
-                t, f = int(attribs["truecount"]), int(attribs["falsecount"])
+                t, f = int(attribs.get("truecount") or 0), int(attribs.get("falsecount") or 0)
                 if t == f == 0:
                     coverage = "0/2"
                 elif t == 0 or f == 0:
