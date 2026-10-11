@@ -427,9 +427,12 @@ class BundleAnalysisReportService(BaseReportService):
                         bundle_report.total_size(),
                     )
 
+                # Materialize asset reports once to avoid redundant DB queries
+                all_assets = list(bundle_report.asset_reports())
+
                 # For individual javascript associated assets using UUID
                 if MeasurementName.bundle_analysis_asset_size.value in dataset_names:
-                    for asset in bundle_report.asset_reports():
+                    for asset in all_assets:
                         if asset.asset_type == AssetType.JAVASCRIPT:
                             self._save_to_timeseries(
                                 db_session,
@@ -439,25 +442,27 @@ class BundleAnalysisReportService(BaseReportService):
                                 asset.size,
                             )
 
-                # For asset types sizes
+                # For asset types sizes - compute all totals in a single pass
                 asset_type_map = {
                     MeasurementName.bundle_analysis_font_size: AssetType.FONT,
                     MeasurementName.bundle_analysis_image_size: AssetType.IMAGE,
                     MeasurementName.bundle_analysis_stylesheet_size: AssetType.STYLESHEET,
                     MeasurementName.bundle_analysis_javascript_size: AssetType.JAVASCRIPT,
                 }
+                type_totals: dict[AssetType, int] = {}
+                for asset in all_assets:
+                    if asset.asset_type in asset_type_map.values():
+                        type_totals[asset.asset_type] = (
+                            type_totals.get(asset.asset_type, 0) + asset.size
+                        )
                 for measurement_name, asset_type in asset_type_map.items():
                     if measurement_name.value in dataset_names:
-                        total_size = 0
-                        for asset in bundle_report.asset_reports():
-                            if asset.asset_type == asset_type:
-                                total_size += asset.size
                         self._save_to_timeseries(
                             db_session,
                             commit,
                             measurement_name.value,
                             bundle_report.name,
-                            total_size,
+                            type_totals.get(asset_type, 0),
                         )
 
             return ProcessingResult(
