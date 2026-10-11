@@ -107,11 +107,13 @@ class BitbucketWebhookHandler(APIView):
         return Response()
 
     def _handle_repo_push_event(self, repo):
-        for change in self.request.data["push"]["changes"]:
-            if walk(change, ("old", "type")) == "branch" and change["new"] is None:
-                # when a branch is deleted, new is null
-                branch_name = change["old"]["name"]
-                Branch.objects.filter(repository=repo, name=branch_name).delete()
+        deleted_branches = [
+            change["old"]["name"]
+            for change in self.request.data["push"]["changes"]
+            if walk(change, ("old", "type")) == "branch" and change["new"] is None
+        ]
+        if deleted_branches:
+            Branch.objects.filter(repository=repo, name__in=deleted_branches).delete()
 
         for change in self.request.data["push"]["changes"]:
             if change["new"]:
