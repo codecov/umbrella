@@ -740,7 +740,7 @@ class BaseCodecovTask(celery_app.Task):
                 }
             )
         except Exception:
-            log.exception(
+            log.warning(
                 "Failed to queue upload breadcrumb task",
                 extra={
                     "commit_sha": commit_sha,
