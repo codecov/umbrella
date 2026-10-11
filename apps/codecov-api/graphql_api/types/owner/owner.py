@@ -234,6 +234,12 @@ async def resolve_number_of_uploads(
     return await command.get_uploads_number_per_user(owner)
 
 
+@owner_bindable.field("hasAdmins")
+def resolve_has_admins_deprecated(owner: Owner, info: GraphQLResolveInfo) -> None:
+    # Deprecated: this field does not belong on Owner; use config.hasAdmins instead.
+    return None
+
+
 @owner_bindable.field("isAdmin")
 @require_part_of_org
 def resolve_is_current_user_an_admin(owner: Owner, info: GraphQLResolveInfo) -> bool:
