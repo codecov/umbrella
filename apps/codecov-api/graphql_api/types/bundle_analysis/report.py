@@ -21,6 +21,13 @@ def resolve_bundle_analysis_report_result_type(
         return "MissingHeadReport"
 
 
+@bundle_analysis_report_bindable.field("sizeTotal")
+def resolve_size_total(
+    bundles_analysis_report: BundleAnalysisReport, info: GraphQLResolveInfo
+) -> int:
+    return bundles_analysis_report.size_total
+
+
 @bundle_analysis_report_bindable.field("bundles")
 def resolve_bundles(
     bundles_analysis_report: BundleAnalysisReport, info: GraphQLResolveInfo

@@ -3,6 +3,7 @@ union BundleAnalysisReportResult =
   | MissingHeadReport
 
 type BundleAnalysisReport {
+  sizeTotal: Int! @deprecated(reason: "Use bundleData { size { uncompress } } instead")
   bundles: [BundleReport]!
   bundleData: BundleData!
   bundle(name: String!, filters: BundleAnalysisReportFilters): BundleReport
