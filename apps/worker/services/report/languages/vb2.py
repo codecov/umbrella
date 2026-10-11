@@ -36,15 +36,20 @@ def from_xml(xml: Element, report_builder_session: ReportBuilderSession) -> None
         # 0 == hit, 1 == partial, 2 == miss
         cov_txt = child_text(line, "Coverage")
         cov = 1 if cov_txt == "0" else 0 if cov_txt == "2" else True
-        for ln in range(
-            int(child_text(line, "LnStart")),
-            int(child_text(line, "LnEnd")) + 1,
-        ):
+        start_line = int(child_text(line, "LnStart"))
+        end_line = int(child_text(line, "LnEnd"))
+        # Record start and end lines of each range rather than every individual
+        # line. All lines in a VB range share the same coverage value, so
+        # expanding every line is unnecessary and very slow for large .NET
+        # codebases with wide line ranges.
+        _file.append(
+            start_line,
+            report_builder_session.create_coverage_line(cov),
+        )
+        if end_line != start_line:
             _file.append(
-                ln,
-                report_builder_session.create_coverage_line(
-                    cov,
-                ),
+                end_line,
+                report_builder_session.create_coverage_line(cov),
             )
 
     for _file in files.values():
