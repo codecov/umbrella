@@ -26,6 +26,7 @@ type Commit {
   coverageAnalytics: CommitCoverageAnalytics
   bundleAnalysis: CommitBundleAnalysis
   latestUploadError: LatestUploadError
+  flagNames: [String] @deprecated(reason: "Use coverageAnalytics { flagNames } instead")
 }
 
 type LatestUploadError {
