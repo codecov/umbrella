@@ -570,6 +570,16 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
 
                 log.info("handle_finisher_lock: Finished reports processing")
 
+                # Release potentially stale connection back to the pool.
+                # finish_reports_processing() can take several minutes; infrastructure
+                # (PgBouncer, load-balancer idle-timeout) may have closed the underlying
+                # socket in the meantime.  A rollback here returns the connection to the
+                # pool; pool_pre_ping will then validate or replace it on the next
+                # checkout so the repository updatestamp commit below does not fail with
+                # "server closed the connection unexpectedly".
+                db_session = commit.get_db_session()
+                db_session.rollback()
+
                 if is_timeseries_enabled():
                     log.info("handle_finisher_lock: Saving commit measurements")
                     dataset_names = [
@@ -772,6 +782,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                 },
             )
             commit.state = "skipped"
+            db_session.commit()
 
         UploadFlow.log(UploadFlow.PROCESSING_COMPLETE)
         if not notifications_called:
