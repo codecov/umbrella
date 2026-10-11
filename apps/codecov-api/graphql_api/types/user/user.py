@@ -11,6 +11,11 @@ user = ariadne_load_local_graphql(__file__, "user.graphql")
 user_bindable = ObjectType("User")
 
 
+@user_bindable.field("ownerid")
+def resolve_ownerid(user: Owner, info: GraphQLResolveInfo) -> int:
+    return user.ownerid
+
+
 @user_bindable.field("username")
 def resolve_username(user: Owner, info: GraphQLResolveInfo) -> str:
     return user.username
