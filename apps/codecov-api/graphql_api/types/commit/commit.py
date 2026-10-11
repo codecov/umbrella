@@ -359,6 +359,11 @@ def resolve_commit_bundle_analysis(commit, info):
     return commit
 
 
+@commit_bindable.field("bundleAnalysisSummary")
+def resolve_commit_bundle_analysis_summary(commit, info):
+    return commit
+
+
 ### Commit Coverage Bindable ###
 
 
