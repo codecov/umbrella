@@ -138,6 +138,38 @@ def resolve_bundle_analysis_compare_with_base(
     return bundle_analysis_comparison
 
 
+@pull_bindable.field("files")
+@sentry_sdk.trace
+async def resolve_files(
+    pull: Pull, info: GraphQLResolveInfo, **kwargs: Any
+) -> list[str] | None:
+    if not pull.compared_to or not pull.head:
+        return None
+
+    comparison_loader = ComparisonLoader.loader(info, pull.repository_id)
+    commit_comparison = await comparison_loader.load((pull.compared_to, pull.head))
+
+    comparison_error = validate_commit_comparison(commit_comparison=commit_comparison)
+    if comparison_error:
+        return None
+
+    if not commit_comparison.is_processed:
+        return None
+
+    current_owner = info.context["request"].current_owner
+    should_use_sentry_app = getattr(
+        info.context["request"], USE_SENTRY_APP_INDICATOR, False
+    )
+    comparison = PullRequestComparison(
+        current_owner, pull, should_use_sentry_app=should_use_sentry_app
+    )
+    return [
+        f.head_name or f.base_name
+        for f in comparison.impacted_files
+        if f.head_name or f.base_name
+    ]
+
+
 @pull_bindable.field("commits")
 @sync_to_async
 def resolve_commits(pull: Pull, info: GraphQLResolveInfo, **kwargs: Any) -> Connection:
