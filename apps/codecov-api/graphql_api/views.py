@@ -358,6 +358,13 @@ class AsyncGraphqlView(GraphQLAsyncView):
         ):
             formatted["message"] = original_error.message  # type: ignore
             formatted["type"] = type(original_error).__name__
+        elif original_error is None:
+            # graphql-core parse/validation/variable-coercion error caused by
+            # bad client input (e.g. unknown input fields). Keep the masked
+            # response, but don't report it to Sentry as a server error.
+            log.info(
+                "GraphQL request validation error", extra={"error": error.message}
+            )
         elif isinstance(original_error, APIException):
             # APIException from torngit_safe decorator - expected client errors
             # (e.g., unauthorized, forbidden) that shouldn't be sent to Sentry
