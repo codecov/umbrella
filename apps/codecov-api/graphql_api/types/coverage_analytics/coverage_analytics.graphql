@@ -30,6 +30,9 @@ type CoverageAnalytics {
     after: String
     last: Int
     before: String
+    interval: MeasurementInterval
+    afterDate: DateTime
+    beforeDate: DateTime
   ): FlagConnection! @cost(complexity: 3, multipliers: ["first", "last"])
   "FlagsCount are how many flags for the given repo"
   flagsCount: Int!
