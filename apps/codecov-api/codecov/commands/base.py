@@ -32,7 +32,7 @@ class BaseInteractor:
             raise MissingService()
 
         if self.current_owner:
-            self.current_user = self.current_owner.user
+            self.current_user = self.current_owner.user or AnonymousUser()
 
     def ensure_is_admin(self, owner: Owner) -> None:
         """
