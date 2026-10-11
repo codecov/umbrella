@@ -45,6 +45,7 @@ type CommitCoverageAnalytics {
 type CommitBundleAnalysis {
   bundleAnalysisCompareWithParent: BundleAnalysisComparisonResult
   bundleAnalysisReport: BundleAnalysisReportResult
+  report: BundleAnalysisReportResult
 }
 
 type CommitErrorsConnection {
