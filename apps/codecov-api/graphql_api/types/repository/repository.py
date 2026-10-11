@@ -122,9 +122,9 @@ def resolve_token(repository: Repository, info: GraphQLResolveInfo) -> str:
 
 
 @repository_bindable.field("pull")
-def resolve_pull(repository: Repository, info: GraphQLResolveInfo, id: int) -> Pull:
+def resolve_pull(repository: Repository, info: GraphQLResolveInfo, pull_id: int) -> Pull:
     command = info.context["executor"].get_command("pull")
-    return command.fetch_pull_request(repository, id)
+    return command.fetch_pull_request(repository, pull_id)
 
 
 @repository_bindable.field("pulls")
