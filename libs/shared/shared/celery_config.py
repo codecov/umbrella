@@ -493,6 +493,10 @@ class BaseCeleryConfig:
             "soft_time_limit": gh_webhook_retry_soft_time_limit,
             "time_limit": gh_webhook_retry_hard_time_limit,
         },
+        upload_processor_task_name: {
+            "soft_time_limit": 4 * task_soft_time_limit,
+            "time_limit": 4 * task_time_limit,
+        },
     }
 
     # Get the upload queue for backward-compatible fallback
