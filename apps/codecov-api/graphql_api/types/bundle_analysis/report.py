@@ -83,3 +83,17 @@ def resolve_bundle_data(
 @bundle_analysis_report_bindable.field("isCached")
 def resolve_is_cached(bundle_report: BundleReport, info: GraphQLResolveInfo) -> bool:
     return bundle_report.is_cached
+
+
+@bundle_analysis_report_bindable.field("totalSize")
+def resolve_total_size(
+    bundles_analysis_report: BundleAnalysisReport, info: GraphQLResolveInfo
+) -> int:
+    return BundleData(bundles_analysis_report.size_total).size.uncompress
+
+
+@bundle_analysis_report_bindable.field("totalLoadTime")
+def resolve_total_load_time(
+    bundles_analysis_report: BundleAnalysisReport, info: GraphQLResolveInfo
+) -> int:
+    return BundleData(bundles_analysis_report.size_total).load_time.three_g
