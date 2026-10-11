@@ -58,6 +58,9 @@ type Repository {
 
   "TestAnalytics are fields related to Codecov's Test Analytics product offering"
   testAnalytics: TestAnalytics
+
+  "ComponentsYaml is the information related to the configuration yaml for Components"
+  componentsYaml(termId: String): [ComponentsYaml]!
 }
 
 type PullConnection {
