@@ -478,9 +478,15 @@ class Gitlab(TorngitBaseAdapter):
                     # Success case
                     return res
             except (httpx.TimeoutException, httpx.NetworkError):
-                raise TorngitServerUnreachableError(
-                    "GitLab was not able to be reached. Gateway 502. Please try again."
+                if current_retry >= max_retries:
+                    raise TorngitServerUnreachableError(
+                        "GitLab was not able to be reached due to a timeout or network error. Please try again."
+                    )
+                log.warning(
+                    "GitLab request timed out or network error, retrying",
+                    extra=dict(retry=current_retry, **_log),
                 )
+                continue
 
     async def refresh_token(self, client: httpx.AsyncClient) -> OauthConsumerToken:
         """
