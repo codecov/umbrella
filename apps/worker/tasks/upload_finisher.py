@@ -6,6 +6,7 @@ from enum import Enum
 import sentry_sdk
 from asgiref.sync import async_to_sync
 from celery.exceptions import Retry, SoftTimeLimitExceeded
+from kombu.exceptions import OperationalError as BrokerOperationalError
 
 from app import celery_app
 from celery_config import notify_error_task_name
@@ -688,9 +689,20 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                         "current_yaml": commit_yaml.to_dict(),
                     }
                     notify_kwargs = UploadFlow.save_to_kwargs(notify_kwargs)
-                    task = self.app.tasks[notify_task_name].apply_async(
-                        kwargs=notify_kwargs
-                    )
+                    try:
+                        task = self.app.tasks[notify_task_name].apply_async(
+                            kwargs=notify_kwargs
+                        )
+                    except BrokerOperationalError as e:
+                        log.warning(
+                            "finish_reports_processing: broker unavailable while enqueuing Notify task, retrying UploadFinisher",
+                            extra={
+                                "repoid": repoid,
+                                "commit": commitid,
+                                "exc": repr(e),
+                            },
+                        )
+                        raise self.retry(exc=e, countdown=60, max_retries=5)
                     self._call_upload_breadcrumb_task(
                         commit_sha=commitid,
                         repo_id=repoid,
