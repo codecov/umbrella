@@ -77,12 +77,12 @@ class TorngitBaseAdapter:
             timeout = httpx.Timeout(timeouts[1], connect=timeouts[0])
         else:
             timeout = httpx.Timeout(self._timeouts[1], connect=self._timeouts[0])
+        # verify_ssl can be: False (skip verification), a CA bundle path (str),
+        # an ssl.SSLContext, or None (use default certifi CA bundle).
+        # httpx does not accept None as a valid verify value, so default to True.
+        verify = self.verify_ssl if self.verify_ssl is not None else True
         return httpx.AsyncClient(
-            verify=(
-                self.verify_ssl
-                if not isinstance(self.verify_ssl, bool)
-                else self.verify_ssl
-            ),
+            verify=verify,
             timeout=timeout,
         )
 
