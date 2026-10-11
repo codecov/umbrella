@@ -244,4 +244,8 @@ def get_verify_ssl(service):
     verify = get_config(service, "verify_ssl")
     if verify is False:
         return False
-    return get_config(service, "ssl_pem") or os.getenv("REQUESTS_CA_BUNDLE")
+    return (
+        get_config(service, "ssl_pem")
+        or os.getenv("REQUESTS_CA_BUNDLE")
+        or os.getenv("SSL_CERT_FILE")
+    )
