@@ -157,6 +157,10 @@ async def resolve_head_totals(
         return head_commit.commitreport.reportleveltotals
 
 
+# deprecated field - alias for headTotals for backward compatibility
+comparison_bindable.set_field("totals", resolve_head_totals)
+
+
 @comparison_bindable.field("patchTotals")
 def resolve_patch_totals(
     comparison: ComparisonReport, info: GraphQLResolveInfo
