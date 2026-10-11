@@ -2,7 +2,7 @@ import logging
 from collections.abc import Callable
 
 import sentry_sdk
-from celery.exceptions import CeleryError
+from celery.exceptions import CeleryError, Retry
 from sqlalchemy.orm import Session as DbSession
 
 from app import celery_app
@@ -25,6 +25,7 @@ log = logging.getLogger(__name__)
 @sentry_sdk.trace
 def process_upload(
     on_processing_error: Callable[[ProcessingError], None],
+    on_missing_data: Callable[[str], None],
     db_session: DbSession,
     repo_id: int,
     commit_sha: str,
@@ -38,10 +39,28 @@ def process_upload(
         .filter(Commit.repoid == repo_id, Commit.commitid == commit_sha)
         .first()
     )
-    assert commit
+    if not commit:
+        log.warning(
+            "Commit not found in database, will retry",
+            extra={"repo_id": repo_id, "commit_sha": commit_sha},
+        )
+        on_missing_data(
+            f"Commit not found: repo_id={repo_id}, commit_sha={commit_sha}"
+        )
+        # on_missing_data always raises; this line is a safety net for type checkers.
+        raise AssertionError(
+            f"Commit not found: repo_id={repo_id}, commit_sha={commit_sha}"
+        )
 
     upload = db_session.query(Upload).filter_by(id_=upload_id).first()
-    assert upload
+    if not upload:
+        log.warning(
+            "Upload not found in database, will retry",
+            extra={"upload_id": upload_id},
+        )
+        on_missing_data(f"Upload not found: upload_id={upload_id}")
+        # on_missing_data always raises; this line is a safety net for type checkers.
+        raise AssertionError(f"Upload not found: upload_id={upload_id}")
 
     state = ProcessingState(repo_id, commit_sha)
     # this in a noop in normal cases, but relevant for task retries:
