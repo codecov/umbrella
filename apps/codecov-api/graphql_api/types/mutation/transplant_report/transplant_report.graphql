@@ -1,0 +1,12 @@
+union TransplantReportError = UnauthorizedError | ValidationError | UnauthenticatedError
+
+type TransplantReportPayload {
+  error: TransplantReportError
+}
+
+input TransplantReportInput {
+  owner: String!
+  repoName: String!
+  fromSha: String!
+  toSha: String!
+}
