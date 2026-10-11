@@ -6,6 +6,7 @@ type Commit {
   author: Owner
   parent: Commit
   pullId: Int
+  branch: String @deprecated(reason: "Use branchName instead")
   branchName: String
   yaml: String
   yamlState: YamlStates
