@@ -271,20 +271,8 @@ class BundleRoutesComparison:
 
         all_routes, results = base_sizes.keys() | head_sizes.keys(), []
         for route_name in all_routes:
-            # Added new route
-            if route_name not in base_sizes or base_sizes[route_name] == 0:
-                results.append(
-                    RouteChange(
-                        route_name=route_name,
-                        change_type=RouteChange.ChangeType.ADDED,
-                        size_delta=head_sizes[route_name],
-                        percentage_delta=100,
-                        size_base=0,
-                        size_head=head_sizes[route_name],
-                    )
-                )
             # Removed old route
-            elif route_name not in head_sizes:
+            if route_name not in head_sizes:
                 results.append(
                     RouteChange(
                         route_name=route_name,
@@ -293,6 +281,18 @@ class BundleRoutesComparison:
                         percentage_delta=-100.0,
                         size_base=base_sizes[route_name],
                         size_head=0,
+                    )
+                )
+            # Added new route
+            elif route_name not in base_sizes or base_sizes[route_name] == 0:
+                results.append(
+                    RouteChange(
+                        route_name=route_name,
+                        change_type=RouteChange.ChangeType.ADDED,
+                        size_delta=head_sizes[route_name],
+                        percentage_delta=100,
+                        size_base=0,
+                        size_head=head_sizes[route_name],
                     )
                 )
             # Changed
