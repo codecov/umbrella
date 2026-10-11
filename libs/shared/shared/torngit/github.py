@@ -1061,11 +1061,16 @@ class Github(TorngitBaseAdapter):
             self.service_url
             + self.count_and_get_url_template(url_name="refresh_token").substitute()
         )
-        res = await client.request(
-            "POST",
-            url,
-            params=params,
-        )
+        try:
+            res = await client.request(
+                "POST",
+                url,
+                params=params,
+            )
+        except (httpx.TimeoutException, httpx.NetworkError) as e:
+            raise TorngitServerUnreachableError(
+                "GitHub token refresh endpoint was not reachable."
+            ) from e
         if res.status_code >= 300:
             raise TorngitRefreshTokenFailedError(
                 {
