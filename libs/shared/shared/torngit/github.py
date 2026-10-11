@@ -2456,7 +2456,13 @@ class Github(TorngitBaseAdapter):
                     url_name="is_student"
                 ).substitute()
                 res = await self.api(client, "get", url, statuses_to_retry=[])
-                return res["student"]
+                if not isinstance(res, dict):
+                    log.warning(
+                        "Unexpected response type from Github Education API",
+                        extra={"response_type": type(res).__name__, "response": res},
+                    )
+                    return False
+                return res.get("student", False)
             except TorngitServerUnreachableError:
                 log.warning("Timeout on Github Education API for is_student")
                 return False
