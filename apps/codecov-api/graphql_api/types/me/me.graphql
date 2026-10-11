@@ -18,7 +18,7 @@ type Me {
   ): UserTokenConnection! @cost(complexity: 5, multipliers: ["first", "last"])
   viewableRepositories(
     filters: RepositorySetFilters
-    ordering: RepositoryOrdering
+    ordering: String
     orderingDirection: OrderingDirection
     first: Int
     after: String
