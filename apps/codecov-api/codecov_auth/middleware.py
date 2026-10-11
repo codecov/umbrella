@@ -9,6 +9,7 @@ from corsheaders.middleware import (
     ACCESS_CONTROL_ALLOW_ORIGIN,
 )
 from corsheaders.middleware import CorsMiddleware as BaseCorsMiddleware
+from django.conf import settings
 from django.http import HttpRequest, HttpResponseForbidden, HttpResponseNotFound
 from django.urls import resolve
 from rest_framework import exceptions
@@ -185,6 +186,49 @@ def cors_middleware(get_response):
             if not base_cors.origin_found_in_white_lists(origin, url):
                 response[ACCESS_CONTROL_ALLOW_ORIGIN] = "*"
                 del response[ACCESS_CONTROL_ALLOW_CREDENTIALS]
+
+        return response
+
+    return middleware
+
+
+def okta_admin_samesite_middleware(get_response):
+    """
+    Override session cookie SameSite setting for Okta admin OAuth flow only.
+
+    Must run AFTER SessionMiddleware to override the cookie it sets.
+    Only affects /login/okta-admin to enable OAuth callbacks from Okta.
+
+    Requirements:
+    - SESSION_COOKIE_SECURE must be True (SameSite=None requires Secure flag)
+    - Request path must start with /login/okta-admin
+    - Session must have a valid session_key
+
+    Security considerations:
+    - Only overrides cookie for OAuth initiation, not for authenticated sessions
+    - Session at this point contains only OAuth state, no user privileges
+    - State verification on callback prevents CSRF attacks
+    """
+
+    def middleware(request):
+        response = get_response(request)
+
+        # Only override for Okta admin OAuth flow when secure cookies are enabled
+        if (
+            request.path.startswith("/login/okta-admin")
+            and request.session.session_key  # session_key is truthy and not empty
+            and getattr(settings, "SESSION_COOKIE_SECURE", False)
+        ):
+            response.set_cookie(
+                getattr(settings, "SESSION_COOKIE_NAME", "sessionid"),
+                request.session.session_key,
+                max_age=getattr(settings, "SESSION_COOKIE_AGE", 1209600),
+                domain=getattr(settings, "SESSION_COOKIE_DOMAIN", None),
+                path=getattr(settings, "SESSION_COOKIE_PATH", "/"),
+                secure=True,
+                httponly=True,
+                samesite="None",
+            )
 
         return response
 
