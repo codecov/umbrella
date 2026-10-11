@@ -361,6 +361,13 @@ class BundleAnalysisReport:
         return sum([bundle.size_total for bundle in self.bundles])
 
     @cached_property
+    def duration(self) -> int:
+        return sum(
+            [bundle.info.get("duration", 0) for bundle in self.bundles],
+            0,
+        )
+
+    @cached_property
     def is_cached(self) -> bool:
         return self.report.is_cached()
 
