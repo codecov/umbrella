@@ -52,7 +52,8 @@ def resolve_impacted_files(
             return UnknownFlags()
 
     return {
-        "results": command.fetch_impacted_files(comparison_report, comparison, filters)
+        "results": command.fetch_impacted_files(comparison_report, comparison, filters),
+        "_comparison_report": comparison_report,
     }
 
 
