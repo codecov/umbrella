@@ -1952,6 +1952,20 @@ class Github(TorngitBaseAdapter):
                 url_name="get_distance_in_commits"
             ).substitute(slug=self.slug, base_branch=base_branch, base=base)
             res = await self.api(client, "get", url, token=token)
+        if res is None:
+            log.warning(
+                "GitHub compare API returned no content for get_distance_in_commits",
+                extra={
+                    "base_branch": base_branch,
+                    "base": base,
+                },
+            )
+            return {
+                "behind_by": None,
+                "behind_by_commit": None,
+                "status": None,
+                "ahead_by": None,
+            }
         behind_by = res.get("behind_by")
         behind_by_commit = res["base_commit"]["sha"] if "base_commit" in res else None
         if behind_by is None or behind_by_commit is None:
