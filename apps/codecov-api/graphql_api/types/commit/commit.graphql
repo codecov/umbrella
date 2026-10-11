@@ -4,6 +4,7 @@ type Commit {
   createdAt: DateTime!
   commitid: String!
   author: Owner
+  bot: Owner
   parent: Commit
   pullId: Int
   branchName: String
