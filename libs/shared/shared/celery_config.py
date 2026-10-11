@@ -344,6 +344,27 @@ DEFAULT_BLOCKING_TIMEOUT_SECONDS = int(
 )
 
 
+_RESULT_BACKEND_HEALTH_CHECK_INTERVAL = int(
+    get_config(
+        "setup",
+        "tasks",
+        "celery",
+        "result_backend_health_check_interval",
+        default=30,
+    )
+)
+
+_RESULT_BACKEND_MAX_RETRIES = int(
+    get_config(
+        "setup",
+        "tasks",
+        "celery",
+        "result_backend_max_retries",
+        default=3,
+    )
+)
+
+
 class BaseCeleryConfig:
     broker_url = get_config("services", "celery_broker") or get_config(
         "services", "redis_url"
@@ -351,6 +372,24 @@ class BaseCeleryConfig:
     result_backend = get_config("services", "celery_broker") or get_config(
         "services", "redis_url"
     )
+
+    # Redis result backend transport options
+    # socket_keepalive: enables TCP keepalive so the OS detects and closes dead connections
+    # health_check_interval: redis-py pings pooled connections before reuse to detect stale sockets
+    # These prevent stale pooled connections from causing ConnectionError during chord callbacks
+    result_backend_transport_options = {
+        "socket_keepalive": True,
+        "socket_keepalive_options": {
+            "TCP_KEEPIDLE": 60,
+            "TCP_KEEPINTVL": 10,
+            "TCP_KEEPCNT": 6,
+        },
+        "health_check_interval": _RESULT_BACKEND_HEALTH_CHECK_INTERVAL,
+        "retry_on_timeout": True,
+    }
+
+    # Number of times to retry a failed result backend operation before surfacing the error
+    result_backend_max_retries = _RESULT_BACKEND_MAX_RETRIES
     worker_send_task_events = bool(
         get_config("setup", "tasks", "celery", "worker_send_task_events", default=False)
     )
