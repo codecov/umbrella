@@ -863,6 +863,8 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
         redis_connection.delete(f"cache/{commit.repoid}/tree/{commit.branch}")
         redis_connection.delete(f"cache/{commit.repoid}/tree/{commit.commitid}")
         repository = commit.repository
+        if not repository.author or not repository.author.username:
+            return
         key = ":".join(
             (repository.service, repository.author.username, repository.name)
         )
