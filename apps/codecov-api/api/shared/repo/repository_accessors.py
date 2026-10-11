@@ -3,6 +3,7 @@ import logging
 import sentry_sdk
 from asgiref.sync import async_to_sync
 from django.core.exceptions import ObjectDoesNotExist
+from django.db import DataError
 from django.utils import timezone
 
 from codecov_auth.models import Owner
@@ -48,7 +49,7 @@ class RepoAccessors:
                     author__service=repo_owner_service,
                 )
             )
-        except ObjectDoesNotExist:
+        except (ObjectDoesNotExist, DataError):
             repo = None
         return repo
 
