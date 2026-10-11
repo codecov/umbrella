@@ -26,7 +26,7 @@ repo_query = """{
         repository(name: "gazebo") {
           ... on Repository {
               activated
-            defaultBranch
+            defaultBranch { name }
           }
         }
       }
@@ -68,7 +68,7 @@ class UpdateRepositoryTests(GraphQLTestHelper, TestCase):
             owner=self.org,
         )
         assert (
-            repo_result["me"]["owner"]["repository"]["defaultBranch"]
+            repo_result["me"]["owner"]["repository"]["defaultBranch"]["name"]
             == "some other branch"
         )
 
