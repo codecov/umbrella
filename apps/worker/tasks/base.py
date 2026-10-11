@@ -508,33 +508,25 @@ class BaseCodecovTask(celery_app.Task):
     def wrap_up_dbsession(self, db_session):
         """Commit and close database session, handling timeout edge cases.
 
-        Handles the corner case where `SoftTimeLimitExceeded` is raised during
+        Handles the corner case where any exception is raised during
         `db_session.commit()`, which can leave the session in an unusable state.
         Since we reuse sessions across tasks, this would break future tasks in
-        the same process, so we catch both timeout and invalid state exceptions.
+        the same process. We always remove the scoped session in a finally block
+        to guarantee a clean session for the next task on this thread.
         """
         try:
             db_session.commit()
             db_session.close()
-        except SoftTimeLimitExceeded:
-            log.warning(
-                "We had an issue where a timeout happened directly during the DB commit",
-                exc_info=True,
-            )
-            try:
-                db_session.commit()
-                db_session.close()
-            except InvalidRequestError:
-                log.warning(
-                    "DB session cannot be operated on any longer. Closing it and removing it",
-                    exc_info=True,
-                )
-                get_db_session.remove()
-        except InvalidRequestError:
+        except Exception:
             log.warning(
                 "DB session cannot be operated on any longer. Closing it and removing it",
                 exc_info=True,
             )
+            try:
+                db_session.rollback()
+            except Exception:
+                pass
+        finally:
             get_db_session.remove()
 
     def on_retry(self, exc, task_id, args, kwargs, einfo):
