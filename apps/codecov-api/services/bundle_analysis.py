@@ -381,6 +381,7 @@ class BundleAnalysisComparison:
             repository,
         )
         self.head_report = self.comparison.head_report
+        self.base_report = self.comparison.base_report
 
     @cached_property
     def bundles(self) -> list["BundleComparison"]:
