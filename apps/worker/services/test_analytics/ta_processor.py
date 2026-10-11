@@ -185,7 +185,9 @@ def get_ta_processing_info(
     commitid: str,
     commit_yaml: dict[str, Any],
 ) -> TAProcInfo:
-    repository = Repository.objects.using("default").get(repoid=repoid)
+    repository = Repository.objects.using("default").select_related("author").get(
+        repoid=repoid
+    )
 
     commit = Commit.objects.using("default").get(
         repository=repository, commitid=commitid
