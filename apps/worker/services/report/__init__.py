@@ -726,6 +726,17 @@ class ReportService(BaseReportService):
         PYREPORT_REPORT_JSON_SIZE.observe(len(report_json))
         PYREPORT_CHUNKS_FILE_SIZE.observe(len(chunks))
 
+        # Eagerly load `commit_report` and its `totals` relationship BEFORE any
+        # GCS uploads below.  The uploads can be slow for large repos and leave
+        # the DB connection idle long enough for the server to close it.  Loading
+        # these here (while the connection is still active) populates SQLAlchemy's
+        # instance cache so the accesses after the uploads hit the cache instead
+        # of issuing a new query on a potentially stale connection.
+        commit_report = commit.report
+        if commit_report:
+            # Touch the relationship to force the lazy-load now.
+            _ = commit_report.totals
+
         chunks_url = archive_service.write_chunks(commit.commitid, chunks)
 
         commit.state = "complete" if report else "error"
@@ -752,8 +763,8 @@ class ReportService(BaseReportService):
         # and we should just save the `report_json` to archive storage directly instead.
         commit.report_json = orjson.loads(report_json)
 
-        # `report` is an accessor which implicitly queries `CommitReport`
-        if commit_report := commit.report:
+        # `commit_report` was already loaded above before the GCS uploads.
+        if commit_report:
             db_session = commit.get_db_session()
 
             report_totals = commit_report.totals
