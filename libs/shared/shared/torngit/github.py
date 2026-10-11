@@ -1783,12 +1783,12 @@ class Github(TorngitBaseAdapter):
                 )
             return res
 
-    async def get_commit_statuses(self, commit, token=None):
+    async def get_commit_statuses(self, commit, token=None, max_pages=10):
         token = self.get_token_by_type_if_none(token, TokenType.status)
         page = 0
         statuses = []
         async with self.get_client() as client:
-            while True:
+            while page < max_pages:
                 page += 1
                 # https://developer.github.com/v3/repos/statuses/#list-statuses-for-a-specific-ref
                 url = self.count_and_get_url_template(
@@ -1817,6 +1817,11 @@ class Github(TorngitBaseAdapter):
                 )
                 if len(provided_statuses) < 100:
                     break
+            else:
+                log.warning(
+                    "get_commit_statuses reached max page limit",
+                    extra={"commit": commit, "slug": self.slug, "max_pages": max_pages},
+                )
         return Status(statuses)
 
     # Source
