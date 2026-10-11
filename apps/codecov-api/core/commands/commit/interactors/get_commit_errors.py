@@ -5,6 +5,8 @@ from graphql_api.types.enums import CommitErrorCode, CommitErrorGeneralType
 
 
 def errors_by_type(commit, error_type_str):
+    if error_type_str is None:
+        return commit.errors.all()
     error_type = CommitErrorGeneralType(error_type_str)
     error_codes = CommitErrorCode.get_codes_from_type(error_type)
     error_codes_strings = [x.db_string for x in error_codes]
