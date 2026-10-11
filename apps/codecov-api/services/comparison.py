@@ -922,6 +922,13 @@ class ImpactedFile:
         return total_misses
 
     @cached_property
+    def hits_count(self) -> int:
+        total_hits = 0
+        total_hits += self._direct_hits_count
+        total_hits += self._unintended_hits_count
+        return total_hits
+
+    @cached_property
     def _unintended_misses_count(self) -> int:
         """
         Returns the misses count for a unintended impacted file
@@ -939,6 +946,23 @@ class ImpactedFile:
         return misses
 
     @cached_property
+    def _unintended_hits_count(self) -> int:
+        """
+        Returns the hits count for an unintended impacted file
+        """
+        hits = 0
+
+        unexpected_line_changes = self.unexpected_line_changes or []
+        for [
+            base,
+            [head_line_number, head_coverage_value],
+        ] in unexpected_line_changes:
+            if head_coverage_value == "h":
+                hits += 1
+
+        return hits
+
+    @cached_property
     def _direct_misses_count(self) -> int:
         """
         Returns the misses count for a direct impacted file
@@ -952,6 +976,21 @@ class ImpactedFile:
                 misses += 1
 
         return misses
+
+    @cached_property
+    def _direct_hits_count(self) -> int:
+        """
+        Returns the hits count for a direct impacted file
+        """
+
+        hits = 0
+
+        diff_coverage = self.added_diff_coverage or []
+        for line_number, line_coverage_value in diff_coverage:
+            if line_coverage_value == "h":
+                hits += 1
+
+        return hits
 
     @cached_property
     def patch_coverage(self) -> Totals | None:
