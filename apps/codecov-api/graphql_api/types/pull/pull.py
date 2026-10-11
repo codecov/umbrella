@@ -91,7 +91,11 @@ async def resolve_compare_with_base(
         # store the comparison in the context - to be used in the `Comparison` resolvers
         info.context["comparison"] = comparison
 
-    return ComparisonReport(commit_comparison)
+    comparison_report = ComparisonReport(commit_comparison)
+    # attach pull to the report so `Comparison` resolvers can access pull-level fields
+    # (e.g. behindBy, behindByCommit) without relying on shared request context
+    comparison_report.pull = pull
+    return comparison_report
 
 
 @pull_bindable.field("bundleAnalysisCompareWithBase")
