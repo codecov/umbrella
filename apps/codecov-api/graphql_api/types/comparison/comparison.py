@@ -19,6 +19,7 @@ from graphql_api.types.errors import (
     MissingHeadCommit,
     MissingHeadReport,
 )
+from graphql_api.types.coverage_analytics.coverage_analytics import CoverageAnalyticsProps
 from graphql_api.types.errors.errors import UnknownFlags
 from reports.models import ReportLevelTotals
 from services.comparison import (
@@ -259,6 +260,15 @@ def resolve_has_different_number_of_head_and_base_reports(
         return False
     comparison: Comparison = info.context["comparison"]
     return comparison.has_different_number_of_head_and_base_sessions
+
+
+@comparison_bindable.field("coverageAnalytics")
+@sync_to_async
+def resolve_coverage_analytics(
+    comparison: ComparisonReport, info: GraphQLResolveInfo
+) -> CoverageAnalyticsProps:
+    repository = comparison.commit_comparison.compare_commit.repository
+    return CoverageAnalyticsProps(repository=repository)
 
 
 comparison_result_bindable = UnionType("ComparisonResult")
