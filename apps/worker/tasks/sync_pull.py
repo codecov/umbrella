@@ -11,6 +11,7 @@ import sentry_sdk
 import sqlalchemy.orm
 from asgiref.sync import async_to_sync
 from redis.exceptions import LockError
+from requests.exceptions import ConnectionError as RequestsConnectionError
 
 from app import celery_app
 from database.models import Commit, Pull, Repository
@@ -157,6 +158,19 @@ class PullSyncTask(BaseCodecovTask, name=pulls_task_name):
                 "commit_updates_done": {"merged_count": 0, "soft_deleted_count": 0},
                 "pull_updated": False,
                 "reason": "no_configured_apps_available",
+            }
+        except RequestsConnectionError:
+            log.warning(
+                "Network error when fetching GitHub token for pull sync. Retrying.",
+                extra=extra_info,
+                exc_info=True,
+            )
+            self.retry(max_retries=3, countdown=30)
+            return {
+                "notifier_called": False,
+                "commit_updates_done": {"merged_count": 0, "soft_deleted_count": 0},
+                "pull_updated": False,
+                "reason": "network_error",
             }
         context = OwnerContext(
             owner_onboarding_date=repository.author.createstamp,
