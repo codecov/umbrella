@@ -1,5 +1,7 @@
 import json
+import logging
 import os
+import time
 from decimal import Decimal
 
 import requests
@@ -14,6 +16,8 @@ from services.notification.notifiers.base import (
 from services.notification.notifiers.generics import EnhancedJSONEncoder
 from services.urls import get_commit_url, get_pull_url
 from services.yaml.reader import round_number
+
+log = logging.getLogger(__name__)
 
 CODECOV_INTERNAL_TOKEN = os.environ.get("CODECOV_INTERNAL_TOKEN")
 CODECOV_SLACK_APP_URL = os.environ.get("CODECOV_SLACK_APP_URL")
@@ -120,11 +124,41 @@ class CodecovSlackAppNotifier(AbstractBaseNotifier):
             "owner": self.repository.author.username,
             "comparison": compare_dict,
         }
-        response = requests.post(
-            request_url, headers=headers, data=json.dumps(data, cls=EnhancedJSONEncoder)
-        )
+        max_retries = 3
+        response = None
+        for attempt in range(max_retries):
+            try:
+                response = requests.post(
+                    request_url,
+                    headers=headers,
+                    data=json.dumps(data, cls=EnhancedJSONEncoder),
+                    timeout=10,
+                )
+                break
+            except (
+                requests.exceptions.ChunkedEncodingError,
+                requests.exceptions.ConnectionError,
+                requests.exceptions.Timeout,
+            ) as e:
+                if attempt < max_retries - 1:
+                    log.warning(
+                        "Transient error notifying slack app, retrying",
+                        extra={"attempt": attempt + 1, "error": str(e)},
+                    )
+                    time.sleep(2**attempt)
+                else:
+                    log.error(
+                        "Failed to notify slack app after retries",
+                        extra={"error": str(e)},
+                    )
+                    return NotificationResult(
+                        data_sent=data,
+                        notification_attempted=True,
+                        notification_successful=False,
+                        explanation=f"Connection error after {max_retries} attempts: {e}",
+                    )
 
-        if response.status_code == 200:
+        if response is not None and response.status_code == 200:
             return NotificationResult(
                 data_sent=data,
                 notification_attempted=True,
@@ -136,5 +170,5 @@ class CodecovSlackAppNotifier(AbstractBaseNotifier):
                 data_sent=data,
                 notification_attempted=True,
                 notification_successful=False,
-                explanation=f"Failed to notify slack app\nError {response.status_code}: {response.reason}.",
+                explanation=f"Failed to notify slack app\nError {response.status_code if response else 'no response'}: {response.reason if response else 'no response'}.",
             )
