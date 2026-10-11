@@ -8,6 +8,7 @@ from database.models import Owner
 from helpers.admins import update_single_owner_admins
 from services.owner import get_owner_provider_service
 from shared.celery_config import sync_teams_task_name
+from shared.torngit.exceptions import TorngitServer5xxCodeError, TorngitServerUnreachableError
 from tasks.base import BaseCodecovTask
 
 log = logging.getLogger(__name__)
@@ -28,7 +29,22 @@ class SyncTeamsTask(BaseCodecovTask, name=sync_teams_task_name):
         git = get_owner_provider_service(owner, ignore_installation=True)
 
         # get list of teams with username, name, email, id (service_id), etc
-        teams = async_to_sync(git.list_teams)()
+        try:
+            teams = async_to_sync(git.list_teams)()
+        except (TorngitServer5xxCodeError, TorngitServerUnreachableError) as e:
+            retry_count = getattr(self.request, "retries", 0)
+            countdown = 60 * (2**retry_count)  # 60s, 120s, 240s, ...
+            log.warning(
+                "GitHub is unavailable while syncing teams, retrying",
+                extra={
+                    "ownerid": ownerid,
+                    "username": username,
+                    "retry_count": retry_count,
+                    "countdown": countdown,
+                    "exception": str(e),
+                },
+            )
+            raise self.retry(exc=e, countdown=countdown, max_retries=5)
 
         updated_teams = []
 
