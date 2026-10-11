@@ -52,6 +52,7 @@ type Repository {
   coverageEnabled: Boolean
   testAnalyticsEnabled: Boolean
   isGithubRateLimited: Boolean
+  usingIntegration: Boolean @deprecated(reason: "Use hasGithubApp on Owner instead")
 
   "CoverageAnalytics are fields related to Codecov's Coverage product offering"
   coverageAnalytics: CoverageAnalytics
