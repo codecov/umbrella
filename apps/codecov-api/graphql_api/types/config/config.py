@@ -145,3 +145,13 @@ def resolve_bitbucket_server_url(_, info):
 
     if settings.BITBUCKET_SERVER_CLIENT_ID:
         return settings.BITBUCKET_SERVER_URL
+
+
+@config_bindable.field("gitlabURL")
+def resolve_gitlab_url(_, info):
+    return resolve_gitlab_enterprise_url(_, info)
+
+
+@config_bindable.field("bitbucketURL")
+def resolve_bitbucket_url(_, info):
+    return resolve_bitbucket_server_url(_, info)
