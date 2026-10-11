@@ -83,6 +83,13 @@ if [[ "${CODECOV_SKIP_MIGRATIONS:-}" != "true" && ("${RUN_ENV:-}" = "ENTERPRISE"
   $pre_migrate $berglas python manage.py migrate $post_migrate
   $pre_migrate $berglas python migrate_timeseries.py $post_migrate
   $pre_migrate $berglas python manage.py pgpartition --yes --skip-delete $post_migrate
+elif [[ "${CODECOV_SKIP_MIGRATIONS:-}" != "true" && ("${RUN_ENV:-}" = "PROD" || "${RUN_ENV:-}" = "STAGING") ]]; then
+  echo "Checking that all migrations have been applied..."
+  if ! $berglas python manage.py migrate --check; then
+    echo "ERROR: Unapplied migrations detected. The migration job must complete before the API can start."
+    exit 1
+  fi
+  echo "All migrations are applied."
 fi
 
 if [[ "${RUN_ENV:-}" = "STAGING" || "${RUN_ENV:-}" = "DEV" ]]; then
