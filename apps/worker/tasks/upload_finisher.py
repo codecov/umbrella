@@ -3,6 +3,7 @@ import re
 from datetime import UTC, datetime, timedelta
 from enum import Enum
 
+import httpx
 import sentry_sdk
 from asgiref.sync import async_to_sync
 from celery.exceptions import Retry, SoftTimeLimitExceeded
@@ -950,7 +951,7 @@ def load_commit_diff(commit: Commit, task_name: str | None = None) -> dict | Non
         return async_to_sync(repository_service.get_commit_diff)(commitid)
 
     # TODO(swatinem): can we maybe get rid of all this logging?
-    except TorngitError:
+    except (TorngitError, httpx.TransportError):
         # When this happens, we have that commit.totals["diff"] is not available.
         # Since there is no way to calculate such diff without the git commit,
         # then we assume having the rest of the report saved there is better than the
