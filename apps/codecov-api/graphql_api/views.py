@@ -349,10 +349,17 @@ class AsyncGraphqlView(GraphQLAsyncView):
         if debug or (not is_anonymous and is_bad_query):
             return format_error(error, debug)
         formatted = error.formatted
+        original_error = error.original_error
+        if original_error is None:
+            # No underlying exception means this came from query parsing or
+            # validation (e.g. querying a nonexistent field). This is a client
+            # error, not a server error, so don't log/report it to Sentry.
+            formatted["message"] = "Invalid GraphQL query"
+            formatted["type"] = "ValidationError"
+            return formatted
         formatted["message"] = "INTERNAL SERVER ERROR"
         formatted["type"] = "ServerError"
         # if this is one of our own command exception, we can tell a bit more
-        original_error = error.original_error
         if isinstance(original_error, BaseException) or isinstance(
             original_error, ServiceException
         ):
