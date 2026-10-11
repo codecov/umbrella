@@ -1,3 +1,4 @@
+import os
 import re
 from enum import Enum
 
@@ -77,12 +78,24 @@ class TorngitBaseAdapter:
             timeout = httpx.Timeout(timeouts[1], connect=timeouts[0])
         else:
             timeout = httpx.Timeout(self._timeouts[1], connect=self._timeouts[0])
+
+        if self.verify_ssl is not None and not isinstance(self.verify_ssl, bool):
+            # Explicit CA bundle path (e.g. set by a subclass like GithubEnterprise)
+            verify = self.verify_ssl
+        elif self.verify_ssl is False:
+            verify = False
+        else:
+            # Default: use system CA bundle, but allow override via env var so
+            # that a TLS-intercepting proxy's CA cert can be trusted without
+            # modifying the container image.
+            verify = (
+                os.environ.get("REQUESTS_CA_BUNDLE")
+                or os.environ.get("SSL_CERT_FILE")
+                or True
+            )
+
         return httpx.AsyncClient(
-            verify=(
-                self.verify_ssl
-                if not isinstance(self.verify_ssl, bool)
-                else self.verify_ssl
-            ),
+            verify=verify,
             timeout=timeout,
         )
 
