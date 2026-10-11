@@ -13,6 +13,7 @@ from services.comparison import (
     ImpactedFile,
     MissingComparisonReport,
 )
+from services.report import files_belonging_to_flags
 from shared.reports.types import ReportTotals
 from shared.torngit.exceptions import TorngitClientError
 
@@ -92,6 +93,17 @@ def resolve_segments(
             return ProviderError()
 
     segments = file_comparison.segments or []
+
+    flags_filter = filters.get("flags", [])
+    if flags_filter:
+        head_report = comparison.head_report_without_applied_diff
+        report_flags = head_report and head_report.get_flag_names()
+        if report_flags and set(flags_filter) & set(report_flags):
+            files_for_flags = files_belonging_to_flags(
+                commit_report=head_report, flags=flags_filter
+            )
+            if path not in files_for_flags:
+                return SegmentComparisons(results=[])
 
     if filters.get("has_unintended_changes") is True:
         # segments with no diff changes and at least 1 unintended change
