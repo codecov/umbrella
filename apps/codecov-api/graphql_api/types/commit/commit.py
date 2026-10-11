@@ -329,6 +329,28 @@ async def resolve_errors(commit, info, error_type):
     )
 
 
+@commit_bindable.field("yamlErrors")
+async def resolve_yaml_errors(commit, info):
+    command = info.context["executor"].get_command("commit")
+    queryset = await command.get_commit_errors(commit, error_type="YAML_ERROR")
+    return await queryset_to_connection(
+        queryset,
+        ordering=("updated_at",),
+        ordering_direction=OrderingDirection.ASC,
+    )
+
+
+@commit_bindable.field("botErrors")
+async def resolve_bot_errors(commit, info):
+    command = info.context["executor"].get_command("commit")
+    queryset = await command.get_commit_errors(commit, error_type="BOT_ERROR")
+    return await queryset_to_connection(
+        queryset,
+        ordering=("updated_at",),
+        ordering_direction=OrderingDirection.ASC,
+    )
+
+
 @commit_bindable.field("totalUploads")
 async def resolve_total_uploads(commit, info):
     command = info.context["executor"].get_command("commit")
