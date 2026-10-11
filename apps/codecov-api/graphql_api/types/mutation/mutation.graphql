@@ -30,6 +30,7 @@ type Mutation {
   deleteComponentMeasurements(
     input: DeleteComponentMeasurementsInput!
   ): DeleteComponentMeasurementsPayload
+  activateRepository(owner: String!, repoName: String!): ActivateRepositoryPayload
   eraseRepository(input: EraseRepositoryInput!): EraseRepositoryPayload
   updateRepository(input: UpdateRepositoryInput!): UpdateRepositoryPayload
   updateSelfHostedSettings(
