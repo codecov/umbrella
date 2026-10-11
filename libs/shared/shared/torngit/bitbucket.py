@@ -1033,6 +1033,8 @@ class Bitbucket(TorngitBaseAdapter):
                 token=token,
                 include=commitid,
             )
+        if not res.get("values"):
+            raise TorngitObjectNotFoundError(res, "Commit not found")
         start = res["values"][0]["hash"]
         commit_mapping = {
             val["hash"]: [k["hash"] for k in val["parents"]] for val in res["values"]
