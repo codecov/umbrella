@@ -23,6 +23,7 @@ from helpers.exceptions import (
     OwnerWithoutValidBotError,
     ReportEmptyError,
     ReportExpiredException,
+    ReportTooLargeError,
     RepositoryWithoutValidBotError,
 )
 from rollouts import CARRYFORWARD_BASE_SEARCH_RANGE_BY_OWNER
@@ -690,6 +691,17 @@ class ReportService(BaseReportService):
                 },
             )
             result.error = ProcessingError(code=UploadErrorCode.REPORT_EMPTY, params={})
+            raw_report_info.error = result.error
+            return result
+        except ReportTooLargeError as e:
+            sentry_sdk.capture_exception(e)
+            log.warning(
+                "Report is too large to process",
+                extra={"reportid": reportid, "reason": str(e)},
+            )
+            result.error = ProcessingError(
+                code=UploadErrorCode.UNSUPPORTED_FILE_FORMAT, params={}
+            )
             raw_report_info.error = result.error
             return result
         except SoftTimeLimitExceeded as e:
