@@ -54,6 +54,15 @@ def resolve_error_code(error, info: GraphQLResolveInfo) -> UploadErrorEnum:
         return UploadErrorEnum.UNKNOWN_ERROR_CODE
 
 
+@upload_bindable.field("totals")
+@sync_to_async
+def resolve_totals(upload: ReportSession, info: GraphQLResolveInfo):
+    try:
+        return upload.uploadleveltotals
+    except Exception:
+        return None
+
+
 @upload_bindable.field("ciUrl")
 @sync_to_async
 def resolve_ci_url(upload: ReportSession, info: GraphQLResolveInfo):
