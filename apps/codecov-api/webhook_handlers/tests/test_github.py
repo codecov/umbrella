@@ -1648,3 +1648,32 @@ class GithubWebhookHandlerTests(APITestCase):
             mock_log.warning.call_args.kwargs["extra"]["github_webhook_event"]
             == GitHubWebhookEvents.INSTALLATION_REPOSITORIES
         )
+
+    @patch("webhook_handlers.views.github.log")
+    def test_installation_with_null_installation_returns_200(self, mock_log):
+        response = self._post_event_data(
+            event=GitHubWebhookEvents.INSTALLATION,
+            data={
+                "action": "created",
+                "installation": None,
+                "sender": {"type": "User"},
+            },
+            app_id=4242,
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        mock_log.warning.assert_called_once()
+        assert str(mock_log.warning.call_args.kwargs["extra"]["target_id"]) == "4242"
+        assert mock_log.warning.call_args.kwargs["extra"]["app_id"] is None
+        assert mock_log.warning.call_args.kwargs["extra"]["installation_id"] is None
+
+    @patch("webhook_handlers.views.github.log")
+    def test_installation_with_absent_installation_returns_200(self, mock_log):
+        response = self._post_event_data(
+            event=GitHubWebhookEvents.INSTALLATION,
+            data={"action": "created", "sender": {"type": "User"}},
+            app_id=4242,
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        mock_log.warning.assert_called_once()
