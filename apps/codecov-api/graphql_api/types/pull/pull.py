@@ -9,6 +9,7 @@ from codecov_auth.constants import USE_SENTRY_APP_INDICATOR
 from codecov_auth.models import Owner
 from compare.models import CommitComparison
 from core.models import Commit, Pull
+from compare.commands.compare.compare import CompareCommands
 from graphql_api.actions.commits import pull_commits
 from graphql_api.actions.comparison import validate_commit_comparison
 from graphql_api.dataloader.bundle_analysis import load_bundle_analysis_comparison
@@ -168,3 +169,40 @@ def resolve_behind_by_commit(
 def resolve_first_pull(pull: Pull, info: GraphQLResolveInfo) -> bool:
     # returns true if this pull is/was the 1st for a repo
     return pull.repository.pull_requests.order_by("id").first() == pull
+
+
+@pull_bindable.field("impactedFiles")
+@sentry_sdk.trace
+async def resolve_impacted_files(
+    pull: Pull, info: GraphQLResolveInfo, filters=None, **kwargs: Any
+) -> dict | None:
+    """
+    Deprecated convenience field. Prefer: compareWithBase { ... on Comparison { impactedFiles } }
+    """
+    if not pull.compared_to or not pull.head:
+        return None
+
+    comparison_loader = ComparisonLoader.loader(info, pull.repository_id)
+    commit_comparison = await comparison_loader.load((pull.compared_to, pull.head))
+
+    comparison_error = validate_commit_comparison(commit_comparison=commit_comparison)
+    if comparison_error:
+        return None
+
+    if not commit_comparison.is_processed:
+        return None
+
+    current_owner = info.context["request"].current_owner
+    should_use_sentry_app = getattr(
+        info.context["request"], USE_SENTRY_APP_INDICATOR, False
+    )
+    comparison = PullRequestComparison(
+        current_owner, pull, should_use_sentry_app=should_use_sentry_app
+    )
+    info.context["comparison"] = comparison
+
+    comparison_report = ComparisonReport(commit_comparison)
+    command: CompareCommands = info.context["executor"].get_command("compare")
+    return {
+        "results": command.fetch_impacted_files(comparison_report, comparison, filters)
+    }
