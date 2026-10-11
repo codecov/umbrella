@@ -40,6 +40,8 @@ def determine_seat_activation(pull: EnrichedPull) -> SeatActivationInfo:
     """
     db_pull = pull.database_pull
     provider_pull = pull.provider_pull
+    if db_pull is None:
+        return SeatActivationInfo(reason="no_db_pull")
     if provider_pull is None:
         log.warning(
             "Provider pull was None when determining whether to activate seat for user",
