@@ -1,5 +1,6 @@
 type ComponentComparison {
     id: String!
+    componentId: String!
     name: String!
     baseTotals: CoverageTotals
     headTotals: CoverageTotals
