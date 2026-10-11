@@ -40,7 +40,12 @@ class PullSerializer(serializers.ModelSerializer):
         fields = read_only_fields
 
     def get_patch(self, obj: Pull) -> dict[str, float] | None:
-        commit_comparison = CommitComparisonService.get_commit_comparison_for_pull(obj)
+        # Use pre-fetched comparisons from context (populated by list view) to avoid N+1
+        commit_comparisons = self.context.get("commit_comparisons")
+        if commit_comparisons is not None:
+            commit_comparison = commit_comparisons.get((obj.compared_to, obj.head))
+        else:
+            commit_comparison = CommitComparisonService.get_commit_comparison_for_pull(obj)
         if not commit_comparison or not commit_comparison.is_processed:
             return None
         cr = ComparisonReport(commit_comparison)
