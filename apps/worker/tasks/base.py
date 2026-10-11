@@ -226,9 +226,25 @@ class BaseCodecovTask(celery_app.Task):
 
     @sentry_sdk.trace
     def apply_async(self, args=None, kwargs=None, **options):
-        db_session = get_db_session()
-        user_plan = _get_user_plan_from_task(db_session, self.name, kwargs)
-        ownerid = _get_ownerid_from_task(db_session, self.name, kwargs)
+        # Remove any stale DB session that may have been held open during a
+        # long-running task before making routing queries, to ensure a fresh
+        # connection is checked out from the pool.
+        get_db_session.remove()
+        try:
+            db_session = get_db_session()
+            user_plan = _get_user_plan_from_task(db_session, self.name, kwargs)
+            ownerid = _get_ownerid_from_task(db_session, self.name, kwargs)
+        except Exception:
+            # If the connection is still broken after removing the session,
+            # remove it again and retry once with a completely fresh connection.
+            log.warning(
+                "DB connection error in apply_async routing lookup, retrying with fresh session",
+                exc_info=True,
+            )
+            get_db_session.remove()
+            db_session = get_db_session()
+            user_plan = _get_user_plan_from_task(db_session, self.name, kwargs)
+            ownerid = _get_ownerid_from_task(db_session, self.name, kwargs)
         route_with_extra_config = route_tasks_based_on_user_plan(
             self.name, user_plan, ownerid
         )
