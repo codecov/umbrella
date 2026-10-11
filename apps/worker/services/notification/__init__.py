@@ -10,6 +10,7 @@ from collections.abc import Iterator
 from typing import TypedDict
 
 from celery.exceptions import CeleryError, SoftTimeLimitExceeded
+from sqlalchemy.exc import StatementError
 
 from database.enums import notification_type_status_or_checks
 from database.models.core import GITHUB_APP_INSTALLATION_DEFAULT_NAME, Owner, Repository
@@ -355,9 +356,22 @@ class NotificationService:
             if res is None or res.notification_attempted:
                 # only running if there is no result (indicating some exception)
                 # or there was an actual attempt
-                create_or_update_commit_notification_from_notification_result(
-                    comparison, notifier, res
-                )
+                try:
+                    create_or_update_commit_notification_from_notification_result(
+                        comparison, notifier, res
+                    )
+                except StatementError as e:
+                    if isinstance(e.orig, (SoftTimeLimitExceeded, CeleryError)):
+                        # The Celery soft time limit fired inside SQLAlchemy's
+                        # cursor creation, causing it to wrap the signal as a
+                        # StatementError. Re-raise the real cause so Celery can
+                        # handle the timeout cleanly.
+                        raise e.orig
+                    log.warning(
+                        "Failed to save commit notification result to DB",
+                        extra=log_extra,
+                        exc_info=True,
+                    )
 
 
 def split_notifiers(
