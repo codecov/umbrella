@@ -954,6 +954,18 @@ class ImpactedFile:
         return misses
 
     @cached_property
+    def partials_count(self) -> int:
+        """
+        Returns the partials count for a direct impacted file
+        """
+        partials = 0
+        diff_coverage = self.added_diff_coverage or []
+        for line_number, line_coverage_value in diff_coverage:
+            if line_coverage_value == "p":
+                partials += 1
+        return partials
+
+    @cached_property
     def patch_coverage(self) -> Totals | None:
         """
         Sums of hits, misses and partials in the diff
