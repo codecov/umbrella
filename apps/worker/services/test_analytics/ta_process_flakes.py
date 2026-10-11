@@ -1,8 +1,11 @@
 import logging
+import time
 from datetime import timedelta
 
 import sentry_sdk
+from django.db import connections
 from django.db.models import Q, QuerySet
+from django.db.utils import OperationalError
 from django.utils import timezone
 from redis.exceptions import LockError
 
@@ -15,6 +18,31 @@ from shared.helpers.redis import get_redis_connection
 log = logging.getLogger(__name__)
 
 LOCK_NAME = "ta_flake_lock:{}"
+_TA_TIMESERIES_DB_ALIAS = "ta_timeseries"
+_RETRY_ATTEMPTS = 3
+_RETRY_DELAY_SECONDS = 1
+
+
+def _execute_with_retry(fn, *args, **kwargs):
+    """Execute fn, retrying on OperationalError by resetting the ta_timeseries connection."""
+    last_exc = None
+    for attempt in range(1, _RETRY_ATTEMPTS + 1):
+        try:
+            return fn(*args, **kwargs)
+        except OperationalError as e:
+            last_exc = e
+            log.warning(
+                "ta_timeseries OperationalError on attempt %d/%d, resetting connection: %s",
+                attempt,
+                _RETRY_ATTEMPTS,
+                str(e),
+            )
+            connections[_TA_TIMESERIES_DB_ALIAS].close()
+            if attempt < _RETRY_ATTEMPTS:
+                time.sleep(_RETRY_DELAY_SECONDS)
+    raise last_exc
+
+
 KEY_NAME = "ta_flake_key:{}"
 
 
@@ -171,14 +199,16 @@ def process_flakes_for_commit(repo_id: int, commit_id: str):
     # Update testruns in batches by upload_id
     total_updated = 0
     for upload_id, modified_test_ids in modifications_by_upload.items():
-        updated_count = Testrun.objects.filter(
-            upload_id=upload_id,
-            test_id__in=modified_test_ids,
-            # Don't update already-flaky or pass outcomes
-            outcome__in=["failure", "error"],
-            # Required for TimescaleDB chunk pruning
-            timestamp__gte=timezone.now() - timedelta(days=1),
-        ).update(outcome="flaky_fail")
+        updated_count = _execute_with_retry(
+            lambda uid=upload_id, tids=modified_test_ids: Testrun.objects.filter(
+                upload_id=uid,
+                test_id__in=tids,
+                # Don't update already-flaky or pass outcomes
+                outcome__in=["failure", "error"],
+                # Required for TimescaleDB chunk pruning
+                timestamp__gte=timezone.now() - timedelta(days=1),
+            ).update(outcome="flaky_fail")
+        )
         total_updated += updated_count
 
         log.info(
