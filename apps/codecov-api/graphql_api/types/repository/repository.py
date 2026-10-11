@@ -122,9 +122,19 @@ def resolve_token(repository: Repository, info: GraphQLResolveInfo) -> str:
 
 
 @repository_bindable.field("pull")
-def resolve_pull(repository: Repository, info: GraphQLResolveInfo, id: int) -> Pull:
+def resolve_pull(
+    repository: Repository,
+    info: GraphQLResolveInfo,
+    id: int | None = None,
+    pullId: int | None = None,
+) -> Pull:
+    pull_id = id if id is not None else pullId
+    if pull_id is None:
+        from graphql import GraphQLError
+
+        raise GraphQLError("Argument 'id' of type 'Int!' is required but was not provided.")
     command = info.context["executor"].get_command("pull")
-    return command.fetch_pull_request(repository, id)
+    return command.fetch_pull_request(repository, pull_id)
 
 
 @repository_bindable.field("pulls")
