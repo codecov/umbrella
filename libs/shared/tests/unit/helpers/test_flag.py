@@ -10,7 +10,15 @@ def test_report():
         yaml={"flags": {"a": {"paths": paths}}},
     )
     with Flag(report, "a").report:
-        report.filter.assert_called_with(paths=paths, flags=["a"])
+        report.filter.assert_called_with(paths=None, flags=["a"])
+
+
+def test_report_property_reuses_filtered_report():
+    filtered = Mock(__enter__=lambda self: self, __exit__=Mock())
+    report = Mock(filter=Mock(return_value=filtered), yaml={})
+    flag = Flag(report, "unit")
+    assert flag.report is flag.report
+    report.filter.assert_called_once_with(paths=None, flags=["unit"])
 
 
 def test_totals_cached():
