@@ -6,6 +6,8 @@ from enum import Enum
 import sentry_sdk
 from asgiref.sync import async_to_sync
 from celery.exceptions import Retry, SoftTimeLimitExceeded
+from kombu.exceptions import OperationalError as KombuOperationalError
+from redis.exceptions import OutOfMemoryError as RedisOutOfMemoryError
 
 from app import celery_app
 from celery_config import notify_error_task_name
@@ -414,6 +416,45 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                 "error": "Soft time limit exceeded",
                 "upload_ids": upload_ids,
             }
+
+        except (RedisOutOfMemoryError, KombuOperationalError) as e:
+            if self._has_exceeded_max_attempts(UPLOAD_FINISHER_MAX_RETRIES):
+                log.error(
+                    "run_impl: Redis OOM error dispatching downstream task, max retries exceeded",
+                    extra={
+                        "repoid": repoid,
+                        "commitid": commitid,
+                        "upload_ids": upload_ids,
+                        "error": repr(e),
+                        "attempts": self.attempts,
+                        "max_retries": UPLOAD_FINISHER_MAX_RETRIES,
+                    },
+                )
+                self._call_upload_breadcrumb_task(
+                    commit_sha=commitid,
+                    repo_id=repoid,
+                    milestone=milestone,
+                    upload_ids=upload_ids,
+                    error=Errors.INTERNAL_OUT_OF_RETRIES,
+                )
+                return
+            log.warning(
+                "run_impl: Redis OOM error dispatching downstream task, retrying",
+                extra={
+                    "repoid": repoid,
+                    "commitid": commitid,
+                    "upload_ids": upload_ids,
+                    "error": repr(e),
+                },
+            )
+            self._call_upload_breadcrumb_task(
+                commit_sha=commitid,
+                repo_id=repoid,
+                milestone=milestone,
+                upload_ids=upload_ids,
+                error=Errors.INTERNAL_RETRYING,
+            )
+            self.retry(max_retries=UPLOAD_FINISHER_MAX_RETRIES, countdown=60)
 
         except Exception as e:
             log.exception("run_impl: unexpected error in upload finisher")
