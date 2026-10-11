@@ -1,4 +1,5 @@
 type ImpactedFile {
+  name: String @deprecated(reason: "Use fileName instead")
   fileName: String
   baseName: String
   headName: String
@@ -8,6 +9,7 @@ type ImpactedFile {
   baseCoverage: CoverageTotals
   headCoverage: CoverageTotals
   patchCoverage: CoverageTotals
+  patchTotals: CoverageTotals @deprecated(reason: "Use patchCoverage instead")
   changeCoverage: Float
   missesCount: Int!
   hashedPath: String!

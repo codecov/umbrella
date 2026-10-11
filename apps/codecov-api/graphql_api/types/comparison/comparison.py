@@ -56,6 +56,16 @@ def resolve_impacted_files(
     }
 
 
+@comparison_bindable.field("fileComparisons")
+@sync_to_async
+def resolve_file_comparisons(
+    comparison_report: ComparisonReport, info: GraphQLResolveInfo
+):
+    command: CompareCommands = info.context["executor"].get_command("compare")
+    comparison: Comparison = info.context.get("comparison", None)
+    return command.fetch_impacted_files(comparison_report, comparison, filters=None)
+
+
 @comparison_bindable.field("impactedFilesCount")
 @sync_to_async
 def resolve_impacted_files_count(
