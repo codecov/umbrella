@@ -2,7 +2,7 @@ from dataclasses import dataclass
 
 from ariadne import ObjectType, UnionType
 
-from graphql_api.types.errors.errors import ProviderError, UnknownPath
+from graphql_api.types.errors.errors import ProviderError, UnknownFlags, UnknownPath
 from services.comparison import LineComparison, Segment
 
 
@@ -46,7 +46,9 @@ segments_result_bindable = UnionType("SegmentsResult")
 
 @segments_result_bindable.type_resolver
 def resolve_segments_result_type(res, *_):
-    if isinstance(res, UnknownPath):
+    if isinstance(res, UnknownFlags):
+        return "UnknownFlags"
+    elif isinstance(res, UnknownPath):
         return "UnknownPath"
     elif isinstance(res, ProviderError):
         return "ProviderError"
