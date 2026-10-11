@@ -43,6 +43,7 @@ from services.comparison import Comparison, ComparisonReport
 from services.components import Component
 from services.path import Dir, File, ReportPaths
 from services.yaml import YamlStates, get_yaml_state
+from shared.yaml import UserYaml
 from shared.reports.api_report_service import ReadOnlyReport
 from shared.reports.filtered import FilteredReportFile
 from shared.reports.resources import ReportFile
@@ -433,6 +434,25 @@ def resolve_coverage_components(commit: Commit, info, filters=None) -> list[Comp
         )
 
     return all_components
+
+
+@commit_coverage_analytics_bindable.field("flagsCount")
+@sync_to_async
+@sentry_sdk.trace
+def resolve_commit_flags_count(commit: Commit, info: GraphQLResolveInfo) -> int:
+    return commit.repository.flags.filter(deleted__isnot=True).count()
+
+
+@commit_coverage_analytics_bindable.field("componentsCount")
+@sync_to_async
+@sentry_sdk.trace
+def resolve_commit_components_count(commit: Commit, info: GraphQLResolveInfo) -> int:
+    repo_yaml_components = UserYaml.get_final_yaml(
+        owner_yaml=commit.repository.author.yaml,
+        repo_yaml=commit.repository.yaml,
+        ownerid=commit.repository.author.ownerid,
+    ).get_components()
+    return len(repo_yaml_components)
 
 
 ### Commit Bundle Analysis Bindable ###
