@@ -192,11 +192,19 @@ class LockManager:
                 )
                 countdown = countdown_unbounded
 
-            if max_retries is not None and attempts >= max_retries:
+            # Use the per-task retry_num (Celery's own retry counter) for the
+            # max_retries check rather than the shared Redis `attempts` counter.
+            # The shared counter is incremented by *all* concurrent task instances
+            # for the same repo+commit, so with N parallel tasks it reaches
+            # max_retries N× faster than intended, causing tasks to give up
+            # prematurely even when each individual task has barely retried.
+            # retry_num reflects only this task's own Celery retry count and is
+            # the correct gate for "has this task tried enough times?".
+            if max_retries is not None and retry_num >= max_retries:
                 error = LockRetry(
                     countdown=0,
                     max_retries_exceeded=True,
-                    retry_num=attempts,
+                    retry_num=retry_num,
                     max_retries=max_retries,
                     lock_name=lock_name,
                     repoid=self.repoid,
