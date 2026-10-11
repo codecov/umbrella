@@ -401,6 +401,19 @@ class GithubWebhookHandler(APIView):
         **kwargs,
     ):
         installation = request.data["installation"]
+        if installation is None:
+            log.warning(
+                "Ignoring installation webhook with null installation",
+                extra={
+                    "github_webhook_event": self.event,
+                    "delivery": request.META.get(GitHubHTTPHeaders.DELIVERY_TOKEN),
+                    "target_id": request.META.get(
+                        GitHubHTTPHeaders.HOOK_INSTALLATION_TARGET_ID
+                    ),
+                    "action": request.data.get("action"),
+                },
+            )
+            return Response(status=status.HTTP_200_OK)
         if not installation.get("account", None):
             # Non-2xx responses feed automated GitHub App redelivery loops.
             log.warning(
