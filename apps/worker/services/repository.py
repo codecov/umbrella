@@ -28,6 +28,7 @@ from shared.torngit.exceptions import (
     TorngitClientError,
     TorngitError,
     TorngitObjectNotFoundError,
+    TorngitServerUnreachableError,
 )
 from shared.torngit.response_types import ProviderPull
 from shared.typings.torngit import (
@@ -183,6 +184,11 @@ def possibly_update_commit_from_provider_info(
     except TorngitObjectNotFoundError:
         log.warning(
             "Could not update commit with info because it was not found at the provider"
+        )
+        return False
+    except TorngitServerUnreachableError:
+        log.warning(
+            "Could not update commit with info because the provider was unreachable"
         )
         return False
     log.debug("Not updating commit because it already seems to be populated")
