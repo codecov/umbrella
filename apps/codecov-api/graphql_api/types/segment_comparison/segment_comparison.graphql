@@ -8,4 +8,9 @@ type SegmentComparisons {
   results: [SegmentComparison!]!
 }
 
-union SegmentsResult = SegmentComparisons | UnknownPath | ProviderError
+# Deprecated: use SegmentComparisons instead
+type Segments {
+  results: [SegmentComparison!]!
+}
+
+union SegmentsResult = SegmentComparisons | Segments | UnknownPath | ProviderError
