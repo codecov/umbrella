@@ -351,8 +351,14 @@ class AsyncGraphqlView(GraphQLAsyncView):
         formatted = error.formatted
         formatted["message"] = "INTERNAL SERVER ERROR"
         formatted["type"] = "ServerError"
-        # if this is one of our own command exception, we can tell a bit more
         original_error = error.original_error
+        if original_error is None:
+            # No underlying exception means graphql-core rejected the request
+            # itself (syntax/validation error, e.g. missing required input
+            # fields from a malformed client query). Keep the masked response,
+            # but this is a client error, so don't log/report it to Sentry.
+            return formatted
+        # if this is one of our own command exception, we can tell a bit more
         if isinstance(original_error, BaseException) or isinstance(
             original_error, ServiceException
         ):
