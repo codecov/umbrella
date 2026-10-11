@@ -185,6 +185,7 @@ class ComputeComparisonTask(BaseCodecovTask, name=compute_comparison_task_name):
                 CompareFlag.commit_comparison_id == comparison.id,
                 CompareFlag.repositoryflag_id.in_(repositoryflag_ids),
             )
+            .order_by(CompareFlag.id)
             .all()
         }
 
