@@ -1600,8 +1600,9 @@ class Github(TorngitBaseAdapter):
                     page_n=page_number,
                 )
                 page_results = await self.api(client, "get", url, token=token)
-                if len(page_results):
-                    all_commits.extend(page_results)
+                if not page_results:
+                    break
+                all_commits.extend(page_results)
                 if len(page_results) < MAX_RESULTS_PER_PAGE:
                     break
         return all_commits
