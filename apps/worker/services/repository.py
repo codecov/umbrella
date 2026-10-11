@@ -199,12 +199,13 @@ async def update_commit_from_provider_info(
     """
     db_session = commit.get_db_session()
     commitid = commit.commitid
+    repoid = commit.repoid
     git_commit = await repository_service.get_commit(commitid)
 
     if git_commit is None:
         log.error(
             "Could not find commit on git provider",
-            extra={"repoid": commit.repoid, "commit": commit.commitid},
+            extra={"repoid": repoid, "commit": commitid},
         )
         return
 
@@ -212,13 +213,13 @@ async def update_commit_from_provider_info(
 
     author_info = git_commit["author"]
     if not author_info.get("id"):
-        commit_author = None
+        commit_author_id = None
         log.info(
             "Not trying to set an author because it does not have an id",
             extra={
                 "author_info": author_info,
                 "git_commit": git_commit,
-                "commit": commit.commitid,
+                "commit": commitid,
             },
         )
     else:
@@ -230,12 +231,30 @@ async def update_commit_from_provider_info(
             author_info["email"],
             author_info["name"],
         )
+        commit_author_id = commit_author.ownerid
+
+    # Commit the author upsert in its own transaction to release the exclusive
+    # lock on the owners row before proceeding with the commit update.
+    # This prevents a deadlock with concurrent tasks updating commits for the
+    # same author: the FK check triggered by UPDATE commits SET author=...
+    # needs FOR KEY SHARE on owners, which would deadlock against another
+    # transaction holding an exclusive lock from its own upsert_author call.
+    db_session.commit()
+
+    # Re-fetch the commit since the session was cleared by the commit above.
+    commit = (
+        db_session.query(Commit)
+        .filter(Commit.repoid == repoid, Commit.commitid == commitid)
+        .first()
+    )
 
     commit.parent_commit_id = await fetch_appropriate_parent_for_commit(
         repository_service, commit, git_commit
     )
     commit.message = git_commit["message"]
-    commit.author = commit_author
+    # Assign the FK integer directly to avoid holding an owners row lock
+    # while the FK constraint check runs on the subsequent flush.
+    commit.author_id = commit_author_id
     commit.updatestamp = datetime.now()
     commit.timestamp = git_commit["timestamp"]
 
