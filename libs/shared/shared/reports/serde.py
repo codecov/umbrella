@@ -76,6 +76,10 @@ def report_default(obj):
 
 orjson_option = orjson.OPT_PASSTHROUGH_DATACLASS | orjson.OPT_NON_STR_KEYS
 
+# orjson only supports signed 64-bit integers; cap values that exceed this
+# (e.g. C++ uint64_max used as a "fully covered" sentinel)
+_INT64_MAX = 9223372036854775807
+
 
 def _dumps_not_none(value) -> str:
     if isinstance(value, list):
@@ -91,10 +95,19 @@ def _dumps_not_none(value) -> str:
     return value if value and value != "null" else ""
 
 
+def _cap_int(value):
+    """Recursively cap integers to signed 64-bit max for orjson compatibility."""
+    if isinstance(value, int) and not isinstance(value, bool):
+        return min(value, _INT64_MAX)
+    if isinstance(value, list):
+        return [_cap_int(v) for v in value]
+    return value
+
+
 def _rstrip_none(lst):
     while lst[-1] is None:
         lst.pop(-1)
-    return lst
+    return [_cap_int(v) for v in lst]
 
 
 def chunk_default(obj):
