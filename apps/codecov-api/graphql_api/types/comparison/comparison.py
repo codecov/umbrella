@@ -19,7 +19,6 @@ from graphql_api.types.errors import (
     MissingHeadCommit,
     MissingHeadReport,
 )
-from graphql_api.types.errors.errors import UnknownFlags
 from reports.models import ReportLevelTotals
 from services.comparison import (
     Comparison,
@@ -49,10 +48,11 @@ def resolve_impacted_files(
         if flags and set(flags).isdisjoint(
             set(comparison.head_report.get_flag_names())
         ):
-            return UnknownFlags()
+            return {"results": [], "isUnknownFlags": True}
 
     return {
-        "results": command.fetch_impacted_files(comparison_report, comparison, filters)
+        "results": command.fetch_impacted_files(comparison_report, comparison, filters),
+        "isUnknownFlags": False,
     }
 
 
