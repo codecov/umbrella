@@ -45,6 +45,16 @@ type CommitCoverageAnalytics {
 type CommitBundleAnalysis {
   bundleAnalysisCompareWithParent: BundleAnalysisComparisonResult
   bundleAnalysisReport: BundleAnalysisReportResult
+  sizeTotal: Int
+  loadTimeTotal: Int
+  bundles: [CommitBundleAnalysisSummaryBundle]
+}
+
+"summary of a single bundle at the head commit"
+type CommitBundleAnalysisSummaryBundle {
+  name: String!
+  sizeTotal: Int!
+  loadTimeTotal: Int!
 }
 
 type CommitErrorsConnection {
