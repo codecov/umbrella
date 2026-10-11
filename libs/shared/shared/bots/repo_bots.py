@@ -61,6 +61,13 @@ def get_repo_appropriate_bot_token(
 
     service = Service(repo.service)
 
+    if service == Service.TO_BE_DELETED:
+        log.warning(
+            "Repo owner has service marked as to_be_deleted, skipping bot token resolution",
+            extra=extra_info_to_log,
+        )
+        raise RepositoryWithoutValidBotError()
+
     if is_enterprise() and get_config(repo.service, "bot"):
         log.info(
             "Using enterprise-configured bot for the service", extra=extra_info_to_log

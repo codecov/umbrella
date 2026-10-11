@@ -35,7 +35,7 @@ def get_public_bot_token(service: Service, repoid: int) -> TokenWithOwner:
         # Once again token not owned by an Owner.
         return tokenless_bot_dict, None
 
-    log.error(
+    log.warning(
         "No tokenless bot dict in get_public_bot_token",
         extra={"repoid": repoid},
     )
