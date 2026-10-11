@@ -151,7 +151,12 @@ class TorngitBaseAdapter:
 
             try:
                 before, after = _diff.pop(0).split(" b/", 1)
-            except IndexError:
+            except (IndexError, ValueError):
+                # IndexError: _diff was empty
+                # ValueError: split(" b/", 1) returned 1 element, which happens
+                # when git quotes paths containing non-ASCII characters, e.g.:
+                #   diff --git a/old-file "b/path-with-\343\203\201.../file.ts"
+                # In that case fall back to scanning --- a/ / +++ b/ headers.
                 before, after = None, None
                 # find the --- a
                 for source in _diff:
@@ -159,6 +164,11 @@ class TorngitBaseAdapter:
                         before = source[6:]
                     elif source.startswith("+++ b/"):
                         after = source[6:]
+                        break
+                    # git also quotes +++ b/ when the path contains non-ASCII
+                    # characters: `+++ "b/path-with-\343.../file.ts"`
+                    elif source.startswith('+++ "b/'):
+                        after = source[7:].rstrip('"')
                         break
 
             if after is None:
