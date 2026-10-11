@@ -589,6 +589,18 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
 
                 # Mark the repository as updated so it will appear earlier in the list
                 # of recently-active repositories
+                # Read all commit/repository values needed for cache invalidation
+                # BEFORE calling db_session.commit(), which expires all ORM objects.
+                # Accessing expired attributes after commit() on a closed DB connection
+                # causes an OperationalError (see WORKER-Z5D).
+                cache_repoid = commit.repoid
+                cache_branch = commit.branch
+                cache_commitid = commit.commitid
+                cache_repo_service = repository.service
+                cache_repo_owner = repository.author.username
+                cache_repo_name = repository.name
+                cache_repo_default_branch = repository.branch
+
                 now = datetime.now(tz=UTC)
                 threshold = now - timedelta(minutes=60)
                 if not repository.updatestamp or repository.updatestamp < threshold:
@@ -606,7 +618,16 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                     )
 
                 log.info("handle_finisher_lock: Invalidating caches")
-                self.invalidate_caches(lock_manager.redis_connection, commit)
+                self.invalidate_caches(
+                    lock_manager.redis_connection,
+                    repoid=cache_repoid,
+                    branch=cache_branch,
+                    commitid=cache_commitid,
+                    repo_service=cache_repo_service,
+                    repo_owner=cache_repo_owner,
+                    repo_name=cache_repo_name,
+                    repo_default_branch=cache_repo_default_branch,
+                )
                 self._call_upload_breadcrumb_task(
                     commit_sha=commitid,
                     repo_id=repoid,
@@ -859,16 +880,23 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
 
         return ShouldCallNotifyResult.NOTIFY
 
-    def invalidate_caches(self, redis_connection, commit: Commit):
-        redis_connection.delete(f"cache/{commit.repoid}/tree/{commit.branch}")
-        redis_connection.delete(f"cache/{commit.repoid}/tree/{commit.commitid}")
-        repository = commit.repository
-        key = ":".join(
-            (repository.service, repository.author.username, repository.name)
-        )
-        if commit.branch:
-            redis_connection.hdel("badge", (f"{key}:{commit.branch}").lower())
-            if commit.branch == repository.branch:
+    def invalidate_caches(
+        self,
+        redis_connection,
+        repoid: int,
+        branch: str | None,
+        commitid: str,
+        repo_service: str,
+        repo_owner: str,
+        repo_name: str,
+        repo_default_branch: str | None,
+    ):
+        redis_connection.delete(f"cache/{repoid}/tree/{branch}")
+        redis_connection.delete(f"cache/{repoid}/tree/{commitid}")
+        key = ":".join((repo_service, repo_owner, repo_name))
+        if branch:
+            redis_connection.hdel("badge", (f"{key}:{branch}").lower())
+            if branch == repo_default_branch:
                 redis_connection.hdel("badge", (f"{key}:").lower())
 
 
