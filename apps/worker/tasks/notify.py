@@ -487,23 +487,48 @@ class NotifyTask(BaseCodecovTask, name=notify_task_name):
                 },
             )
 
-            notifications = self.submit_third_party_notifications(
-                current_yaml,
-                base_commit,
-                commit,
-                base_report,
-                head_report,
-                enriched_pull,
-                repository_service,
-                empty_upload,
-                all_tests_passed=all_tests_passed,
-                test_results_error=ta_error_msg,
-                installation_name_to_use=installation_name_to_use,
-                gh_is_using_codecov_commenter=self.is_using_codecov_commenter(
-                    repository_service
-                ),
-                gitlab_extra_shas_to_notify=gitlab_extra_shas_to_notify,
-            )
+            try:
+                notifications = self.submit_third_party_notifications(
+                    current_yaml,
+                    base_commit,
+                    commit,
+                    base_report,
+                    head_report,
+                    enriched_pull,
+                    repository_service,
+                    empty_upload,
+                    all_tests_passed=all_tests_passed,
+                    test_results_error=ta_error_msg,
+                    installation_name_to_use=installation_name_to_use,
+                    gh_is_using_codecov_commenter=self.is_using_codecov_commenter(
+                        repository_service
+                    ),
+                    gitlab_extra_shas_to_notify=gitlab_extra_shas_to_notify,
+                )
+            except TorngitServerFailureError:
+                log.warning(
+                    "Unable to send notifications due to git provider server issues. Retrying",
+                    extra={
+                        "repoid": commit.repoid,
+                        "commit": commit.commitid,
+                        "retries": self.request.retries,
+                    },
+                )
+                self.log_checkpoint(UploadFlow.NOTIF_GIT_SERVICE_ERROR)
+                retry_result = self._attempt_retry(
+                    max_retries=5,
+                    countdown=30 * 2**self.request.retries,
+                    current_yaml=current_yaml,
+                    commit=commit,
+                    **kwargs,
+                )
+                if retry_result is not None:
+                    return {
+                        "notified": False,
+                        "notifications": None,
+                        "reason": "server_issues_notify",
+                    }
+                raise
             self.log_checkpoint(UploadFlow.NOTIFIED)
             self._call_upload_breadcrumb_task(
                 commit_sha=commit.commitid,
