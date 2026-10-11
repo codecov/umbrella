@@ -3,11 +3,17 @@ type CoverageInfo {
     hitUploadIds: [Int!]
 }
 
+type Coverage {
+    base: CoverageLine
+    head: CoverageLine
+}
+
 type LineComparison {
     baseNumber: String
     headNumber: String
     baseCoverage: CoverageLine
     headCoverage: CoverageLine
+    coverage: Coverage @deprecated(reason: "Use baseCoverage and headCoverage instead")
     content: String
     coverageInfo(ignoredUploadIds: [Int!]): CoverageInfo!
 }
