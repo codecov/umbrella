@@ -128,6 +128,9 @@ class FetchImpactedFiles(BaseInteractor):
             return comparison_report.impacted_files
 
         has_unintended_changes = filters.get("has_unintended_changes")
+        # Support deprecated alias hasIndirectChanges
+        if has_unintended_changes is None:
+            has_unintended_changes = filters.get("has_indirect_changes")
         if has_unintended_changes is not None:
             impacted_files = (
                 comparison_report.impacted_files_with_unintended_changes
