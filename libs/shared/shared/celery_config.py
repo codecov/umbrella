@@ -344,6 +344,11 @@ DEFAULT_BLOCKING_TIMEOUT_SECONDS = int(
 )
 
 
+RESULT_EXPIRES_SECONDS = int(
+    get_config("setup", "tasks", "celery", "result_expires", default=3600)
+)
+
+
 class BaseCeleryConfig:
     broker_url = get_config("services", "celery_broker") or get_config(
         "services", "redis_url"
@@ -351,6 +356,12 @@ class BaseCeleryConfig:
     result_backend = get_config("services", "celery_broker") or get_config(
         "services", "redis_url"
     )
+    # How long Celery task results are retained in Redis (seconds).
+    # Chord callbacks execute within seconds of task completion, so 24h (the
+    # Celery default) is far longer than necessary and causes celery-task-meta-*
+    # keys to accumulate, contributing to Redis OOM conditions.
+    # Default: 3600 seconds (1 hour). Override via setup.tasks.celery.result_expires.
+    result_expires = RESULT_EXPIRES_SECONDS
     worker_send_task_events = bool(
         get_config("setup", "tasks", "celery", "worker_send_task_events", default=False)
     )
