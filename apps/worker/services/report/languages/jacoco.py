@@ -113,7 +113,7 @@ def from_xml(xml: Element, report_builder_session: ReportBuilderSession) -> None
                 attr = line.attrib
                 cov: int | str
                 if attr["mb"] != "0":
-                    cov = "{}/{}".format(attr["cb"], int(attr["mb"]) + int(attr["cb"]))
+                    cov = "{}/{}".format(attr["cb"], int(attr["mb"] or 0) + int(attr["cb"] or 0))
                     coverage_type = CoverageType.branch
 
                 elif attr["cb"] != "0":
@@ -121,7 +121,7 @@ def from_xml(xml: Element, report_builder_session: ReportBuilderSession) -> None
                     coverage_type = CoverageType.branch
 
                 else:
-                    cov = int(attr["ci"])
+                    cov = int(attr["ci"] or 0)
                     coverage_type = CoverageType.line
 
                 if (
@@ -131,7 +131,7 @@ def from_xml(xml: Element, report_builder_session: ReportBuilderSession) -> None
                 ):
                     cov = 1
 
-                ln = int(attr["nr"])
+                ln = int(attr["nr"] or 0)
                 if ln > 0:
                     complexity = method_complixity.get(ln)
                     if complexity:
