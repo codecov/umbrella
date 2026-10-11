@@ -310,7 +310,6 @@ class ReportService(BaseReportService):
             all_flags.append(flag_obj)
 
         upload.flags = all_flags
-        db_session.flush()
         return all_flags
 
     def fetch_repo_flags(self, db_session, repoid: int) -> dict[str, RepositoryFlag]:
@@ -799,7 +798,31 @@ class ReportService(BaseReportService):
         )
         res = self.save_report(commit, report)
         db_session = commit.get_db_session()
-        for sess_id, session in report.sessions.items():
+
+        # Step 1: pre-create any missing RepositoryFlags in a single flush
+        all_flag_names = {
+            flag
+            for session in report.sessions.values()
+            for flag in (session.flags or [])
+        }
+        flag_dict = self.fetch_repo_flags(db_session, commit.repoid)
+        new_flags = []
+        for flag_name in all_flag_names:
+            if flag_name not in flag_dict:
+                flag_obj = RepositoryFlag(
+                    repository_id=commit.repoid, flag_name=flag_name
+                )
+                db_session.add(flag_obj)
+                new_flags.append((flag_name, flag_obj))
+        if new_flags:
+            db_session.flush()
+            for flag_name, flag_obj in new_flags:
+                flag_dict[flag_name] = flag_obj
+
+        # Step 2: build all Upload objects and flush once to assign IDs
+        sessions_list = list(report.sessions.items())
+        uploads = []
+        for sess_id, session in sessions_list:
             upload = Upload(
                 build_code=session.build,
                 build_url=session.url,
@@ -820,17 +843,27 @@ class ReportService(BaseReportService):
                 ),
             )
             db_session.add(upload)
-            db_session.flush()
-            self._attach_flags_to_upload(
-                upload, session.flags if session.flags else [], commit.repoid
-            )
+            uploads.append(upload)
+        db_session.flush()
+
+        # Step 3: assign flags to each upload (queues association rows in memory)
+        for upload, (_, session) in zip(uploads, sessions_list):
+            upload.flags = [
+                flag_dict[f] for f in (session.flags or []) if f in flag_dict
+            ]
+
+        # Step 4: create all UploadLevelTotals and flush once (also writes flag associations)
+        totals_list = []
+        for upload, (_, session) in zip(uploads, sessions_list):
             if session.totals is not None:
                 upload_totals = UploadLevelTotals(upload_id=upload.id_)
-                db_session.add(upload_totals)
                 upload_totals.update_from_totals(
                     session.totals, precision=precision, rounding=rounding
                 )
-                db_session.flush()
+                db_session.add(upload_totals)
+                totals_list.append(upload_totals)
+        if totals_list:
+            db_session.flush()
 
         return res
 
