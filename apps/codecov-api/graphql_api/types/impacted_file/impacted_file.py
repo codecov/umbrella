@@ -70,7 +70,7 @@ def resolve_segments(
     impacted_file: ImpactedFile, info: GraphQLResolveInfo, filters: dict | None = None
 ) -> SegmentComparisons | UnknownPath | ProviderError:
     if filters is None:
-        filters = {}
+        filters = getattr(impacted_file, "segment_filters", None) or {}
     if "comparison" not in info.context:
         return SegmentComparisons(results=[])
 

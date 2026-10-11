@@ -1,6 +1,6 @@
 type Comparison {
   state: String!
-  impactedFile(path: String!): ImpactedFile
+  impactedFile(path: String!, filters: SegmentsFilters): ImpactedFile
   impactedFiles(filters: ImpactedFilesFilters): ImpactedFilesResult!
   impactedFilesCount: Int!
   indirectChangedFilesCount: Int!
