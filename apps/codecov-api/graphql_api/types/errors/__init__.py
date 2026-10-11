@@ -5,6 +5,7 @@ from .errors import (
     MissingCoverage,
     MissingHeadCommit,
     MissingHeadReport,
+    MissingReports,
     ProviderError,
     UnknownPath,
 )
@@ -16,6 +17,7 @@ __all__ = [
     "MissingCoverage",
     "MissingHeadCommit",
     "MissingHeadReport",
+    "MissingReports",
     "ProviderError",
     "UnknownPath",
 ]
