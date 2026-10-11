@@ -16,6 +16,7 @@ def apply_filters_to_queryset(
 ) -> QuerySet:
     filters = filters or {}
     term = filters.get("term")
+    search = filters.get("search")
     active = filters.get("active")
     activated = filters.get("activated")
     repo_names = filters.get("repo_names")
@@ -26,6 +27,8 @@ def apply_filters_to_queryset(
         queryset = queryset.filter(name__in=repo_names)
     if term:
         queryset = queryset.filter(name__contains=term)
+    if search:
+        queryset = queryset.filter(name__contains=search)
     if activated is not None:
         queryset = queryset.filter(activated=activated)
     if active is not None:
