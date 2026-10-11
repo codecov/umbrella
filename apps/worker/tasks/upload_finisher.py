@@ -403,13 +403,19 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
 
         except SoftTimeLimitExceeded:
             log.warning("run_impl: soft time limit exceeded")
-            self._call_upload_breadcrumb_task(
-                commit_sha=commitid,
-                repo_id=repoid,
-                milestone=milestone,
-                upload_ids=upload_ids,
-                error=Errors.TASK_TIMED_OUT,
-            )
+            try:
+                self._call_upload_breadcrumb_task(
+                    commit_sha=commitid,
+                    repo_id=repoid,
+                    milestone=milestone,
+                    upload_ids=upload_ids,
+                    error=Errors.TASK_TIMED_OUT,
+                )
+            except Exception:
+                log.warning(
+                    "run_impl: failed to queue breadcrumb task after soft time limit",
+                    exc_info=True,
+                )
             return {
                 "error": "Soft time limit exceeded",
                 "upload_ids": upload_ids,
