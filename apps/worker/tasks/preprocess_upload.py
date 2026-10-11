@@ -19,11 +19,13 @@ from services.repository import (
 from shared.celery_config import (
     DEFAULT_LOCK_TIMEOUT_SECONDS,
     PREPROCESS_UPLOAD_MAX_RETRIES,
+    TASK_RETRY_BACKOFF_BASE_SECONDS,
     pre_process_upload_task_name,
 )
 from shared.django_apps.upload_breadcrumbs.models import Errors, Milestones
 from shared.helpers.redis import get_redis_connection
 from shared.torngit.base import TorngitBaseAdapter
+from shared.torngit.exceptions import TorngitServerFailureError
 from tasks.base import BaseCodecovTask
 
 log = logging.getLogger(__name__)
@@ -96,6 +98,47 @@ class PreProcessUpload(BaseCodecovTask, name=pre_process_upload_task_name):
             )
             self.retry(
                 max_retries=PREPROCESS_UPLOAD_MAX_RETRIES, countdown=retry.countdown
+            )
+        except TorngitServerFailureError:
+            # The git provider is temporarily unavailable (5xx / unreachable).
+            # The lock has already been released at this point, so retry later.
+            if self._has_exceeded_max_attempts(PREPROCESS_UPLOAD_MAX_RETRIES):
+                log.warning(
+                    "Git provider unavailable and out of retries for preprocess upload",
+                    extra={
+                        "repoid": repoid,
+                        "commit": commitid,
+                        "attempts": self.attempts,
+                    },
+                )
+                self._call_upload_breadcrumb_task(
+                    commit_sha=commitid,
+                    repo_id=repoid,
+                    milestone=Milestones.READY_FOR_REPORT,
+                    error=Errors.INTERNAL_OUT_OF_RETRIES,
+                )
+                return {
+                    "preprocessed_upload": False,
+                    "reason": "git_provider_unavailable",
+                }
+            log.info(
+                "Git provider unavailable during preprocess upload, retrying",
+                extra={
+                    "repoid": repoid,
+                    "commit": commitid,
+                    "attempts": self.attempts,
+                },
+            )
+            self._call_upload_breadcrumb_task(
+                commit_sha=commitid,
+                repo_id=repoid,
+                milestone=Milestones.READY_FOR_REPORT,
+                error=Errors.INTERNAL_RETRYING,
+            )
+            retry_count = getattr(self.request, "retries", 0) or 0
+            self.retry(
+                max_retries=PREPROCESS_UPLOAD_MAX_RETRIES,
+                countdown=TASK_RETRY_BACKOFF_BASE_SECONDS * (2**retry_count),
             )
 
     def process_impl_within_lock(self, db_session, repoid, commitid):
