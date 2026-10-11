@@ -539,13 +539,16 @@ class StripeWebhookHandler(APIView):
         self._log_updated([owner])
 
     def _check_and_handle_delayed_notification_payment_methods(
-        self, customer_id: str, payment_method_id: str
+        self, customer_id: str, payment_method_id: str | None
     ):
         """
         Helper method to handle payment methods that require delayed verification (like ACH).
         When verification succeeds, this attaches the payment method to the customer and sets
         it as the default payment method for both the customer and subscription.
         """
+        if not payment_method_id:
+            return
+
         payment_method = stripe.PaymentMethod.retrieve(payment_method_id)
 
         is_us_bank_account = payment_method.type == "us_bank_account" and hasattr(
