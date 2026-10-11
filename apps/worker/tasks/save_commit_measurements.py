@@ -1,7 +1,9 @@
 import logging
 from collections.abc import Sequence
 
+import psycopg2
 from celery import group
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from app import celery_app
@@ -106,6 +108,12 @@ class SaveCommitMeasurementsTask(
             # TODO: We should improve on the error handling/logs inside this fn
             save_commit_measurements(commit=commit, dataset_names=dataset_names)
             return {"successful": True}
+        except (OperationalError, psycopg2.OperationalError) as exc:
+            log.warning(
+                "Transient database error while saving commit measurements, retrying",
+                extra={"commitid": commitid, "task_args": args, "task_kwargs": kwargs},
+            )
+            raise self.retry(exc=exc, countdown=60, max_retries=3)
         except Exception:
             log.exception(
                 "An error happened while saving commit measurements",
