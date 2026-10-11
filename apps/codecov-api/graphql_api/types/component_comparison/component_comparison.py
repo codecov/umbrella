@@ -45,3 +45,18 @@ def resolve_patch_totals(
     component_comparison: ComponentComparison, info
 ) -> ReportTotals:
     return component_comparison.patch_totals
+
+
+@component_comparison_bindable.field("percentChange")
+def resolve_percent_change(
+    component_comparison: ComponentComparison, info
+) -> float | None:
+    head = component_comparison.head_totals
+    base = component_comparison.base_totals
+    if head is None or base is None:
+        return None
+    head_coverage = head.get("coverage") if isinstance(head, dict) else getattr(head, "coverage", None)
+    base_coverage = base.get("coverage") if isinstance(base, dict) else getattr(base, "coverage", None)
+    if head_coverage is None or base_coverage is None:
+        return None
+    return float(head_coverage) - float(base_coverage)
