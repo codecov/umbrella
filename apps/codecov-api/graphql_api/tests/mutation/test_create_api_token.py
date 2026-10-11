@@ -13,11 +13,11 @@ mutation($input: CreateApiTokenInput!) {
     fullToken
     session {
       ip
-      lastseen
+      lastSeen
       lastFour
       type
       name
-      useragent
+      userAgent
     }
   }
 }
@@ -41,8 +41,8 @@ class CreateApiTokenTestCase(GraphQLTestHelper, TestCase):
         assert data["createApiToken"]["session"] == {
             "name": name,
             "ip": None,
-            "lastseen": None,
-            "useragent": None,
+            "lastSeen": None,
+            "userAgent": None,
             "type": Session.SessionType.API.value,
             "lastFour": str(created_token.token)[-4:],
         }
