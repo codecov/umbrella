@@ -475,6 +475,8 @@ async def fetch_and_update_pull_request_information_from_commit(
     enriched_pull = await fetch_and_update_pull_request_information(
         repository_service, db_session, commit.repoid, pullid, current_yaml
     )
+    if enriched_pull.database_pull is None:
+        return None
     pull = enriched_pull.database_pull
     if pull is not None:
         head = pull.get_head_commit()
