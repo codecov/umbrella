@@ -80,6 +80,16 @@ def resolve_bundle_data(
     return BundleData(bundles_analysis_report.size_total)
 
 
+@bundle_analysis_report_bindable.field("totalLoadTime")
+def resolve_total_load_time(
+    bundles_analysis_report: BundleAnalysisReport, info: GraphQLResolveInfo
+) -> float:
+    # Deprecated: use bundleData { loadTime { threeG } } instead.
+    # Returns load time in seconds over a 3G connection for backward compatibility.
+    bundle_data = BundleData(bundles_analysis_report.size_total)
+    return bundle_data.load_time.three_g / 1000.0
+
+
 @bundle_analysis_report_bindable.field("isCached")
 def resolve_is_cached(bundle_report: BundleReport, info: GraphQLResolveInfo) -> bool:
     return bundle_report.is_cached
