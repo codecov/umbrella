@@ -14,7 +14,11 @@ from shared.django_apps.upload_breadcrumbs.models import (
     Errors,
     Milestones,
 )
-from shared.torngit.exceptions import TorngitClientError, TorngitRepoNotFoundError
+from shared.torngit.exceptions import (
+    TorngitClientError,
+    TorngitRepoNotFoundError,
+    TorngitServerUnreachableError,
+)
 from tasks.base import BaseCodecovTask
 
 log = logging.getLogger(__name__)
@@ -135,6 +139,16 @@ class CommitUpdateTask(BaseCodecovTask, name=commit_update_task_name):
                 extra={"repoid": repoid, "commit": commitid},
             )
             error = Errors.REPO_NOT_FOUND
+        except TorngitServerUnreachableError:
+            log.warning(
+                "Unable to reach git provider due to transient network error, retrying",
+                extra={"repoid": repoid, "commit": commitid},
+                exc_info=True,
+            )
+            raise self.retry(
+                max_retries=3,
+                countdown=60 * (2 ** self.request.retries),
+            )
         except TorngitClientError:
             log.warning(
                 "Unable to reach git provider because there was a 4xx error",
