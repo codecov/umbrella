@@ -8,8 +8,10 @@ from sentry_sdk import Scope
 
 from codecov.commands.exceptions import UnauthorizedGuestAccess
 from codecov_auth.models import Owner
-from graphql_api.actions.owner import get_owner
+from graphql_api.actions.owner import get_owner, search_my_owners
 from graphql_api.helpers.ariadne import ariadne_load_local_graphql
+from graphql_api.helpers.connection import queryset_to_connection
+from graphql_api.types.enums import OrderingDirection
 
 query = ariadne_load_local_graphql(__file__, "query.graphql")
 query_bindable = ObjectType("Query")
@@ -69,6 +71,22 @@ async def resolve_owner(
             raise UnauthorizedGuestAccess()
 
     return await get_owner(service, username)
+
+
+@query_bindable.field("myOrganizations")
+@sync_to_async
+def resolve_my_organizations(
+    _: Any, info: GraphQLResolveInfo, filters=None, **kwargs
+):
+    configure_sentry_scope(query_name(info))
+    current_owner = info.context["request"].current_owner
+    queryset = search_my_owners(current_owner, filters)
+    return queryset_to_connection(
+        queryset,
+        ordering=("ownerid",),
+        ordering_direction=OrderingDirection.DESC,
+        **kwargs,
+    )
 
 
 @query_bindable.field("config")
