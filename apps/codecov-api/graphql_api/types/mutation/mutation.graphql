@@ -1,4 +1,5 @@
 type Mutation {
+  createUpload(input: CreateUploadInput!): CreateUploadPayload
   createApiToken(input: CreateApiTokenInput!): CreateApiTokenPayload
   createStripeSetupIntent(input: CreateStripeSetupIntentInput!): CreateStripeSetupIntentPayload
   createUserToken(input: CreateUserTokenInput!): CreateUserTokenPayload
