@@ -346,7 +346,15 @@ class AsyncGraphqlView(GraphQLAsyncView):
         is_anonymous = user.is_anonymous if user else True
         # the only way to check for a malformed query
         is_bad_query = "Cannot query field" in error.formatted["message"]
-        if debug or (not is_anonymous and is_bad_query):
+        if debug or is_bad_query:
+            # Bad queries are client errors (schema validation failures) and should
+            # always be returned as standard GraphQL errors, not internal server errors,
+            # regardless of whether the user is anonymous.
+            if is_bad_query:
+                log.warning(
+                    "GraphQL bad query: client sent a query with an invalid field",
+                    extra={"message": error.formatted["message"]},
+                )
             return format_error(error, debug)
         formatted = error.formatted
         formatted["message"] = "INTERNAL SERVER ERROR"
