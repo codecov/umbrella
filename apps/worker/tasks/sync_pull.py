@@ -248,7 +248,7 @@ class PullSyncTask(BaseCodecovTask, name=pulls_task_name):
                 repository,
             )
             db_session.commit()
-        except TorngitClientError:
+        except (TorngitClientError, IndexError):
             log.warning(
                 "Unable to fetch information about pull commits",
                 extra={"pullid": pullid, "repoid": repoid},
