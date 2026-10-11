@@ -21,7 +21,7 @@ from django.http import (
     HttpResponseNotAllowed,
     JsonResponse,
 )
-from graphql import DocumentNode
+from graphql import DocumentNode, GraphQLError
 from rest_framework.exceptions import APIException
 from sentry_sdk import capture_exception
 
@@ -363,6 +363,15 @@ class AsyncGraphqlView(GraphQLAsyncView):
             # (e.g., unauthorized, forbidden) that shouldn't be sent to Sentry
             formatted["message"] = str(original_error.detail)
             formatted["type"] = type(original_error).__name__
+        elif isinstance(original_error, GraphQLError):
+            # graphql-core validation/coercion errors (e.g. unknown input fields
+            # in variables) are caused by invalid client input, not server bugs
+            formatted["message"] = original_error.message
+            formatted["type"] = "ValidationError"
+            log.info(
+                "GraphQL invalid input error",
+                extra={"error": original_error.message},
+            )
         else:
             # otherwise it's not supposed to happen, so we log it
             log.error("GraphQL internal server error", exc_info=original_error)
