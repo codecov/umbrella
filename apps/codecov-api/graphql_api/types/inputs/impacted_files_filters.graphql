@@ -1,3 +1,10 @@
+input FiltersInput {
+  ordering: ImpactedFilesOrdering
+  hasUnintendedChanges: Boolean
+  flags: [String!]
+  components: [String!]
+}
+
 input ImpactedFilesFilters {
   ordering: ImpactedFilesOrdering
   hasUnintendedChanges: Boolean
