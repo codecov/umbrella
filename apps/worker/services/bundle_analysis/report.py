@@ -410,9 +410,17 @@ class BundleAnalysisReportService(BaseReportService):
             # fetch existing bundle report from storage
             bundle_analysis_report = bundle_loader.load(commit_report.external_id)
 
-            dataset_names = [
-                dataset.name for dataset in repository_datasets_query(commit.repository)
-            ]
+            try:
+                dataset_names = [
+                    dataset.name
+                    for dataset in repository_datasets_query(commit.repository)
+                ]
+            except Exception:
+                log.warning(
+                    "save_measurements: failed to query timeseries datasets, skipping measurements",
+                    exc_info=True,
+                )
+                dataset_names = []
 
             db_session = commit.get_db_session()
             bundle_report = bundle_analysis_report.bundle_report(bundle_name)
