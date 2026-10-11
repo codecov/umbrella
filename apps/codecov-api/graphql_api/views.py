@@ -344,15 +344,29 @@ class AsyncGraphqlView(GraphQLAsyncView):
     def error_formatter(self, error: Any, debug: bool = False) -> dict[str, Any]:
         user = self.request.user
         is_anonymous = user.is_anonymous if user else True
-        # the only way to check for a malformed query
-        is_bad_query = "Cannot query field" in error.formatted["message"]
+        # GraphQL validation errors have no original_error (they are client-side
+        # query mistakes, not server faults). Also check for known validation
+        # error message patterns so they are never sent to Sentry.
+        _GRAPHQL_VALIDATION_PHRASES = (
+            "Cannot query field",
+            "must have a selection of subfields",
+            "Unknown argument",
+            "Unknown field",
+            "Unknown type",
+            "Cannot spread fragment",
+            "Field must not have a selection",
+        )
+        original_error = error.original_error
+        is_bad_query = original_error is None or any(
+            phrase in error.formatted["message"]
+            for phrase in _GRAPHQL_VALIDATION_PHRASES
+        )
         if debug or (not is_anonymous and is_bad_query):
             return format_error(error, debug)
         formatted = error.formatted
         formatted["message"] = "INTERNAL SERVER ERROR"
         formatted["type"] = "ServerError"
         # if this is one of our own command exception, we can tell a bit more
-        original_error = error.original_error
         if isinstance(original_error, BaseException) or isinstance(
             original_error, ServiceException
         ):
@@ -363,7 +377,7 @@ class AsyncGraphqlView(GraphQLAsyncView):
             # (e.g., unauthorized, forbidden) that shouldn't be sent to Sentry
             formatted["message"] = str(original_error.detail)
             formatted["type"] = type(original_error).__name__
-        else:
+        elif original_error is not None:
             # otherwise it's not supposed to happen, so we log it
             log.error("GraphQL internal server error", exc_info=original_error)
             capture_exception(original_error)
