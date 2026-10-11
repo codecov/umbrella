@@ -344,9 +344,11 @@ class AsyncGraphqlView(GraphQLAsyncView):
     def error_formatter(self, error: Any, debug: bool = False) -> dict[str, Any]:
         user = self.request.user
         is_anonymous = user.is_anonymous if user else True
-        # the only way to check for a malformed query
-        is_bad_query = "Cannot query field" in error.formatted["message"]
-        if debug or (not is_anonymous and is_bad_query):
+        # GraphQL validation errors (syntax, unknown fields, missing subfield selections, etc.)
+        # always have original_error=None since they originate from the GraphQL library before
+        # any resolver runs. Execution errors from resolver code always have a non-None original_error.
+        is_bad_query = error.original_error is None
+        if debug or is_bad_query:
             return format_error(error, debug)
         formatted = error.formatted
         formatted["message"] = "INTERNAL SERVER ERROR"
