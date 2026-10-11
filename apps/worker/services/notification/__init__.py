@@ -355,6 +355,15 @@ class NotificationService:
             if res is None or res.notification_attempted:
                 # only running if there is no result (indicating some exception)
                 # or there was an actual attempt
+                try:
+                    # If a SoftTimeLimitExceeded interrupted a SQLAlchemy flush,
+                    # the session will be in a DEACTIVE/pending-rollback state.
+                    # Roll it back so subsequent DB operations can proceed.
+                    db_session = comparison.head.commit.get_db_session()
+                    if not db_session.is_active:
+                        db_session.rollback()
+                except Exception:
+                    pass
                 create_or_update_commit_notification_from_notification_result(
                     comparison, notifier, res
                 )
