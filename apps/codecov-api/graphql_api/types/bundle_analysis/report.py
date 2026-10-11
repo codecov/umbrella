@@ -5,7 +5,12 @@ from graphql import GraphQLResolveInfo
 
 from graphql_api.types.comparison.comparison import MissingHeadReport
 from graphql_api.types.enums import BundleLoadTypes
-from services.bundle_analysis import BundleAnalysisReport, BundleData, BundleReport
+from services.bundle_analysis import (
+    BundleAnalysisReport,
+    BundleData,
+    BundleReport,
+    BundleSize,
+)
 
 bundle_analysis_report_result_bindable = UnionType("BundleAnalysisReportResult")
 bundle_analysis_report_bindable = ObjectType("BundleAnalysisReport")
@@ -78,6 +83,13 @@ def resolve_bundle_data(
     bundles_analysis_report: BundleAnalysisReport, info: GraphQLResolveInfo
 ) -> BundleData:
     return BundleData(bundles_analysis_report.size_total)
+
+
+@bundle_analysis_report_bindable.field("bundleSize")
+def resolve_bundle_size(
+    bundles_analysis_report: BundleAnalysisReport, info: GraphQLResolveInfo
+) -> BundleSize:
+    return BundleData(bundles_analysis_report.size_total).size
 
 
 @bundle_analysis_report_bindable.field("isCached")
