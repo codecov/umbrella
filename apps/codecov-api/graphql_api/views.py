@@ -348,11 +348,17 @@ class AsyncGraphqlView(GraphQLAsyncView):
         is_bad_query = "Cannot query field" in error.formatted["message"]
         if debug or (not is_anonymous and is_bad_query):
             return format_error(error, debug)
+        # GraphQL schema validation errors (e.g. missing required input fields,
+        # syntax errors) have no original_error — they are client mistakes, not
+        # server bugs, so return the descriptive GraphQL message as-is without
+        # logging or capturing to Sentry.
+        original_error = error.original_error
+        if original_error is None:
+            return error.formatted
         formatted = error.formatted
         formatted["message"] = "INTERNAL SERVER ERROR"
         formatted["type"] = "ServerError"
         # if this is one of our own command exception, we can tell a bit more
-        original_error = error.original_error
         if isinstance(original_error, BaseException) or isinstance(
             original_error, ServiceException
         ):
