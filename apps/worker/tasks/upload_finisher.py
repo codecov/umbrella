@@ -863,13 +863,14 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
         redis_connection.delete(f"cache/{commit.repoid}/tree/{commit.branch}")
         redis_connection.delete(f"cache/{commit.repoid}/tree/{commit.commitid}")
         repository = commit.repository
-        key = ":".join(
-            (repository.service, repository.author.username, repository.name)
-        )
-        if commit.branch:
-            redis_connection.hdel("badge", (f"{key}:{commit.branch}").lower())
-            if commit.branch == repository.branch:
-                redis_connection.hdel("badge", (f"{key}:").lower())
+        if repository.author and repository.author.username:
+            key = ":".join(
+                (repository.service, repository.author.username, repository.name)
+            )
+            if commit.branch:
+                redis_connection.hdel("badge", (f"{key}:{commit.branch}").lower())
+                if commit.branch == repository.branch:
+                    redis_connection.hdel("badge", (f"{key}:").lower())
 
 
 RegisteredUploadTask = celery_app.register_task(UploadFinisherTask())
