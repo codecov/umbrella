@@ -56,6 +56,11 @@ def serialize_report(
     return (report_json, chunks.encode(), totals)
 
 
+# orjson only supports signed 64-bit integers; cap large unsigned values (e.g.
+# uint64_max execution counts from C++ coverage reports) to avoid TypeError.
+INT64_MAX = (2**63) - 1
+
+
 def report_default(obj):
     if dataclasses.is_dataclass(obj):
         return obj.astuple()
@@ -70,11 +75,20 @@ def report_default(obj):
         return obj._encode()
     elif isinstance(obj, GeneratorType):
         obj = list(obj)
+    elif isinstance(obj, int) and obj > INT64_MAX:
+        return INT64_MAX
     # let the base class default method raise the typeerror
     return obj
 
 
 orjson_option = orjson.OPT_PASSTHROUGH_DATACLASS | orjson.OPT_NON_STR_KEYS
+
+
+def _cap_int(v):
+    """Clamp integers to the signed 64-bit range accepted by orjson."""
+    if isinstance(v, int) and v > INT64_MAX:
+        return INT64_MAX
+    return v
 
 
 def _dumps_not_none(value) -> str:
@@ -94,7 +108,7 @@ def _dumps_not_none(value) -> str:
 def _rstrip_none(lst):
     while lst[-1] is None:
         lst.pop(-1)
-    return lst
+    return [_cap_int(v) for v in lst]
 
 
 def chunk_default(obj):
