@@ -32,6 +32,7 @@ from services.seats import (
 )
 from shared.bundle_analysis import (
     BundleAnalysisComparison,
+    MissingBaseReportError,
 )
 from shared.yaml import UserYaml
 
@@ -179,9 +180,23 @@ class BundleAnalysisPRCommentContextBuilder(NotificationContextBuilder):
         )
         user_config = self._notification_context.user_config
 
-        if is_bundle_comparison_change_within_configured_threshold(
-            bundle_analysis_comparison, user_config.warning_threshold
-        ):
+        try:
+            within_threshold = is_bundle_comparison_change_within_configured_threshold(
+                bundle_analysis_comparison, user_config.warning_threshold
+            )
+        except MissingBaseReportError:
+            log.warning(
+                "Missing base report when evaluating bundle comparison threshold; defaulting commit status to INFO",
+                extra={
+                    "commit": self._notification_context.commit.commitid
+                    if self._notification_context.commit
+                    else None,
+                },
+            )
+            self._notification_context.commit_status_level = CommitStatusLevel.INFO
+            return self
+
+        if within_threshold:
             self._notification_context.commit_status_level = CommitStatusLevel.INFO
         elif user_config.status_level == "informational":
             self._notification_context.commit_status_level = CommitStatusLevel.WARNING
