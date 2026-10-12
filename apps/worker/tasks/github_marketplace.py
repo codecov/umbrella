@@ -182,8 +182,22 @@ class SyncPlansTask(BaseCodecovTask, name=ghm_sync_plans_task_name):
     def deactivate_repos(self, db_session, ownerid):
         """
         Deactivate all repos for given ownerid
+
+        Rows are locked in a deterministic (repoid) order before updating to
+        avoid deadlocks with concurrent transactions touching the same repos.
         """
-        db_session.query(Repository).filter(Repository.ownerid == ownerid).update(
+        repoids = [
+            repoid
+            for (repoid,) in db_session.query(Repository.repoid)
+            .filter(Repository.ownerid == ownerid)
+            .order_by(Repository.repoid)
+            .with_for_update()
+            .all()
+        ]
+        if not repoids:
+            return
+
+        db_session.query(Repository).filter(Repository.repoid.in_(repoids)).update(
             {Repository.activated: False}, synchronize_session=False
         )
 
@@ -249,12 +263,14 @@ class SyncPlansTask(BaseCodecovTask, name=ghm_sync_plans_task_name):
         )
 
         if owner:
-            # deactivate repos and remove all activated users for this owner
+            # Deactivate repos first, locking them in a deterministic order,
+            # so the owner row isn't locked while waiting on repo row locks.
+            self.deactivate_repos(db_session, owner.ownerid)
+
+            # remove all activated users for this owner
             owner.plan = DEFAULT_FREE_PLAN
             owner.plan_user_count = 1
             owner.plan_activated_users = None
-
-            self.deactivate_repos(db_session, owner.ownerid)
         else:
             # create the user
             user_data = ghm_service.get_user(service_id)
