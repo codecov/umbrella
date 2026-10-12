@@ -12,6 +12,7 @@ from asgiref.sync import async_to_sync
 from celery import chain, chord
 from celery.exceptions import SoftTimeLimitExceeded
 from django.conf import settings
+from django.db import close_old_connections
 from redis import Redis
 from sqlalchemy.orm import Session
 
@@ -663,6 +664,11 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
 
         # Bulk insert coverage measurements
         if measurements := create_upload_res["measurements_list"]:
+            # Close any idle Django DB connections before the insert; the task
+            # may have been running for a long time using SQLAlchemy, leaving
+            # the Django connection stale and susceptible to being dropped by
+            # the server or an intermediate proxy (e.g. pgBouncer).
+            close_old_connections()
             bulk_insert_coverage_measurements(measurements=measurements)
 
         return create_upload_res["argument_list"]
