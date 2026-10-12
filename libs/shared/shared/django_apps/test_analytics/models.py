@@ -30,6 +30,10 @@ class Flake(models.Model):
             models.Index(fields=["test_id"]),
             models.Index(fields=["repoid", "test_id"]),
             models.Index(fields=["repoid", "end_date"]),
+            models.Index(
+                fields=["repoid", "end_date", "test_id"],
+                name="test_analyt_repoid_end_date_test_id_idx",
+            ),
         ]
 
 
