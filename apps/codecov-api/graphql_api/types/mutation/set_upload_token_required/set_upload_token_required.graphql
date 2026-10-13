@@ -8,6 +8,6 @@ type SetUploadTokenRequiredPayload {
 }
 
 input SetUploadTokenRequiredInput {
-  orgUsername: String!
+  ownerUsername: String!
   uploadTokenRequired: Boolean!
 }
