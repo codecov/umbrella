@@ -345,7 +345,13 @@ class AsyncGraphqlView(GraphQLAsyncView):
         user = self.request.user
         is_anonymous = user.is_anonymous if user else True
         # the only way to check for a malformed query
-        is_bad_query = "Cannot query field" in error.formatted["message"]
+        # A None original_error means graphql-core raised a validation error
+        # (e.g. "Unknown argument", "Cannot query field") — these are client
+        # mistakes, not server errors, so we should not capture them in Sentry.
+        is_bad_query = (
+            error.original_error is None
+            or "Cannot query field" in error.formatted["message"]
+        )
         if debug or (not is_anonymous and is_bad_query):
             return format_error(error, debug)
         formatted = error.formatted
@@ -363,8 +369,10 @@ class AsyncGraphqlView(GraphQLAsyncView):
             # (e.g., unauthorized, forbidden) that shouldn't be sent to Sentry
             formatted["message"] = str(original_error.detail)
             formatted["type"] = type(original_error).__name__
-        else:
+        elif original_error is not None:
             # otherwise it's not supposed to happen, so we log it
+            # Skip logging/capture for GraphQL validation errors (original_error
+            # is None); those are client mistakes, not server faults.
             log.error("GraphQL internal server error", exc_info=original_error)
             capture_exception(original_error)
         return formatted
