@@ -452,6 +452,9 @@ class UploadDownloadHandler(View):
         if not self.path:
             raise Http404(msg)
 
+        if any(segment in (".", "..") for segment in self.path.split("/")):
+            raise Http404(msg)
+
         if self.path.startswith("v4/raw"):
             # direct API upload
 
@@ -493,6 +496,8 @@ class UploadDownloadHandler(View):
                 raise Http404("Requested report could not be found")
             else:
                 raise
+        except ValueError:
+            raise Http404("Requested report could not be found")
 
     async def get(
         self, request: HttpRequest, *args: Any, **kwargs: Any
