@@ -351,6 +351,11 @@ class AsyncGraphqlView(GraphQLAsyncView):
         formatted = error.formatted
         formatted["message"] = "INTERNAL SERVER ERROR"
         formatted["type"] = "ServerError"
+        if is_bad_query:
+            # Malformed query from an anonymous user: a client error, not a
+            # server error. Keep the generic message (don't leak schema hints)
+            # but don't log or report it to Sentry.
+            return formatted
         # if this is one of our own command exception, we can tell a bit more
         original_error = error.original_error
         if isinstance(original_error, BaseException) or isinstance(
@@ -366,7 +371,8 @@ class AsyncGraphqlView(GraphQLAsyncView):
         else:
             # otherwise it's not supposed to happen, so we log it
             log.error("GraphQL internal server error", exc_info=original_error)
-            capture_exception(original_error)
+            if original_error is not None:
+                capture_exception(original_error)
         return formatted
 
     @sync_to_async
