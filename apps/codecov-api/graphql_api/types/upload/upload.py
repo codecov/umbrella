@@ -80,6 +80,11 @@ def resolve_download_url(upload: ReportSession, info) -> str:
     return download_absolute_uri.replace("http", "https", 1)
 
 
+@upload_bindable.field("storagePath")
+def resolve_storage_path(upload: ReportSession, info: GraphQLResolveInfo) -> str | None:
+    return upload.storage_path
+
+
 @upload_bindable.field("name")
 def resolve_name(upload, info):
     return upload.name
