@@ -21,7 +21,7 @@ from django.http import (
     HttpResponseNotAllowed,
     JsonResponse,
 )
-from graphql import DocumentNode
+from graphql import DocumentNode, GraphQLError
 from rest_framework.exceptions import APIException
 from sentry_sdk import capture_exception
 
@@ -42,6 +42,20 @@ from .validation import (
 )
 
 log = logging.getLogger(__name__)
+
+
+def is_client_query_error(error: Any) -> bool:
+    """
+    Returns True for GraphQL errors produced while parsing or validating the
+    query document (syntax errors, unknown fields, invalid fragment spreads,
+    cost/depth limits...). These errors don't wrap an original exception and
+    are not tied to an execution path, unlike errors raised by resolvers.
+    """
+    return (
+        isinstance(error, GraphQLError)
+        and error.original_error is None
+        and error.path is None
+    )
 
 GQL_HIT_COUNTER = Counter(
     "api_gql_counts_hits",
@@ -348,6 +362,17 @@ class AsyncGraphqlView(GraphQLAsyncView):
         is_bad_query = "Cannot query field" in error.formatted["message"]
         if debug or (not is_anonymous and is_bad_query):
             return format_error(error, debug)
+        # Errors raised while parsing/validating the query document (e.g. unknown
+        # fields, invalid fragment spreads, cost limits) have no underlying
+        # exception and no execution path. These are client mistakes, not server
+        # bugs, so they must not be logged as internal errors or sent to Sentry.
+        if is_client_query_error(error):
+            if not is_anonymous:
+                return format_error(error, debug)
+            formatted = error.formatted
+            formatted["message"] = "INTERNAL SERVER ERROR"
+            formatted["type"] = "ServerError"
+            return formatted
         formatted = error.formatted
         formatted["message"] = "INTERNAL SERVER ERROR"
         formatted["type"] = "ServerError"
