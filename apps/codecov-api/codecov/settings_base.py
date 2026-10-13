@@ -3,6 +3,7 @@ import os
 import sentry_sdk
 from corsheaders.defaults import default_headers
 from csp.constants import NONE, SELF
+from graphql import GraphQLError
 from sentry_sdk.integrations.celery import CeleryIntegration
 from sentry_sdk.integrations.django import DjangoIntegration
 from sentry_sdk.integrations.httpx import HttpxIntegration
@@ -449,6 +450,21 @@ SENTRY_ORG_URL = get_config(
     "services", "sentry", "org_domain", default="https://sentry.io"
 )
 
+
+def sentry_before_send(event, hint):
+    """
+    Drop GraphQL query parsing/validation errors (e.g. unknown types/fields).
+    These are client mistakes, not server faults, and are otherwise reported
+    by the auto-enabled Ariadne integration.
+    """
+    exc_info = hint.get("exc_info") if hint else None
+    if exc_info:
+            return event
+        if isinstance(exc, GraphQLError) and exc.original_error is None:
+            return None
+    return event
+
+
 if SENTRY_DSN is not None:
     SENTRY_SAMPLE_RATE = float(
         get_config("services", "sentry", "sample_rate", default="1.0")
@@ -462,6 +478,7 @@ if SENTRY_DSN is not None:
     sentry_sdk.init(
         dsn=SENTRY_DSN,
         event_scrubber=EventScrubber(denylist=SENTRY_DENY_LIST),
+        before_send=sentry_before_send,
         _experiments={
             "enable_logs": True,
         },
