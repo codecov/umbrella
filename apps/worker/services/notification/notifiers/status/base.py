@@ -15,7 +15,7 @@ from services.yaml import read_yaml_field
 from services.yaml.reader import get_paths_from_flags
 from shared.config import get_config
 from shared.helpers.cache import NO_VALUE, cache, make_hash_sha256
-from shared.torngit.exceptions import TorngitClientError, TorngitError
+from shared.torngit.exceptions import TorngitClientError, TorngitError, TorngitRateLimitError
 
 log = logging.getLogger(__name__)
 
@@ -253,7 +253,17 @@ class StatusNotifier(AbstractBaseNotifier):
     def status_already_exists(
         self, comparison: ComparisonProxy, title, state, description
     ) -> bool:
-        statuses = comparison.get_existing_statuses()
+        try:
+            statuses = comparison.get_existing_statuses()
+        except TorngitRateLimitError:
+            log.warning(
+                "GitHub rate limit hit while fetching existing statuses; proceeding without pre-existing status check",
+                extra={
+                    "repoid": comparison.head.commit.repoid,
+                    "commit": comparison.head.commit,
+                },
+            )
+            return False
         if statuses:
             exists = statuses.get(title)
             return (
