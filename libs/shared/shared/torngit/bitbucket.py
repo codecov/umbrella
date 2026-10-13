@@ -930,7 +930,7 @@ class Bitbucket(TorngitBaseAdapter):
                     "2",
                     "get",
                     "/repositories/{}/src/{}/{}".format(
-                        self.slug, ref, path.replace(" ", "%20")
+                        self.slug, ref, urllib_parse.quote(path, safe="/")
                     ),
                     token=token,
                 )
