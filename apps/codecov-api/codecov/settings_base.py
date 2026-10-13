@@ -449,6 +449,27 @@ SENTRY_ORG_URL = get_config(
     "services", "sentry", "org_domain", default="https://sentry.io"
 )
 
+def _sentry_before_send(event, hint):
+    """
+    Drop GraphQL parse/validation errors (e.g. unknown input fields sent by a
+    client). These carry no underlying exception and are client mistakes, not
+    server errors. They're otherwise auto-captured by the Ariadne integration.
+    """
+    exc_info = hint.get("exc_info") if hint else None
+    if exc_info:
+        exc_value = exc_info[1]
+        try:
+            from graphql import GraphQLError
+        except ImportError:
+            return event
+        if (
+            isinstance(exc_value, GraphQLError)
+            and getattr(exc_value, "original_error", None) is None
+        ):
+            return None
+    return event
+
+
 if SENTRY_DSN is not None:
     SENTRY_SAMPLE_RATE = float(
         get_config("services", "sentry", "sample_rate", default="1.0")
@@ -462,6 +483,7 @@ if SENTRY_DSN is not None:
     sentry_sdk.init(
         dsn=SENTRY_DSN,
         event_scrubber=EventScrubber(denylist=SENTRY_DENY_LIST),
+        before_send=_sentry_before_send,
         _experiments={
             "enable_logs": True,
         },
