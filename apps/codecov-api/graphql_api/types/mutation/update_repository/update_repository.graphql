@@ -2,6 +2,7 @@ union UpdateRepositoryError = UnauthenticatedError | ValidationError | Unauthori
 
 type UpdateRepositoryPayload {
   error: UpdateRepositoryError
+  repository: Repository
 }
 
 input UpdateRepositoryInput {
