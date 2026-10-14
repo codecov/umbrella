@@ -659,7 +659,19 @@ class NotifyTask(BaseCodecovTask, name=notify_task_name):
             upload.job_code for upload in report.uploads if upload.job_code is not None
         )
         _get_pipeline_details = async_to_sync(repository_service.get_pipeline_details)
-        results = [_get_pipeline_details(project_id, job_id) for job_id in job_ids]
+        results = []
+        for job_id in job_ids:
+            try:
+                results.append(_get_pipeline_details(project_id, job_id))
+            except TorngitServerFailureError:
+                log.warning(
+                    "Unable to fetch GitLab pipeline details due to server issues. Skipping job",
+                    extra={
+                        "repoid": commit.repoid,
+                        "commit": commit.commitid,
+                        "job_id": job_id,
+                    },
+                )
         return set(
             filter(lambda sha: sha is not None and sha != commit.commitid, results)
         )
