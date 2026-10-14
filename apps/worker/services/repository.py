@@ -125,36 +125,77 @@ async def fetch_appropriate_parent_for_commit(
             return possible_commit.commitid
 
     ancestors_tree = await repository_service.get_ancestors_tree(commitid)
+
+    # BFS traversal: collect ancestor commit IDs grouped by depth level (in memory, no DB)
+    levels = []
     elements = [ancestors_tree]
     while elements:
         parents = [k for el in elements for k in el["parents"]]
-        parent_commits = [p["commitid"] for p in parents]
-        closest_parent_query = db_session.query(Commit.commitid, Commit.branch).filter(
-            Commit.commitid.in_(parent_commits),
+        if not parents:
+            break
+        levels.append([p["commitid"] for p in parents])
+        elements = parents
+
+    if not levels:
+        log.warning(
+            "Unable to find a parent commit that was properly found on Github",
+            extra={"commit": commit.commitid, "repoid": commit.repoid},
+        )
+        return None
+
+    all_ancestor_ids = list({cid for level in levels for cid in level})
+
+    # Single batched DB query for all ancestors at once instead of one query per level
+    ancestor_rows = (
+        db_session.query(Commit.commitid, Commit.branch, Commit.message)
+        .filter(
+            Commit.commitid.in_(all_ancestor_ids),
             Commit.repoid == commit.repoid,
-            ~Commit.message.is_(None),
             ~Commit.deleted.is_(True),
         )
-        closest_parent = _possibly_filter_out_branch(commit, closest_parent_query)
-        if closest_parent:
-            return closest_parent.commitid
+        .all()
+    )
+
+    # Partition results into two lookup maps keyed by commitid
+    with_message: dict[str, list] = {}  # commits that have a message
+    any_commit: dict[str, list] = {}  # all non-deleted commits (fallback)
+    for row in ancestor_rows:
+        any_commit.setdefault(row.commitid, []).append(row)
+        if row.message is not None:
+            with_message.setdefault(row.commitid, []).append(row)
+
+    # Walk levels in BFS order to find the closest (shallowest) matching parent
+    for level_ids in levels:
+        candidates_with_msg = [r for cid in level_ids for r in with_message.get(cid, [])]
+        result = _pick_best_commit_from_list(commit, candidates_with_msg)
+        if result is not None:
+            return result
 
         if closest_parent_without_message is None:
-            parent_query = db_session.query(Commit.commitid, Commit.branch).filter(
-                Commit.commitid.in_(parent_commits),
-                Commit.repoid == commit.repoid,
-                ~Commit.deleted.is_(True),
-            )
-            parent = _possibly_filter_out_branch(commit, parent_query)
-            if parent:
-                closest_parent_without_message = parent.commitid
-        elements = parents
+            candidates_any = [r for cid in level_ids for r in any_commit.get(cid, [])]
+            result = _pick_best_commit_from_list(commit, candidates_any)
+            if result is not None:
+                closest_parent_without_message = result
 
     log.warning(
         "Unable to find a parent commit that was properly found on Github",
         extra={"commit": commit.commitid, "repoid": commit.repoid},
     )
     return closest_parent_without_message
+
+
+def _pick_best_commit_from_list(commit: Commit, candidates: list) -> str | None:
+    """
+    Given a pre-fetched list of candidate commit rows, return the best commit ID.
+    Prefers a single result or one whose branch matches the current commit's branch.
+    Returns None when there are no candidates or multiple with no branch match.
+    """
+    if len(candidates) == 1:
+        return candidates[0].commitid
+    for c in candidates:
+        if c.branch == commit.branch:
+            return c.commitid
+    return None
 
 
 def _possibly_filter_out_branch(commit: Commit, query: Query) -> Commit | None:
