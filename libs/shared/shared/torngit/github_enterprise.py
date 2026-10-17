@@ -1,6 +1,7 @@
 import os
 
 from shared.config import get_config
+from shared.torngit.exceptions import TorngitMisconfiguredCredentials
 from shared.torngit.github import GITHUB_API_ENDPOINTS, Github
 
 
@@ -9,7 +10,12 @@ class GithubEnterprise(Github):
 
     @classmethod
     def get_service_url(cls):
-        return get_config("github_enterprise", "url").strip("/")
+        url = get_config("github_enterprise", "url")
+        if url is None:
+            raise TorngitMisconfiguredCredentials(
+                "github_enterprise.url is not configured"
+            )
+        return url.strip("/")
 
     @classmethod
     def get_api_url(cls):
