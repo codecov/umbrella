@@ -139,6 +139,12 @@ class BitbucketServerLoginView(View, LoginMixin):
 
     @async_to_sync
     async def get(self, request):
+        if not settings.BITBUCKET_SERVER_URL or not settings.BITBUCKET_SERVER_CLIENT_ID:
+            log.warning(
+                "Bitbucket Server is not configured (BITBUCKET_SERVER_URL or "
+                "BITBUCKET_SERVER_CLIENT_ID is missing); cannot complete login"
+            )
+            return redirect(settings.CODECOV_DASHBOARD_URL + "/bbs")
         try:
             if request.COOKIES.get("_oauth_request_token"):
                 log.info("Logging into bitbucket_server after authorization")
@@ -146,6 +152,6 @@ class BitbucketServerLoginView(View, LoginMixin):
             else:
                 log.info("Redirecting user to bitbucket_server for authorization")
                 return await self.redirect_to_bitbucket_server_step(request)
-        except TorngitServerFailureError:
+        except (TorngitServerFailureError, ValueError):
             log.warning("Bitbucket Server not available for login")
             return redirect(settings.CODECOV_DASHBOARD_URL + "/bbs")
