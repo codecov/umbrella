@@ -8,7 +8,7 @@ import ijson
 import sentry_sdk
 from sqlalchemy import tuple_
 from sqlalchemy.orm import Session as DbSession
-from sqlalchemy.orm.exc import MultipleResultsFound, NoResultFound
+from sqlalchemy.orm.exc import MultipleResultsFound
 
 from shared.bundle_analysis.models import (
     Asset,
@@ -342,38 +342,62 @@ class ParserV3(ParserTrait):
         }]
         """
         dynamic_imports_list = []
+
+        all_filenames = set()
+        for filenames in self.dynamic_import_file_names_by_chunk.values():
+            all_filenames.update(filenames)
+
+        if not all_filenames:
+            return dynamic_imports_list
+
+        # Fetch all referenced assets in batches rather than one query per
+        # filename (avoids an N+1 query pattern). Batching keeps us under
+        # SQLite's bound-parameter limit.
+        asset_ids_by_name: dict[str, list[int]] = defaultdict(list)
+        bundle_name = self.session.bundle.name
+        filename_list = list(all_filenames)
+        batch_size = 500
+        for i in range(0, len(filename_list), batch_size):
+            batch = filename_list[i : i + batch_size]
+            rows = (
+                self.db_session.query(Asset.id, Asset.name)
+                .join(Asset.session)  # Join Asset to Session
+                .join(Session.bundle)  # Join Session to Bundle
+                .filter(
+                    Asset.name.in_(batch),
+                    Bundle.name == bundle_name,
+                )
+                .all()
+            )
+            for asset_id, asset_name in rows:
+                asset_ids_by_name[asset_name].append(asset_id)
+
         for chunk, filenames in self.dynamic_import_file_names_by_chunk.items():
-            imported_assets = {}
+            imported_asset_ids = {}
             for filename in filenames:
-                try:
-                    asset = (
-                        self.db_session.query(Asset)
-                        .join(Asset.session)  # Join Asset to Session
-                        .join(Session.bundle)  # Join Session to Bundle
-                        .filter(
-                            Asset.name == filename,
-                            Bundle.name == self.session.bundle.name,
-                        )
-                        .one()
-                    )
-                    imported_assets[filename] = asset
-                except NoResultFound:
+                if filename in imported_asset_ids:
+                    continue
+                asset_ids = asset_ids_by_name.get(filename, [])
+                if not asset_ids:
                     # TODO: Ignore this behavior for now, we'll handle it in the future
                     # https://github.com/codecov/engineering-team/issues/3512
-                    log.warn(
+                    log.warning(
                         f'Asset not found for dynamic import: "{filename}". Skipping...',
                     )
-                except MultipleResultsFound:
+                    continue
+                if len(asset_ids) > 1:
                     log.error(
                         f'Multiple assets found for dynamic import: "{filename}"',
-                        exc_info=True,
                     )
-                    raise
+                    raise MultipleResultsFound(
+                        f'Multiple assets found for dynamic import: "{filename}"'
+                    )
+                imported_asset_ids[filename] = asset_ids[0]
 
             dynamic_imports_list.extend(
                 [
-                    {"chunk_id": chunk.id, "asset_id": asset.id}
-                    for asset in imported_assets.values()
+                    {"chunk_id": chunk.id, "asset_id": asset_id}
+                    for asset_id in imported_asset_ids.values()
                 ]
             )
 
