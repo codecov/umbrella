@@ -500,7 +500,7 @@ class Bitbucket(TorngitBaseAdapter):
             id=str(pullid),
             number=str(pullid),
             merge_commit_sha=(
-                res.get("merge_commit", {}).get("hash")
+                (res.get("merge_commit") or {}).get("hash")
                 if res["state"] == "MERGED"
                 else None
             ),
