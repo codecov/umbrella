@@ -16,6 +16,7 @@ from shared.torngit.exceptions import (
     TorngitClientError,
     TorngitClientGeneralError,
     TorngitObjectNotFoundError,
+    TorngitRateLimitError,
     TorngitRefreshTokenFailedError,
     TorngitServer5xxCodeError,
     TorngitServerUnreachableError,
@@ -24,6 +25,15 @@ from shared.torngit.response_types import ProviderPull
 from shared.torngit.status import Status
 from shared.typings.oauth_token_types import OauthConsumerToken, Token
 from shared.utils.urls import url_concat
+
+
+
+def _safe_response_data(res: httpx.Response):
+    """Return the parsed JSON body, falling back to raw text for non-JSON bodies."""
+    try:
+        return res.json()
+    except ValueError:
+        return res.text
 
 log = logging.getLogger(__name__)
 
@@ -450,9 +460,24 @@ class Gitlab(TorngitBaseAdapter):
                 log.log(
                     logging.WARNING if res.status_code >= 300 else logging.INFO,
                     "GitLab HTTP %s",
+                elif res.status_code == 429:
+                    retry_after = res.headers.get("Retry-After")
+                    try:
+                        retry_after = (
+                            int(retry_after) if retry_after is not None else None
+                        )
+                    except ValueError:
+                        retry_after = None
+                    raise TorngitRateLimitError(
+                        response_data=res.text,
+                        message="Gitlab API rate limit error",
+                        reset=res.headers.get("RateLimit-Reset"),
+                        retry_after=retry_after,
+                    )
                     res.status_code,
                     extra=dict(body=logged_body, **_log),
-                )
+                    and isinstance(response_data := _safe_response_data(res), dict)
+                    and response_data.get("error") == "invalid_token"
 
                 if res.status_code == 599:
                     raise TorngitServerUnreachableError(
@@ -472,7 +497,9 @@ class Gitlab(TorngitBaseAdapter):
                 elif res.status_code >= 400:
                     message = f"Gitlab API: {res.status_code}"
                     raise TorngitClientGeneralError(
-                        res.status_code, response_data=res.json(), message=message
+                        res.status_code,
+                        response_data=_safe_response_data(res),
+                        message=message,
                     )
                 else:
                     # Success case
