@@ -28,6 +28,7 @@ from shared.torngit.exceptions import (
     TorngitClientError,
     TorngitError,
     TorngitObjectNotFoundError,
+    TorngitServerFailureError,
 )
 from shared.torngit.response_types import ProviderPull
 from shared.typings.torngit import (
@@ -257,9 +258,19 @@ async def update_commit_from_provider_info(
         commit.branch = branch_name
         commit.merged = False
     else:
-        possible_branches = await repository_service.get_best_effort_branches(
-            commit.commitid
-        )
+        # Branch lookup is best-effort: a slow/unavailable provider endpoint
+        # should not fail the whole commit update.
+        try:
+            possible_branches = await repository_service.get_best_effort_branches(
+                commit.commitid
+            )
+        except TorngitServerFailureError:
+            log.warning(
+                "Unable to fetch best-effort branches for commit due to provider server issues",
+                extra={"commitid": commit.commitid, "repoid": commit.repoid},
+                exc_info=True,
+            )
+            possible_branches = []
         if commit.repository.branch in possible_branches:
             commit.merged = True
             commit.branch = commit.repository.branch
