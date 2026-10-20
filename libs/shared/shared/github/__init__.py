@@ -61,6 +61,12 @@ class InvalidInstallationError(Exception):
         self.error_cause = error_cause
 
 
+class GitHubTokenFetchError(Exception):
+    """Raised when a transient network error prevents fetching a GitHub installation token."""
+
+    pass
+
+
 def decide_installation_error_cause(
     response: requests.Response,
 ) -> InstallationErrorCause:
@@ -145,7 +151,20 @@ def get_github_integration_token(
         if host_override is not None:
             headers["Host"] = host_override
 
-        res = requests.post(url, headers=headers)
+        try:
+            res = requests.post(url, headers=headers, timeout=(5, 30))
+        except requests.exceptions.Timeout as e:
+            log.warning(
+                "Timed out fetching GitHub integration token",
+                extra={
+                    "git_service": service,
+                    "integration_id": integration_id,
+                    "api_endpoint": api_endpoint,
+                },
+            )
+            raise GitHubTokenFetchError(
+                f"Timed out connecting to GitHub API for installation {integration_id}"
+            ) from e
         if res.status_code in [401, 403, 404, 422]:
             error_cause = decide_installation_error_cause(res)
             log.warning(
