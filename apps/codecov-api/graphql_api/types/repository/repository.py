@@ -345,6 +345,14 @@ def resolve_coverage_analytics(
     return CoverageAnalyticsProps(repository=repository)
 
 
+@repository_bindable.field("lines")
+def resolve_lines(
+    repository: Repository, info: GraphQLResolveInfo
+) -> int | None:
+    """Deprecated: use coverageAnalytics { lines } instead."""
+    return repository.lines
+
+
 @repository_bindable.field("testAnalytics")
 def resolve_test_analytics(
     repository: Repository,
