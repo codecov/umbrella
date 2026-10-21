@@ -23,8 +23,15 @@ meaning that:
 
 from dataclasses import dataclass
 
+from sqlalchemy import case, func
+from sqlalchemy.orm import Session
+
+from database.enums import ReportType
+from database.models.core import Commit
+from database.models.reports import CommitReport, Upload
 from shared.helpers.redis import get_redis_connection
 from shared.metrics import Counter
+from shared.reports.enums import UploadState
 
 MERGE_BATCH_SIZE = 10
 
@@ -75,18 +82,53 @@ def should_trigger_postprocessing(uploads: UploadNumbers) -> bool:
 
 
 class ProcessingState:
-    def __init__(self, repoid: int, commitsha: str) -> None:
+    def __init__(
+        self, repoid: int, commitsha: str, db_session: Session | None = None
+    ) -> None:
         self._redis = get_redis_connection()
         self.repoid = repoid
         self.commitsha = commitsha
+        self._db_session = db_session
 
     def get_upload_numbers(self):
+        if self._db_session:
+            row = (
+                self._db_session.query(
+                    func.count(
+                        case(
+                            (
+                                Upload.state_id == UploadState.UPLOADED.db_id,
+                                Upload.id_,
+                            ),
+                        )
+                    ),
+                    func.count(
+                        case(
+                            (
+                                Upload.state_id == UploadState.PROCESSED.db_id,
+                                Upload.id_,
+                            ),
+                        )
+                    ),
+                )
+                .join(CommitReport, Upload.report_id == CommitReport.id_)
+                .join(Commit, CommitReport.commit_id == Commit.id_)
+                .filter(
+                    Commit.repoid == self.repoid,
+                    Commit.commitid == self.commitsha,
+                    (CommitReport.report_type == None)  # noqa: E711
+                    | (CommitReport.report_type == ReportType.COVERAGE.value),
+                )
+                .one()
+            )
+            return UploadNumbers(processing=row[0], processed=row[1])
+
         processing = self._redis.scard(self._redis_key("processing"))
         processed = self._redis.scard(self._redis_key("processed"))
         return UploadNumbers(processing, processed)
 
     def mark_uploads_as_processing(self, upload_ids: list[int]):
-        if not upload_ids:
+        if not upload_ids or self._db_session:
             return
         key = self._redis_key("processing")
         self._redis.sadd(key, *upload_ids)
@@ -97,6 +139,27 @@ class ProcessingState:
     def clear_in_progress_uploads(self, upload_ids: list[int]):
         if not upload_ids:
             return
+        if self._db_session:
+            # Mark still-UPLOADED uploads as ERROR so they stop being counted
+            # as "processing" in get_upload_numbers(). Only matches UPLOADED --
+            # already-PROCESSED uploads (success path) are unaffected.
+            updated = (
+                self._db_session.query(Upload)
+                .filter(
+                    Upload.id_.in_(upload_ids),
+                    Upload.state_id == UploadState.UPLOADED.db_id,
+                )
+                .update(
+                    {
+                        Upload.state_id: UploadState.ERROR.db_id,
+                        Upload.state: "error",
+                    },
+                    synchronize_session="fetch",
+                )
+            )
+            if updated > 0:
+                CLEARED_UPLOADS.inc(updated)
+            return
         removed_uploads = self._redis.srem(self._redis_key("processing"), *upload_ids)
         if removed_uploads > 0:
             # the normal flow would move the uploads from the "processing" set
@@ -106,6 +169,15 @@ class ProcessingState:
             CLEARED_UPLOADS.inc(removed_uploads)
 
     def mark_upload_as_processed(self, upload_id: int):
+        if self._db_session:
+            upload = self._db_session.query(Upload).get(upload_id)
+            if upload:
+                upload.state_id = UploadState.PROCESSED.db_id
+                # Don't set upload.state here -- the finisher's idempotency check
+                # uses state="processed" to detect already-merged uploads.
+                # The state string is set by update_uploads() after merging.
+            return
+
         processing_key = self._redis_key("processing")
         processed_key = self._redis_key("processed")
 
@@ -124,9 +196,36 @@ class ProcessingState:
     def mark_uploads_as_merged(self, upload_ids: list[int]):
         if not upload_ids:
             return
+        if self._db_session:
+            self._db_session.query(Upload).filter(Upload.id_.in_(upload_ids)).update(
+                {
+                    Upload.state_id: UploadState.MERGED.db_id,
+                    Upload.state: "merged",
+                },
+                synchronize_session="fetch",
+            )
+            return
+
         self._redis.srem(self._redis_key("processed"), *upload_ids)
 
     def get_uploads_for_merging(self) -> set[int]:
+        if self._db_session:
+            rows = (
+                self._db_session.query(Upload.id_)
+                .join(CommitReport, Upload.report_id == CommitReport.id_)
+                .join(Commit, CommitReport.commit_id == Commit.id_)
+                .filter(
+                    Commit.repoid == self.repoid,
+                    Commit.commitid == self.commitsha,
+                    (CommitReport.report_type == None)  # noqa: E711
+                    | (CommitReport.report_type == ReportType.COVERAGE.value),
+                    Upload.state_id == UploadState.PROCESSED.db_id,
+                )
+                .limit(MERGE_BATCH_SIZE)
+                .all()
+            )
+            return {row[0] for row in rows}
+
         return {
             int(id)
             for id in self._redis.srandmember(
