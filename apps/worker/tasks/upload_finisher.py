@@ -20,8 +20,9 @@ from helpers.save_commit_error import save_commit_error
 from services.comparison import get_or_create_comparison
 from services.lock_manager import LockManager, LockRetry, LockType
 from services.processing.finisher_gate import (
-    FINISHER_GATE_TTL_SECONDS,
+    delete_finisher_gate,
     refresh_finisher_gate_ttl,
+    try_acquire_finisher_gate,
 )
 from services.processing.intermediate import (
     cleanup_intermediate_reports,
@@ -57,10 +58,6 @@ from tasks.base import BaseCodecovTask
 
 log = logging.getLogger(__name__)
 
-FINISHER_BASE_RETRY_COUNTDOWN_SECONDS = 10
-FINISHER_BLOCKING_TIMEOUT_SECONDS = 30
-FINISHER_SWEEP_DELAY = 30
-
 UPLOAD_FINISHER_ALREADY_COMPLETED_COUNTER = Counter(
     "upload_finisher_already_completed",
     "Number of times finisher skipped work because uploads were already in final state",
@@ -77,7 +74,6 @@ class ShouldCallNotifyResult(Enum):
 
 class UploadFinisherFollowUpTaskType(Enum):
     SWEEP = "sweep"
-    WATCHDOG = "watchdog"
     CONTINUATION = "continuation"
 
 
@@ -236,18 +232,20 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
 
         return processing_results
 
+
+    FINISHER_BUFFER_TIME = 30
+
     def _schedule_followup(
         self,
         repoid: int,
         commitid: str,
         commit_yaml: UserYaml,
-        followup_type: UploadFinisherFollowUpTaskType,
+        followup_type: "UploadFinisherTask.UploadFinisherFollowUpTaskType",
+        **extra_kwargs,
     ):
-        refresh_finisher_gate_ttl(repoid, commitid)
         default_countdowns = {
-            UploadFinisherFollowUpTaskType.SWEEP: FINISHER_SWEEP_DELAY,
+            UploadFinisherFollowUpTaskType.SWEEP: self.FINISHER_BUFFER_TIME,
             UploadFinisherFollowUpTaskType.CONTINUATION: 0,
-            UploadFinisherFollowUpTaskType.WATCHDOG: FINISHER_GATE_TTL_SECONDS,
         }
         self.app.tasks[upload_finisher_task_name].apply_async(
             kwargs={
@@ -255,6 +253,8 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                 "commitid": commitid,
                 "repoid": repoid,
                 "trigger": followup_type.value,
+                "parent_task_id": self.request.id,
+                **extra_kwargs,
             },
             countdown=default_countdowns[followup_type],
         )
@@ -273,18 +273,31 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
             UploadFlow.log(UploadFlow.BATCH_PROCESSING_COMPLETE)
         except ValueError as e:
             log.warning("CheckpointLogger failed to log/submit", extra={"error": e})
-
         milestone = Milestones.UPLOAD_COMPLETE
+
+        repoid = int(repoid)
+        commit_yaml = UserYaml(commit_yaml)
+        trigger = kwargs.get("trigger")
+        parent_task_id = kwargs.get("parent_task_id")
+        expected_uploads = kwargs.get("expected_uploads")
+        is_sweep = trigger == UploadFinisherFollowUpTaskType.SWEEP.value
 
         log.info(
             "Received upload_finisher task",
             extra={
                 "processing_results": processing_results,
+                "trigger": trigger,
+                "parent_task_id": parent_task_id,
+                "expected_uploads": expected_uploads,
             },
         )
 
-        repoid = int(repoid)
-        commit_yaml = UserYaml(commit_yaml)
+        if is_sweep and not try_acquire_finisher_gate(repoid, commitid):
+            log.info(
+                "Sweep: finisher gate already held, another finisher cycle is active — exiting",
+                extra={"repoid": repoid, "commitid": commitid},
+            )
+            return
 
         log.info("run_impl: Getting commit")
 
@@ -373,9 +386,21 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
             )
 
             if remaining_uploads > 0:
+                total_uploads = (
+                    db_session.query(Upload)
+                    .join(Upload.report)
+                    .filter(
+                        Upload.report.has(commit=commit),
+                        Upload.report.has(report_type=ReportType.COVERAGE.value),
+                    )
+                    .count()
+                )
                 log.info(
                     "run_impl: Postprocessing should not be triggered - uploads still pending",
-                    extra={"remaining_uploads": remaining_uploads},
+                    extra={
+                        "remaining_uploads": remaining_uploads,
+                        "total_uploads": total_uploads,
+                    },
                 )
                 UploadFlow.log(UploadFlow.PROCESSING_COMPLETE)
                 UploadFlow.log(UploadFlow.SKIPPING_NOTIFICATION)
@@ -385,11 +410,20 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                     milestone=milestone,
                     upload_ids=upload_ids,
                 )
+
+                refresh_finisher_gate_ttl(repoid, commitid)
+                self._schedule_followup(
+                    repoid=repoid,
+                    commitid=commitid,
+                    commit_yaml=commit_yaml,
+                    followup_type=self.UploadFinisherFollowUpTaskType.CONTINUATION,
+                    expected_uploads=total_uploads,
+                )
                 return
 
             log.info("run_impl: Handling finisher lock")
 
-            return self._handle_finisher_lock(
+            result = self._handle_finisher_lock(
                 db_session,
                 commit,
                 commit_yaml,
@@ -397,6 +431,18 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                 milestone,
                 upload_ids,
             )
+
+            if is_sweep:
+                delete_finisher_gate(repoid, commitid)
+            else:
+                refresh_finisher_gate_ttl(repoid, commitid)
+                self._schedule_followup(
+                    repoid=repoid,
+                    commitid=commitid,
+                    commit_yaml=commit_yaml,
+                    followup_type=self.UploadFinisherFollowUpTaskType.SWEEP,
+                )
+            return result
 
         except Retry:
             raise
@@ -410,6 +456,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                 upload_ids=upload_ids,
                 error=Errors.TASK_TIMED_OUT,
             )
+            delete_finisher_gate(repoid, commitid)
             return {
                 "error": "Soft time limit exceeded",
                 "upload_ids": upload_ids,
@@ -422,6 +469,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                 "Unexpected error in upload finisher",
                 extra={"upload_ids": upload_ids},
             )
+            delete_finisher_gate(repoid, commitid)
             self._call_upload_breadcrumb_task(
                 commit_sha=commitid,
                 repo_id=repoid,
@@ -449,7 +497,6 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
         diff = load_commit_diff(commit, self.name)
         repoid = commit.repoid
         commitid = commit.commitid
-
         log.info("run_impl: Loaded commit diff")
 
         lock_manager = LockManager(
@@ -463,6 +510,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
         try:
             with lock_manager.locked(
                 LockType.UPLOAD_PROCESSING,
+                max_retries=UPLOAD_FINISHER_MAX_RETRIES,
                 retry_num=self.attempts,
             ):
                 db_session.refresh(commit)
@@ -562,6 +610,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
         try:
             with lock_manager.locked(
                 LockType.UPLOAD_FINISHER,
+                max_retries=UPLOAD_FINISHER_MAX_RETRIES,
                 retry_num=self.attempts,
             ):
                 result = self.finish_reports_processing(
