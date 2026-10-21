@@ -1,4 +1,4 @@
-from io import BytesIO
+from io import BytesIO, RawIOBase
 from typing import Any
 
 from services.path_fixer.fixpaths import clean_toc
@@ -19,6 +19,38 @@ class ParsedUploadedReportFile:
 
     def get_first_line(self):
         return BytesIO(self.contents).readline()
+
+
+class ConcatenatedIO(RawIOBase):
+    """A file-like object that lazily concatenates multiple byte sequences
+    (headers and uploaded file contents) without materializing them all into
+    a single buffer first."""
+
+    def __init__(self, chunks: list[bytes]):
+        self._chunks = chunks
+        self._chunk_index = 0
+        self._chunk_offset = 0
+
+    def readable(self) -> bool:
+        return True
+
+    def readinto(self, b: bytearray) -> int:
+        total = 0
+        view = memoryview(b)
+        while total < len(b) and self._chunk_index < len(self._chunks):
+            chunk = self._chunks[self._chunk_index]
+            remaining_in_chunk = len(chunk) - self._chunk_offset
+            space = len(b) - total
+            to_copy = min(remaining_in_chunk, space)
+            view[total : total + to_copy] = chunk[
+                self._chunk_offset : self._chunk_offset + to_copy
+            ]
+            total += to_copy
+            self._chunk_offset += to_copy
+            if self._chunk_offset >= len(chunk):
+                self._chunk_index += 1
+                self._chunk_offset = 0
+        return total
 
 
 class ParsedRawReport:
@@ -101,6 +133,20 @@ class VersionOneParsedRawReport(ParsedRawReport):
 
     def get_report_fixes(self, path_fixer) -> dict[str, dict[str, Any]]:
         return self.report_fixes
+
+    def content_stream(self) -> ConcatenatedIO:
+        """Return a lazy file-like object streaming all report content without
+        materializing a single combined buffer in memory first."""
+        chunks: list[bytes] = []
+        if self.has_toc():
+            for file in self.get_toc():
+                chunks.append(f"{file}\n".encode())
+            chunks.append(b"<<<<<< network\n\n")
+        for file in self.uploaded_files:
+            chunks.append(f"# path={file.filename}\n".encode())
+            chunks.append(file.contents)
+            chunks.append(b"\n<<<<<< EOF\n\n")
+        return ConcatenatedIO(chunks)
 
 
 class LegacyParsedRawReport(ParsedRawReport):
