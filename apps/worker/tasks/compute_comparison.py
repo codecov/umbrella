@@ -23,7 +23,7 @@ from shared.api_archive.archive import ArchiveService
 from shared.celery_config import compute_comparison_task_name
 from shared.components import Component
 from shared.helpers.flag import Flag
-from shared.torngit.exceptions import TorngitRateLimitError
+from shared.torngit.exceptions import TorngitRateLimitError, TorngitServerUnreachableError
 from shared.yaml import UserYaml
 from tasks.base import BaseCodecovTask
 from tasks.compute_component_comparison import compute_component_comparison_task
@@ -81,7 +81,15 @@ class ComputeComparisonTask(BaseCodecovTask, name=compute_comparison_task_name):
 
         # At this point we can calculate the patch coverage
         # Because we have a HEAD report and a base commit to get the diff from
-        patch_totals = comparison_proxy.get_patch_totals()
+        try:
+            patch_totals = comparison_proxy.get_patch_totals()
+        except TorngitServerUnreachableError:
+            log.warning(
+                "Unable to compute patch totals: Bitbucket was not reachable",
+                extra=log_extra,
+            )
+            comparison.state = CompareCommitState.error.value
+            return {"successful": False, "error": "bitbucket_unreachable"}
         comparison.patch_totals = minimal_totals(patch_totals)
         db_session.commit()
 
@@ -98,6 +106,13 @@ class ComputeComparisonTask(BaseCodecovTask, name=compute_comparison_task_name):
 
         try:
             impacted_files = comparison_proxy.get_impacted_files()
+        except TorngitServerUnreachableError:
+            log.warning(
+                "Unable to compute impacted files: Bitbucket was not reachable",
+                extra=log_extra,
+            )
+            comparison.state = CompareCommitState.error.value
+            return {"successful": False, "error": "bitbucket_unreachable"}
         except TorngitRateLimitError:
             log.warning(
                 "Unable to compute comparison due to rate limit error",
