@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 from decimal import Decimal
 
@@ -14,9 +15,15 @@ from services.notification.notifiers.base import (
 from services.notification.notifiers.generics import EnhancedJSONEncoder
 from services.urls import get_commit_url, get_pull_url
 from services.yaml.reader import round_number
+from shared.config import get_config
+
+log = logging.getLogger(__name__)
 
 CODECOV_INTERNAL_TOKEN = os.environ.get("CODECOV_INTERNAL_TOKEN")
 CODECOV_SLACK_APP_URL = os.environ.get("CODECOV_SLACK_APP_URL")
+
+# Fail fast on connect so an unreachable Slack app endpoint can't hang the notify task
+SLACK_APP_CONNECT_TIMEOUT_SECONDS = 3
 
 
 class CodecovSlackAppNotifier(AbstractBaseNotifier):
@@ -120,9 +127,32 @@ class CodecovSlackAppNotifier(AbstractBaseNotifier):
             "owner": self.repository.author.username,
             "comparison": compare_dict,
         }
-        response = requests.post(
-            request_url, headers=headers, data=json.dumps(data, cls=EnhancedJSONEncoder)
-        )
+
+        read_timeout = get_config("setup", "http", "timeouts", "external", default=10)
+        try:
+            response = requests.post(
+                request_url,
+                headers=headers,
+                data=json.dumps(data, cls=EnhancedJSONEncoder),
+                timeout=(SLACK_APP_CONNECT_TIMEOUT_SECONDS, read_timeout),
+            )
+        except requests.RequestException:
+            log.warning(
+                "Unable to notify slack app due to a connection error",
+                extra={
+                    "repoid": self.repository.repoid,
+                    "commit": comparison.head.commit.commitid
+                    if comparison.head and comparison.head.commit
+                    else None,
+                },
+                exc_info=True,
+            )
+            return NotificationResult(
+                data_sent=data,
+                notification_attempted=True,
+                notification_successful=False,
+                explanation="connection_issue",
+            )
 
         if response.status_code == 200:
             return NotificationResult(
