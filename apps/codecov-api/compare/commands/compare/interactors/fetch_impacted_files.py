@@ -137,4 +137,11 @@ class FetchImpactedFiles(BaseInteractor):
         else:
             impacted_files = comparison_report.impacted_files
 
+        has_uncovered_lines = filters.get("has_uncovered_lines")
+        if has_uncovered_lines is not None:
+            impacted_files = [
+                f for f in impacted_files
+                if (f.misses_count > 0) == has_uncovered_lines
+            ]
+
         return self._apply_filters(impacted_files, comparison, filters)
