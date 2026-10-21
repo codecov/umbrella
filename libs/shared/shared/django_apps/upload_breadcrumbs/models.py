@@ -49,6 +49,9 @@ class Milestones(models.TextChoices):
     NOTIFICATIONS_TRIGGERED = "nt", _("Notifications triggered")
     UPLOAD_COMPLETE = "uc", _("Upload complete")
     NOTIFICATIONS_SENT = "ns", _("Notifications sent")
+    LOCK_ACQUIRING = "la", _("Acquiring lock")
+    LOCK_ACQUIRED = "lac", _("Lock acquired")
+    LOCK_RELEASED = "lr", _("Lock released")
 
 
 class Endpoints(models.TextChoices):
@@ -157,6 +160,8 @@ class BreadcrumbData(
     uploader: str | None = None
     error: Errors | None = None
     error_text: str | None = None
+    task_name: str | None = None
+    parent_task_id: str | None = None
 
     @field_validator("*", mode="after")
     @classmethod
