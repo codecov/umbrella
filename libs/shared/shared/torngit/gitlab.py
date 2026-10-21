@@ -30,6 +30,14 @@ log = logging.getLogger(__name__)
 METRICS_PREFIX = "services.torngit.gitlab"
 
 
+def _try_json(res, default=None):
+    """Attempt to parse response body as JSON, returning default on failure."""
+    try:
+        return res.json()
+    except Exception:
+        return default
+
+
 GITLAB_API_CALL_COUNTER = Counter(
     "git_provider_api_calls_gitlab",
     "Number of times gitlab called this endpoint",
@@ -462,7 +470,7 @@ class Gitlab(TorngitBaseAdapter):
                     raise TorngitServer5xxCodeError("Gitlab is having 5xx issues")
                 elif (
                     res.status_code == 401
-                    and res.json().get("error") == "invalid_token"
+                    and _try_json(res, {}).get("error") == "invalid_token"
                 ):
                     # Refresh token and retry
                     log.debug("Token is invalid. Refreshing")
@@ -472,7 +480,7 @@ class Gitlab(TorngitBaseAdapter):
                 elif res.status_code >= 400:
                     message = f"Gitlab API: {res.status_code}"
                     raise TorngitClientGeneralError(
-                        res.status_code, response_data=res.json(), message=message
+                        res.status_code, response_data=res.text, message=message
                     )
                 else:
                     # Success case
