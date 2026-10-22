@@ -37,7 +37,16 @@ class StandardEncryptor:
         return b64encode(iv + result)
 
     def _unpad(self, s):
-        return s[: -ord(s[len(s) - 1 :])]
+        if not s:
+            raise ValueError("Invalid padding: empty decrypted value")
+        pad_len = s[-1]
+        if (
+            pad_len < 1
+            or pad_len > self.bs
+            or s[-pad_len:] != bytes([pad_len]) * pad_len
+        ):
+            raise ValueError("Invalid padding")
+        return s[:-pad_len]
 
     def _pad(self, s):
         return s + (self.bs - len(s) % self.bs) * chr(self.bs - len(s) % self.bs)
