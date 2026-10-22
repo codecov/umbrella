@@ -5,7 +5,7 @@ import orjson
 import sentry_sdk
 from asgiref.sync import async_to_sync
 from celery import group
-from sqlalchemy.orm import joinedload
+from sqlalchemy.orm import defaultload, joinedload
 
 from app import celery_app
 from database.enums import CompareCommitError, CompareCommitState
@@ -47,15 +47,24 @@ class ComputeComparisonTask(BaseCodecovTask, name=compute_comparison_task_name):
     def run_impl(
         self, db_session, comparison_id, *args, **kwargs
     ) -> ComputeComparisonTaskReturn:
-        comparison: CompareCommit = (
-            db_session.query(CompareCommit)
-            .options(
+        # Keep this lookup lean: it is the first statement of the task and
+        # usually runs while the shared DB / pgbouncer pool is under load.
+        # - The legacy inline `commits.report` JSON column is deferred; the
+        #   `report_json` ArchiveField only lazy-loads it when present
+        #   (most reports live in archive storage via `report_storage_path`).
+        # - The base commit's repository is the same row as the compare
+        #   commit's, so it is resolved from the identity map instead of a
+        #   second join.
+        comparison: CompareCommit = db_session.get(
+            CompareCommit,
+            comparison_id,
+            options=[
                 joinedload(CompareCommit.compare_commit)
                 .joinedload(Commit.repository)
                 .joinedload(Repository.author),
-                joinedload(CompareCommit.base_commit).joinedload(Commit.repository),
-            )
-            .get(comparison_id)
+                defaultload(CompareCommit.compare_commit).defer(Commit._report_json),
+                joinedload(CompareCommit.base_commit).defer(Commit._report_json),
+            ],
         )
         repo = comparison.compare_commit.repository
         log_extra = {
