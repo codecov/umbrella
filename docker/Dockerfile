@@ -9,7 +9,7 @@ ARG ENTRYPOINT
 # Build berglas from source rather than copying the prebuilt vendor image: that
 # image lags on the Go stdlib and golang.org/x/crypto (SSH CVEs) even at the
 # latest tag, so a current toolchain plus patched modules is required.
-FROM golang:1.26-bookworm as berglas
+FROM golang:1.27.3-bookworm as berglas
 ARG BERGLAS_VERSION
 RUN git clone --depth 1 --branch v${BERGLAS_VERSION} https://github.com/GoogleCloudPlatform/berglas.git /src
 WORKDIR /src
