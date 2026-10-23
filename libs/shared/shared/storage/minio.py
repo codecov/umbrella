@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import time
 from datetime import timedelta
 from functools import cache
 from io import BytesIO
@@ -19,6 +20,7 @@ from minio.credentials.providers import (
 from minio.error import MinioException, S3Error
 from minio.helpers import ObjectWriteResult
 from urllib3 import HTTPResponse, Retry
+from urllib3.exceptions import ProtocolError, ReadTimeoutError
 from urllib3.util import Timeout
 
 from shared.storage.base import (
@@ -34,6 +36,12 @@ log = logging.getLogger(__name__)
 
 CONNECT_TIMEOUT = 10
 READ_TIMEOUT = 60
+
+# Retries for failures that happen while streaming the response body
+# (e.g. connection reset by peer). urllib3's Retry only covers the
+# request/headers phase, so these must be handled explicitly.
+READ_FILE_MAX_ATTEMPTS = 3
+READ_FILE_BACKOFF_SECONDS = 0.5
 
 
 def init_minio_client(
@@ -279,6 +287,33 @@ class MinioStorageService(BaseStorageService, PresignedURLService):
         file_obj: BinaryIO | None = None,
         metadata_container: dict[str, str] | None = None,
     ) -> bytes | None:
+        for attempt in range(1, READ_FILE_MAX_ATTEMPTS + 1):
+            try:
+                return self._download_once(
+                    bucket_name, path, file_obj, metadata_container
+                )
+            except (ProtocolError, ReadTimeoutError) as e:
+                if attempt >= READ_FILE_MAX_ATTEMPTS:
+                    raise
+                log.warning(
+                    "Connection error while reading file from storage, retrying",
+                    extra={
+                        "bucket_name": bucket_name,
+                        "path": path,
+                        "attempt": attempt,
+                        "error": repr(e),
+                    },
+                )
+                time.sleep(READ_FILE_BACKOFF_SECONDS * (2 ** (attempt - 1)))
+        raise AssertionError("unreachable")  # pragma: no cover
+
+    def _download_once(
+        self,
+        bucket_name: str,
+        path: str,
+        file_obj: BinaryIO | None,
+        metadata_container: dict[str, str] | None,
+    ) -> bytes | None:
         try:
             response = cast(
                 HTTPResponse,
@@ -291,40 +326,43 @@ class MinioStorageService(BaseStorageService, PresignedURLService):
                 )
             raise e
 
-        if metadata_container is not None:
-            for header, value in response.headers.items():
-                if header.startswith("x-amz-meta-"):
-                    metadata_key = header.removeprefix("x-amz-meta-")
-                    metadata_container[metadata_key] = value
+        try:
+            if metadata_container is not None:
+                for header, value in response.headers.items():
+                    if header.startswith("x-amz-meta-"):
+                        metadata_key = header.removeprefix("x-amz-meta-")
+                        metadata_container[metadata_key] = value
 
-        reader = cast(IO[bytes], response)
-        if (
-            response.headers
-            and not zstd_default
-            and response.headers.get("Content-Encoding") == "zstd"
-        ):
-            # we have to manually decompress zstandard compressed data
-            cctx = zstandard.ZstdDecompressor()
-            # if the object passed to this has a read method then that's
-            # all this object will ever need, since it will just call read
-            # and get the bytes object resulting from it then compress that
-            # HTTPResponse
-            reader = cctx.stream_reader(reader)
+            reader = cast(IO[bytes], response)
+            if (
+                response.headers
+                and not zstd_default
+                and response.headers.get("Content-Encoding") == "zstd"
+            ):
+                # we have to manually decompress zstandard compressed data
+                cctx = zstandard.ZstdDecompressor()
+                # if the object passed to this has a read method then that's
+                # all this object will ever need, since it will just call read
+                # and get the bytes object resulting from it then compress that
+                # HTTPResponse
+                reader = cctx.stream_reader(reader)
 
-        if file_obj:
-            file_obj.seek(0)
-            while chunk := reader.read(CHUNK_SIZE):
-                file_obj.write(chunk)
+            if file_obj:
+                # reset destination so a retried attempt doesn't leave
+                # partial data from a previous failed attempt
+                file_obj.seek(0)
+                file_obj.truncate()
+                while chunk := reader.read(CHUNK_SIZE):
+                    file_obj.write(chunk)
+                return None
+            else:
+                res = BytesIO()
+                while chunk := reader.read(CHUNK_SIZE):
+                    res.write(chunk)
+                return res.getvalue()
+        finally:
             response.close()
             response.release_conn()
-            return None
-        else:
-            res = BytesIO()
-            while chunk := reader.read(CHUNK_SIZE):
-                res.write(chunk)
-            response.close()
-            response.release_conn()
-            return res.getvalue()
 
     def delete_file(self, bucket_name: str, path: str) -> bool:
         try:
