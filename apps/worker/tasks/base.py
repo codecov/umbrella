@@ -410,6 +410,13 @@ class BaseCodecovTask(celery_app.Task):
     def run(self, *args, **kwargs):
         with self.task_full_runtime.time():
             db_session = get_db_session()
+            if not db_session.is_active:
+                # A previous task in this process left the session with a
+                # transaction that failed and still needs a rollback.
+                log.warning(
+                    "DB session was left in an inactive state by a previous task. Rolling back"
+                )
+                db_session.rollback()
 
             log_context = LogContext(
                 repo_id=kwargs.get("repoid") or kwargs.get("repo_id"),
@@ -529,13 +536,40 @@ class BaseCodecovTask(celery_app.Task):
                     "DB session cannot be operated on any longer. Closing it and removing it",
                     exc_info=True,
                 )
-                get_db_session.remove()
+                self._discard_dbsession(db_session)
+            except SQLAlchemyError:
+                # e.g. a deadlock (OperationalError) raised while flushing on commit.
+                # Make sure the broken session isn't reused by subsequent tasks.
+                self._discard_dbsession(db_session)
+                raise
         except InvalidRequestError:
             log.warning(
                 "DB session cannot be operated on any longer. Closing it and removing it",
                 exc_info=True,
             )
+            self._discard_dbsession(db_session)
+        except SQLAlchemyError:
+            # e.g. a deadlock (OperationalError) raised while flushing on commit.
+            # The session is left in an inactive state with a pending rollback;
+            # since sessions are reused across tasks in the same process, we must
+            # roll it back and remove it so the next task gets a fresh session.
+            log.warning(
+                "Error while committing DB session. Rolling back and removing it",
+                exc_info=True,
+            )
+            self._discard_dbsession(db_session)
+            raise
+
+    def _discard_dbsession(self, db_session):
+        """Roll back and remove the (scoped) DB session so it is not reused."""
+        try:
+            db_session.rollback()
+        except Exception:
+            log.warning("Failed to roll back DB session", exc_info=True)
+        try:
             get_db_session.remove()
+        except Exception:
+            log.warning("Failed to remove DB session", exc_info=True)
 
     def on_retry(self, exc, task_id, args, kwargs, einfo):
         res = super().on_retry(exc, task_id, args, kwargs, einfo)
