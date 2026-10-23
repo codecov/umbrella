@@ -12,6 +12,7 @@ from sqlalchemy.exc import (
     DataError,
     IntegrityError,
     InvalidRequestError,
+    OperationalError,
     SQLAlchemyError,
 )
 
@@ -535,6 +536,22 @@ class BaseCodecovTask(celery_app.Task):
                 "DB session cannot be operated on any longer. Closing it and removing it",
                 exc_info=True,
             )
+            get_db_session.remove()
+        except OperationalError:
+            # The underlying DB connection was lost (e.g. dropped by the server
+            # after sitting idle-in-transaction during a long-running task).
+            # Discard the session so later tasks in this process get a fresh one.
+            log.warning(
+                "DB connection was lost while wrapping up the DB session. Rolling back and removing it",
+                exc_info=True,
+            )
+            try:
+                db_session.rollback()
+            except SQLAlchemyError:
+                log.warning(
+                    "Failed to rollback DB session after losing the connection",
+                    exc_info=True,
+                )
             get_db_session.remove()
 
     def on_retry(self, exc, task_id, args, kwargs, einfo):
