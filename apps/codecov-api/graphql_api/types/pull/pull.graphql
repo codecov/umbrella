@@ -4,6 +4,7 @@ type Pull {
   title: String
   state: PullRequestState!
   pullId: Int!
+  pullid: Int @deprecated(reason: "Use pullId instead")
   author: Owner
   updatestamp: DateTime
   head: Commit
