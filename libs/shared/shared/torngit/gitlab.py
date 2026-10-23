@@ -460,19 +460,26 @@ class Gitlab(TorngitBaseAdapter):
                     )
                 elif res.status_code >= 500:
                     raise TorngitServer5xxCodeError("Gitlab is having 5xx issues")
-                elif (
-                    res.status_code == 401
-                    and res.json().get("error") == "invalid_token"
-                ):
-                    # Refresh token and retry
-                    log.debug("Token is invalid. Refreshing")
-                    token = await self.refresh_token(client)
-                    if callable(self._on_token_refresh):
-                        await self._on_token_refresh(token)
+                elif res.status_code == 401:
+                    try:
+                        error_body = res.json()
+                    except Exception:
+                        error_body = {}
+                    if error_body.get("error") == "invalid_token":
+                        # Refresh token and retry
+                        log.debug("Token is invalid. Refreshing")
+                        token = await self.refresh_token(client)
+                        if callable(self._on_token_refresh):
+                            await self._on_token_refresh(token)
+                    else:
+                        message = f"Gitlab API: {res.status_code}"
+                        raise TorngitClientGeneralError(
+                            res.status_code, response_data=res.text, message=message
+                        )
                 elif res.status_code >= 400:
                     message = f"Gitlab API: {res.status_code}"
                     raise TorngitClientGeneralError(
-                        res.status_code, response_data=res.json(), message=message
+                        res.status_code, response_data=res.text, message=message
                     )
                 else:
                     # Success case
