@@ -3,6 +3,7 @@ from collections.abc import Callable
 
 import sentry_sdk
 from celery.exceptions import CeleryError
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session as DbSession
 
 from app import celery_app
@@ -97,9 +98,27 @@ def process_upload(
     except CeleryError:
         raise
     except Exception:
-        commit.state = "error"
-        db_session.commit()
+        # Log the original error first so it is never masked by a follow-up
+        # database failure (e.g. a dropped connection).
         log.exception("Could not properly process commit")
+        # The session may hold an invalidated transaction (e.g. after the DB
+        # server closed the connection). It must be rolled back before the
+        # session can be used again, otherwise SQLAlchemy raises
+        # `PendingRollbackError`.
+        db_session.rollback()
+        try:
+            commit.state = "error"
+            db_session.commit()
+        except SQLAlchemyError:
+            log.exception(
+                "Failed to mark commit as errored after processing failure",
+                extra={
+                    "repo_id": repo_id,
+                    "commit_sha": commit_sha,
+                    "upload_id": upload_id,
+                },
+            )
+            db_session.rollback()
         raise
 
     finally:
