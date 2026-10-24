@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.4
 ARG REQUIREMENTS_IMAGE
 
-ARG PYTHON_IMAGE=ghcr.io/astral-sh/uv:python3.13-bookworm-slim@sha256:531f855bda2c73cd6ef67d56b733b357cea384185b3022bd09f05e002cd144ca
+ARG PYTHON_IMAGE=python:3.13.17-slim-bookworm@sha256:e32be0e55814a08977501ca863271d9bd02443710db8f2afaf8372e2c4508530
 
 FROM $REQUIREMENTS_IMAGE as app
 
