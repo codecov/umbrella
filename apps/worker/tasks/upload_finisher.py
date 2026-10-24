@@ -6,13 +6,14 @@ from enum import Enum
 import sentry_sdk
 from asgiref.sync import async_to_sync
 from celery.exceptions import Retry, SoftTimeLimitExceeded
+from sqlalchemy import func
 
 from app import celery_app
 from celery_config import notify_error_task_name
 from database.enums import CommitErrorTypes, ReportType
 from database.models import Commit, Pull
 from database.models.core import GITHUB_APP_INSTALLATION_DEFAULT_NAME
-from database.models.reports import Upload
+from database.models.reports import CommitReport, Upload
 from helpers.checkpoint_logger.flows import UploadFlow
 from helpers.exceptions import RepositoryWithoutValidBotError
 from helpers.github_installation import get_installation_name_for_owner_for_task
@@ -69,6 +70,26 @@ UPLOAD_FINISHER_ALREADY_COMPLETED_COUNTER = Counter(
 regexp_ci_skip = re.compile(r"\[(ci|skip| |-){3,}\]")
 
 
+def _count_pending_coverage_uploads(db_session, commit: Commit) -> int:
+    """Count coverage uploads for `commit` that are still in the UPLOADED state.
+
+    Uses a single flat join on reports_commitreport filtered directly by
+    commit_id, so Postgres can drive the lookup through the commit_id and
+    report_id indexes instead of evaluating correlated EXISTS subqueries.
+    """
+    return (
+        db_session.query(func.count(Upload.id_))
+        .join(CommitReport, CommitReport.id_ == Upload.report_id)
+        .filter(
+            CommitReport.commit_id == commit.id_,
+            CommitReport.report_type == ReportType.COVERAGE.value,
+            Upload.state_id == UploadState.UPLOADED.db_id,
+        )
+        .scalar()
+        or 0
+    )
+
+
 class ShouldCallNotifyResult(Enum):
     DO_NOT_NOTIFY = "do_not_notify"
     NOTIFY_ERROR = "notify_error"
@@ -111,7 +132,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
             db_session.query(Upload)
             .join(Upload.report)
             .filter(
-                Upload.report.has(commit=commit),
+                CommitReport.commit_id == commit.id_,
                 Upload.state == "started",
                 Upload.state_id == UploadState.UPLOADED.db_id,
             )
@@ -361,16 +382,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
             # Check if there are still unprocessed coverage uploads in the database
             # Use DB as source of truth - if any coverage uploads are still in UPLOADED state,
             # another finisher will process them and we shouldn't send notifications yet
-            remaining_uploads = (
-                db_session.query(Upload)
-                .join(Upload.report)
-                .filter(
-                    Upload.report.has(commit=commit),
-                    Upload.report.has(report_type=ReportType.COVERAGE.value),
-                    Upload.state_id == UploadState.UPLOADED.db_id,
-                )
-                .count()
-            )
+            remaining_uploads = _count_pending_coverage_uploads(db_session, commit)
 
             if remaining_uploads > 0:
                 log.info(
@@ -797,16 +809,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
         # Check if there are still pending uploads in the database
         # Use DB as source of truth for upload completion status
         if db_session:
-            remaining_uploads = (
-                db_session.query(Upload)
-                .join(Upload.report)
-                .filter(
-                    Upload.report.has(commit=commit),
-                    Upload.report.has(report_type=ReportType.COVERAGE.value),
-                    Upload.state_id == UploadState.UPLOADED.db_id,
-                )
-                .count()
-            )
+            remaining_uploads = _count_pending_coverage_uploads(db_session, commit)
             if remaining_uploads > 0:
                 log.info(
                     "Not scheduling notify because there are still pending uploads",
