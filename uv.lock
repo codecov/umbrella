@@ -810,14 +810,14 @@ wheels = [
 
 [[package]]
 name = "djangorestframework"
-version = "3.17.2"
+version = "3.18.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "django" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/3b/35/c96055e700fdff25da3a7b7756cfd1d4dc54f38b9bc6d6c5e19e3a0fdc20/djangorestframework-3.17.2.tar.gz", hash = "sha256:89ed713b6dc83e1539f214b7d10808ae19bb8511004beba886225da6d5c9dafa", size = 906683, upload-time = "2026-08-05T07:47:22.5Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/8d/b2/1cee76b188301f7d03169ca77fab2b3d3ec5d01b3469189f944af2d7f11a/djangorestframework-3.18.3.tar.gz", hash = "sha256:446a9b352e7eff630421ab3f2328bd2401b109a9470afa4a31189994911ed030", size = 923563, upload-time = "2026-10-06T21:33:51.521Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/a2/46/c14108e400b208c394325eb63fbae06c81341b6447fa1a6f9da718b17fe7/djangorestframework-3.17.2-py3-none-any.whl", hash = "sha256:cb0546a7415d5b46c04e0f4fe0a54b2109f4fdd5e83ca773c8c6183a6493d042", size = 899109, upload-time = "2026-08-05T07:47:20.853Z" },
+    { url = "https://files.pythonhosted.org/packages/c4/dd/de5f4543765bec94e036a5e9593a42f8fa7efec8de78eb56b9ca834385f3/djangorestframework-3.18.3-py3-none-any.whl", hash = "sha256:8544bb674846731b1e3c9b309236ee1dc412905a0aa725be2ec193ca950a7d12", size = 903986, upload-time = "2026-10-06T21:33:49.917Z" },
 ]
 
 [[package]]
@@ -1026,11 +1026,11 @@ grpc = [
 
 [[package]]
 name = "graphql-core"
-version = "3.2.5"
+version = "3.2.13"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/2e/b5/ebc6fe3852e2d2fdaf682dddfc366934f3d2c9ef9b6d1b0e6ca348d936ba/graphql_core-3.2.5.tar.gz", hash = "sha256:e671b90ed653c808715645e3998b7ab67d382d55467b7e2978549111bbabf8d5", size = 504664, upload-time = "2024-10-13T18:24:32.134Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/4e/5e/aa0d4e701b50db0bab71b125dd19ddb0f98c638d008d6f7e3d8ce9cbc92e/graphql_core-3.2.13.tar.gz", hash = "sha256:bb81dd266d4ab7b591bd976f1b23639d97776cb9ac1a896b4a93c271e11ed618", size = 577471, upload-time = "2026-09-27T12:22:57.136Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/e3/dc/078bd6b304de790618ebb95e2aedaadb78f4527ac43a9ad8815f006636b6/graphql_core-3.2.5-py3-none-any.whl", hash = "sha256:2f150d5096448aa4f8ab26268567bbfeef823769893b39c1a2e1409590939c8a", size = 203189, upload-time = "2024-10-13T18:24:30.384Z" },
+    { url = "https://files.pythonhosted.org/packages/1f/b4/b52a324b0b297ddc49b8ea31a51d39fae63132f694a267b9381d94e2e0af/graphql_core-3.2.13-py3-none-any.whl", hash = "sha256:b0eb04f2c31556b2310a77c8fb53c74e8b56570f8fea594d89c6ef7827dbb497", size = 268191, upload-time = "2026-09-27T12:22:55.661Z" },
 ]
 
 [[package]]
@@ -2965,6 +2965,7 @@ codecov-api = [
     { name = "drf-spectacular-sidecar" },
     { name = "google-auth" },
     { name = "google-cloud-pubsub" },
+    { name = "graphql-core" },
     { name = "gunicorn" },
     { name = "httpx" },
     { name = "idna" },
@@ -3059,6 +3060,7 @@ prod = [
     { name = "drf-spectacular-sidecar" },
     { name = "google-auth" },
     { name = "google-cloud-pubsub" },
+    { name = "graphql-core" },
     { name = "gunicorn" },
     { name = "httpx" },
     { name = "idna" },
@@ -3225,11 +3227,12 @@ codecov-api = [
     { name = "django-model-utils", specifier = ">=4.5.1" },
     { name = "django-postgres-extra", specifier = ">=2.0.8" },
     { name = "django-prometheus", specifier = ">=2.3.1" },
-    { name = "djangorestframework", specifier = ">=3.17.2" },
+    { name = "djangorestframework", specifier = ">=3.18.2" },
     { name = "drf-spectacular", specifier = ">=0.26.2" },
     { name = "drf-spectacular-sidecar", specifier = ">=2023.3.1" },
     { name = "google-auth", specifier = ">=2.21.1" },
     { name = "google-cloud-pubsub", specifier = ">=2.27.1" },
+    { name = "graphql-core", specifier = ">=3.2.12,<3.3" },
     { name = "gunicorn", specifier = ">=22.0.0" },
     { name = "httpx", specifier = ">=0.23.1" },
     { name = "idna", specifier = ">=3.15" },
@@ -3320,11 +3323,12 @@ prod = [
     { name = "django-model-utils", specifier = ">=4.5.1" },
     { name = "django-postgres-extra", specifier = ">=2.0.8" },
     { name = "django-prometheus", specifier = ">=2.3.1" },
-    { name = "djangorestframework", specifier = ">=3.17.2" },
+    { name = "djangorestframework", specifier = ">=3.18.2" },
     { name = "drf-spectacular", specifier = ">=0.26.2" },
     { name = "drf-spectacular-sidecar", specifier = ">=2023.3.1" },
     { name = "google-auth", specifier = ">=2.21.1" },
     { name = "google-cloud-pubsub", specifier = ">=2.27.1" },
+    { name = "graphql-core", specifier = ">=3.2.12,<3.3" },
     { name = "gunicorn", specifier = ">=22.0.0" },
     { name = "httpx", specifier = ">=0.23.1" },
     { name = "idna", specifier = ">=3.15" },
