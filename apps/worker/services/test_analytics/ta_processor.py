@@ -11,6 +11,10 @@ import sentry_sdk
 import test_results_parser
 from test_results_parser import parse_raw_upload
 
+from sqlalchemy.orm import Session
+
+from database.models.core import Commit, Repository
+from database.models.reports import Upload, UploadError
 from rollouts import ALLOW_VITEST_EVALS
 from services.processing.types import UploadArguments
 from services.test_analytics.ta_metrics import write_tests_summary
@@ -18,8 +22,6 @@ from services.test_analytics.ta_timeseries import get_flaky_tests_set, insert_te
 from services.yaml import UserYaml, read_yaml_field
 from shared.api_archive.archive import ArchiveService
 from shared.config import get_config
-from shared.django_apps.core.models import Commit, Repository
-from shared.django_apps.reports.models import ReportSession, UploadError
 from shared.storage.exceptions import FileNotInStorageError
 
 log = logging.getLogger(__name__)
@@ -31,6 +33,7 @@ def ta_processor(
     commit_yaml: dict[str, Any],
     argument: UploadArguments,
     update_state: bool = False,
+    db_session: Session | None = None,
 ) -> bool:
     log.info("Processing single TA argument")
 
@@ -38,7 +41,7 @@ def ta_processor(
     if upload_id is None:
         return False
 
-    upload = ReportSession.objects.using("default").get(id=upload_id)
+    upload = db_session.query(Upload).filter_by(id_=upload_id).one()
     if upload.state == "processed":
         # don't need to process again because the intermediate result should already be in redis
         return False
@@ -48,7 +51,7 @@ def ta_processor(
             handle_file_not_found(upload)
         return False
 
-    ta_proc_info = get_ta_processing_info(repoid, commitid, commit_yaml)
+    ta_proc_info = get_ta_processing_info(repoid, commitid, commit_yaml, db_session)
 
     archive_service = ArchiveService(ta_proc_info.repository)
 
@@ -84,10 +87,10 @@ def ta_processor(
         return False
 
     if update_state:
-        UploadError.objects.bulk_create(
+        db_session.add_all(
             [
                 UploadError(
-                    report_session=upload,
+                    upload_id=upload.id,
                     error_code="warning",
                     error_params={"warning_message": warning},
                 )
@@ -95,6 +98,7 @@ def ta_processor(
                 for warning in info["warnings"]
             ]
         )
+        db_session.flush()
 
     with write_tests_summary.labels("new").time():
         insert_testruns_timeseries(
@@ -103,7 +107,7 @@ def ta_processor(
 
     if update_state:
         upload.state = "processed"
-        upload.save()
+        db_session.flush()
 
         rewrite_or_delete_upload(
             archive_service, ta_proc_info.user_yaml, upload, readable_file
@@ -159,36 +163,45 @@ class TAProcInfo:
     user_yaml: UserYaml
 
 
-def handle_file_not_found(upload: ReportSession):
+def handle_file_not_found(upload: Upload):
+    db_session = upload.get_db_session()
     upload.state = "processed"
-    upload.save()
-    UploadError.objects.create(
-        report_session=upload,
-        error_code="file_not_in_storage",
-        error_params={},
+    db_session.add(
+        UploadError(
+            upload_id=upload.id,
+            error_code="file_not_in_storage",
+            error_params={},
+        )
     )
+    db_session.flush()
 
 
-def handle_parsing_error(upload: ReportSession, exc: Exception):
+def handle_parsing_error(upload: Upload, exc: Exception):
     sentry_sdk.capture_exception(exc, tags={"upload_state": upload.state})
+    db_session = upload.get_db_session()
     upload.state = "processed"
-    upload.save()
-    UploadError.objects.create(
-        report_session=upload,
-        error_code="unsupported_file_format",
-        error_params={"error_message": str(exc)},
+    db_session.add(
+        UploadError(
+            upload_id=upload.id,
+            error_code="unsupported_file_format",
+            error_params={"error_message": str(exc)},
+        )
     )
+    db_session.flush()
 
 
 def get_ta_processing_info(
     repoid: int,
     commitid: str,
     commit_yaml: dict[str, Any],
+    db_session: Session,
 ) -> TAProcInfo:
-    repository = Repository.objects.using("default").get(repoid=repoid)
+    repository = db_session.query(Repository).filter_by(repoid=repoid).one()
 
-    commit = Commit.objects.using("default").get(
-        repository=repository, commitid=commitid
+    commit = (
+        db_session.query(Commit)
+        .filter_by(repoid=repoid, commitid=commitid)
+        .one()
     )
     branch = commit.branch
 
