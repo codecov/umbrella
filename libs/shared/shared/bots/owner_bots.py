@@ -1,3 +1,4 @@
+import binascii
 import logging
 
 from shared.bots.exceptions import OwnerWithoutValidBotError
@@ -40,7 +41,14 @@ def get_owner_appropriate_bot_token(
         result = get_github_app_token(Service(owner.service), installation_info)
         return result
 
-    token_owner = get_owner_or_appropriate_bot(owner)
+    try:
+        token: Token = encryptor.decrypt_token(token_owner.oauth_token)
+    except (UnicodeDecodeError, ValueError, binascii.Error) as exc:
+        log.warning(
+            "Unable to decrypt oauth token",
+            extra={"ownerid": owner.ownerid, "token_ownerid": token_owner.ownerid},
+        )
+        raise OwnerWithoutValidBotError() from exc
     token: Token = encryptor.decrypt_token(token_owner.oauth_token)
     token["entity_name"] = owner_key_name(owner_id=token_owner.ownerid)
     return token, token_owner

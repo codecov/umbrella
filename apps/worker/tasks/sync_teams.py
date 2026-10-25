@@ -7,6 +7,7 @@ from app import celery_app
 from database.models import Owner
 from helpers.admins import update_single_owner_admins
 from services.owner import get_owner_provider_service
+from shared.bots.exceptions import OwnerWithoutValidBotError
 from shared.celery_config import sync_teams_task_name
 from tasks.base import BaseCodecovTask
 
@@ -25,7 +26,14 @@ class SyncTeamsTask(BaseCodecovTask, name=sync_teams_task_name):
         assert owner, "Owner not found"
         service = owner.service
 
-        git = get_owner_provider_service(owner, ignore_installation=True)
+        try:
+            git = get_owner_provider_service(owner, ignore_installation=True)
+        except OwnerWithoutValidBotError:
+            log.warning(
+                "Unable to sync teams: owner has no valid oauth token",
+                extra={"ownerid": ownerid, "username": username},
+            )
+            return
 
         # get list of teams with username, name, email, id (service_id), etc
         teams = async_to_sync(git.list_teams)()
