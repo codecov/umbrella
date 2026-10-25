@@ -1,11 +1,16 @@
 import fnmatch
+import logging
 import re
 from collections import OrderedDict
 from collections.abc import Mapping
 
+from django.db import InterfaceError, OperationalError, connections, router
+
 from shared.celery_config import BaseCeleryConfig, get_task_group
 from shared.config import get_config
 from shared.django_apps.codecov_auth.models import Plan
+
+log = logging.getLogger(__name__)
 
 Pattern = re.Pattern
 
@@ -63,6 +68,29 @@ def _get_enterprise_config(task_name: str, owner: int) -> tuple[str, dict]:
 
     base_queue = f"enterprise_{_get_default_queue(task_name)}"
     if str(owner) in owner_specific_config:
+def _fetch_plan(task_name: str, user_plan: str) -> Plan:
+    """Fetch the Plan (with its Tier) in a single query.
+
+    If the DB connection was dropped by the server (e.g. a pooler/DB restart),
+    close the broken connection so Django reconnects, and retry once.
+    """
+    try:
+        return Plan.objects.select_related("tier").get(name=user_plan)
+    except (OperationalError, InterfaceError) as exc:
+        db_alias = router.db_for_read(Plan) or "default"
+        log.warning(
+            "Database connection error while fetching plan for task routing, reconnecting and retrying",
+            extra={
+                "task_name": task_name,
+                "user_plan": user_plan,
+                "db_alias": db_alias,
+                "error": str(exc),
+            },
+        )
+        connections[db_alias].close()
+        return Plan.objects.select_related("tier").get(name=user_plan)
+
+
         base_queue = f"{base_queue}_{owner_specific_config[str(owner)]}"
 
     return base_queue, queue_specific_config
@@ -74,7 +102,7 @@ def route_tasks_based_on_user_plan(task_name: str, user_plan: str, owner: int) -
     Args:
         task_name: Name of the task to route
         user_plan: Name of the user's plan
-        owner: Owner ID for enterprise routing
+    plan = _fetch_plan(task_name, user_plan)
 
     Returns:
         Dict containing queue name and any extra configuration
