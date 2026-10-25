@@ -35,7 +35,7 @@ from shared.celery_config import (
 from shared.helpers.redis import get_redis_connection
 from shared.reports.types import Change
 from shared.torngit.base import TorngitBaseAdapter
-from shared.torngit.exceptions import TorngitClientError
+from shared.torngit.exceptions import TorngitClientError, TorngitRefreshTokenFailedError
 from shared.yaml import UserYaml
 from shared.yaml.user_yaml import OwnerContext
 from tasks.base import BaseCodecovTask
@@ -248,6 +248,11 @@ class PullSyncTask(BaseCodecovTask, name=pulls_task_name):
                 repository,
             )
             db_session.commit()
+        except TorngitRefreshTokenFailedError:
+            log.warning(
+                "Unable to fetch information about pull commits: GitLab OAuth token refresh failed. User may need to reconnect their account.",
+                extra={"pullid": pullid, "repoid": repoid},
+            )
         except TorngitClientError:
             log.warning(
                 "Unable to fetch information about pull commits",
@@ -329,6 +334,12 @@ class PullSyncTask(BaseCodecovTask, name=pulls_task_name):
                     head_report.flare(changes, color=color) if head_report else None
                 )
             return True
+        except TorngitRefreshTokenFailedError:
+            log.warning(
+                "Unable to fetch diff: GitLab OAuth token refresh failed. User may need to reconnect their account.",
+                extra={"pullid": pull.pullid, "repoid": pull.repoid},
+            )
+            return False
         except TorngitClientError:
             log.warning(
                 "Unable to fetch information about diff",

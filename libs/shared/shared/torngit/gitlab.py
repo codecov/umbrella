@@ -431,6 +431,7 @@ class Gitlab(TorngitBaseAdapter):
         url = url_concat(url_path, args).replace(" ", "%20")
 
         max_retries = 2
+        token_refreshed = False
         for current_retry in range(1, max_retries + 1):
             if token or self.token:
                 headers["Authorization"] = "Bearer {}".format(
@@ -464,11 +465,25 @@ class Gitlab(TorngitBaseAdapter):
                     res.status_code == 401
                     and res.json().get("error") == "invalid_token"
                 ):
+                    if token_refreshed:
+                        # Already refreshed once and token is still invalid.
+                        # Do not attempt another refresh to avoid exhausting the
+                        # GitLab rotating single-use refresh token chain.
+                        log.warning(
+                            "GitLab token still invalid after refresh; not retrying",
+                            extra=_log,
+                        )
+                        raise TorngitClientGeneralError(
+                            res.status_code,
+                            response_data=res.json(),
+                            message="Gitlab API: 401 (token invalid after refresh)",
+                        )
                     # Refresh token and retry
                     log.debug("Token is invalid. Refreshing")
                     token = await self.refresh_token(client)
                     if callable(self._on_token_refresh):
                         await self._on_token_refresh(token)
+                    token_refreshed = True
                 elif res.status_code >= 400:
                     message = f"Gitlab API: {res.status_code}"
                     raise TorngitClientGeneralError(
