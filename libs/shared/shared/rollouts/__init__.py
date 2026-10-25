@@ -6,6 +6,7 @@ from functools import cached_property
 import mmh3
 from asgiref.sync import sync_to_async
 from cachetools.func import lru_cache, ttl_cache
+from django.db import OperationalError
 
 from shared.config import get_config
 from shared.django_apps.rollouts.models import FeatureFlag, FeatureFlagVariant
@@ -142,7 +143,15 @@ class Feature:
             self._fetch_and_set_from_db.cache_clear()
 
         # Will only run and refresh values from the database every ~5 minutes due to TTL cache
-        self._fetch_and_set_from_db()
+        try:
+            self._fetch_and_set_from_db()
+        except OperationalError:
+            log.warning(
+                "Failed to fetch feature flag from DB due to connection error, returning default",
+                extra={"feature_flag": self.name},
+                exc_info=True,
+            )
+            return default
 
         return self._check_value(identifier, default)
 
