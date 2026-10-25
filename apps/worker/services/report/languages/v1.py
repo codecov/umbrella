@@ -34,13 +34,16 @@ def _list_to_dict(lines):
             }
         else:
             return {}
-    elif "lines" in lines:
+    elif isinstance(lines, dict) and "lines" in lines:
         # lines format here is
         # { "lines": [ None, None, 1, 1,...] },
         # We add a fake first line because this function starts from line at index 1 not 0
         return _list_to_dict([None] + lines["lines"])
-    else:
+    elif isinstance(lines, dict):
         return lines or {}
+    else:
+        # String or other unexpected type — return empty dict to avoid AttributeError
+        return {}
 
 
 def from_json(json: str, report_builder_session: ReportBuilderSession) -> None:
