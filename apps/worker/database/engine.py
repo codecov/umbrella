@@ -14,6 +14,16 @@ from shared.utils.ReportEncoder import ReportEncoder
 from .base import Base
 
 
+# TCP keepalives so connections dropped by intermediaries (LB / PgBouncer)
+# are detected in seconds instead of hanging until an infrastructure timeout.
+DB_CONNECT_ARGS = {
+    "keepalives": 1,
+    "keepalives_idle": 30,
+    "keepalives_interval": 10,
+    "keepalives_count": 5,
+}
+
+
 def create_all(engine):
     Base.metadata.create_all(engine)
 
@@ -41,8 +51,10 @@ class SessionFactory:
     def create_session(self):
         self.main_engine = create_engine(
             self.database_url,
+                connect_args=DB_CONNECT_ARGS,
             json_serializer=json_dumps,
             pool_pre_ping=True,
+            connect_args=DB_CONNECT_ARGS,
         )
 
         if is_timeseries_enabled():
