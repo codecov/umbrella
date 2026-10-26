@@ -1,8 +1,68 @@
+import logging
+from collections.abc import Callable
+from typing import Any
+
+from sqlalchemy.exc import DBAPIError
+
 import shared.celery_config as shared_celery_config
 from database.engine import get_db_session
 from database.models.core import Commit, CompareCommit, Owner, Repository
 from shared.celery_router import route_tasks_based_on_user_plan
 from shared.plan.constants import DEFAULT_FREE_PLAN
+
+log = logging.getLogger(__name__)
+
+
+def _safe_routing_lookup(
+    dbsession,
+    func: Callable[..., Any],
+    default: Any,
+    task_name: str,
+    task_kwargs: dict,
+) -> Any:
+    """Run a routing lookup, tolerating transient DB disconnects.
+
+    Routing lookups run inside ``apply_async`` (including from Celery chord
+    callbacks). A dropped Postgres connection there would otherwise prevent the
+    task from ever being enqueued. On a disconnect we roll back (discarding the
+    invalidated connection, whose transaction is already lost), retry once on a
+    fresh pooled connection, and finally fall back to default routing.
+    Non-disconnect errors are re-raised unchanged.
+    """
+    for attempt in (1, 2):
+        try:
+            return func(dbsession, **task_kwargs)
+        except DBAPIError as exc:
+            if not exc.connection_invalidated:
+                raise
+            try:
+                dbsession.rollback()
+            except Exception:
+                log.warning(
+                    "Failed to rollback session after DB disconnect during task routing",
+                    exc_info=True,
+                )
+            if attempt == 1:
+                log.warning(
+                    "DB disconnect during task routing lookup, retrying",
+                    extra={"task_name": task_name, "lookup": func.__name__},
+                    exc_info=True,
+                )
+                continue
+            log.warning(
+                "DB disconnect during task routing lookup, falling back to default routing",
+                extra={
+                    "task_name": task_name,
+                    "lookup": func.__name__,
+                    "default": default,
+                    "task_kwargs_keys": sorted(task_kwargs.keys()),
+                    "repoid": task_kwargs.get("repoid"),
+                    "ownerid": task_kwargs.get("ownerid"),
+                },
+                exc_info=True,
+            )
+            return default
+    return default
 
 
 def _get_user_plan_from_ownerid(db_session, ownerid, *args, **kwargs) -> str:
@@ -105,8 +165,10 @@ def _get_ownerid_from_task(dbsession, task_name: str, task_kwargs: dict) -> int 
         shared_celery_config.bundle_analysis_notify_task_name: _get_ownerid_from_repoid,
         shared_celery_config.bundle_analysis_save_measurements_task_name: _get_ownerid_from_repoid,
     }
-    func_to_use = owner_lookup_funcs.get(task_name, lambda *args, **kwargs: None)
-    return func_to_use(dbsession, **task_kwargs)
+    func_to_use = owner_lookup_funcs.get(task_name)
+    if func_to_use is None:
+        return None
+    return _safe_routing_lookup(dbsession, func_to_use, None, task_name, task_kwargs)
 
 
 def _get_user_plan_from_task(dbsession, task_name: str, task_kwargs: dict) -> str:
@@ -136,10 +198,12 @@ def _get_user_plan_from_task(dbsession, task_name: str, task_kwargs: dict) -> st
         shared_celery_config.bundle_analysis_notify_task_name: _get_user_plan_from_repoid,
         shared_celery_config.bundle_analysis_save_measurements_task_name: _get_user_plan_from_repoid,
     }
-    func_to_use = owner_plan_lookup_funcs.get(
-        task_name, lambda *args, **kwargs: DEFAULT_FREE_PLAN
+    func_to_use = owner_plan_lookup_funcs.get(task_name)
+    if func_to_use is None:
+        return DEFAULT_FREE_PLAN
+    return _safe_routing_lookup(
+        dbsession, func_to_use, DEFAULT_FREE_PLAN, task_name, task_kwargs
     )
-    return func_to_use(dbsession, **task_kwargs)
 
 
 def route_task(name, args, kwargs, options, task=None, **kw):
