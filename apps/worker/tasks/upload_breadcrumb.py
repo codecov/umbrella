@@ -1,10 +1,15 @@
 import logging
 import re
 
+from celery.exceptions import SoftTimeLimitExceeded
+from django.db import OperationalError, connection, transaction
 from sqlalchemy.orm import Session
 
 from app import celery_app
-from shared.celery_config import upload_breadcrumb_task_name
+from shared.celery_config import (
+    TASK_RETRY_BACKOFF_BASE_SECONDS,
+    upload_breadcrumb_task_name,
+)
 from shared.django_apps.upload_breadcrumbs.models import (
     BreadcrumbData,
     Endpoints,
@@ -42,11 +47,20 @@ UPLOAD_BREADCRUMB_ERROR_COUNTER = Counter(
 )
 
 
+# A single breadcrumb INSERT should take milliseconds; bound it so a stalled
+# database fails fast instead of blocking until the global 600s soft limit.
+BREADCRUMB_STATEMENT_TIMEOUT_MS = 30_000
+
+
 class UploadBreadcrumbTask(BaseCodecovTask, name=upload_breadcrumb_task_name):
     """
     This task is for creating upload breadcrumbs and is triggered by events
     in the upload flow from both API and worker.
     """
+
+    # Used when no plan-specific limits are passed at enqueue time.
+    soft_time_limit = 60
+    time_limit = 90
 
     def run_impl(
         self,
@@ -89,13 +103,48 @@ class UploadBreadcrumbTask(BaseCodecovTask, name=upload_breadcrumb_task_name):
                 },
             )
         if breadcrumb_data.milestone:
-            inc_counter(
-                UPLOAD_BREADCRUMB_MILESTONE_COUNTER,
-                labels={"milestone": Milestones(breadcrumb_data.milestone).label},
+        try:
+            with transaction.atomic():
+                with connection.cursor() as cursor:
+                    # SET LOCAL is PgBouncer-safe (scoped to this transaction),
+                    # unlike a connection-level statement_timeout option.
+                    cursor.execute(
+                        f"SET LOCAL statement_timeout = {BREADCRUMB_STATEMENT_TIMEOUT_MS}"
+                    )
+                UploadBreadcrumb.objects.create(
+                    commit_sha=commit_sha,
+                    repo_id=repo_id,
+                    breadcrumb_data=breadcrumb_data.model_dump(),
+                    upload_ids=upload_ids,
+                    sentry_trace_id=sentry_trace_id,
+                )
+        except (OperationalError, SoftTimeLimitExceeded) as exc:
+            log.warning(
+                "Failed to save upload breadcrumb due to database issue, retrying",
+                extra={
+                    "repo_id": repo_id,
+                    "commit_sha": commit_sha,
+                    "upload_ids": upload_ids,
+                    "error": repr(exc),
+                    "retries": getattr(self.request, "retries", 0),
+                },
             )
-
-        UploadBreadcrumb.objects.create(
-            commit_sha=commit_sha,
+            # Drop the possibly-dead connection so the retry starts fresh.
+            connection.close()
+            retry_count = getattr(self.request, "retries", 0)
+            if not self.safe_retry(
+                countdown=TASK_RETRY_BACKOFF_BASE_SECONDS * (2**retry_count),
+            ):
+                log.error(
+                    "Giving up on saving upload breadcrumb after max retries",
+                    extra={
+                        "repo_id": repo_id,
+                        "commit_sha": commit_sha,
+                        "upload_ids": upload_ids,
+                        "error": repr(exc),
+                    },
+                )
+                return {"successful": False}
             repo_id=repo_id,
             breadcrumb_data=breadcrumb_data.model_dump(),
             upload_ids=upload_ids,
