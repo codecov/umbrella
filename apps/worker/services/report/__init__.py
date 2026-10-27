@@ -10,6 +10,7 @@ import sentry_sdk
 from asgiref.sync import async_to_sync
 from celery.exceptions import SoftTimeLimitExceeded
 from sqlalchemy.orm import Session as DbSession
+from urllib3.exceptions import ProtocolError, ReadTimeoutError
 
 from database.models import Commit, Repository, Upload, UploadError
 from database.models.reports import (
@@ -629,6 +630,38 @@ class ReportService(BaseReportService):
             )
             result.error = ProcessingError(
                 code=UploadErrorCode.FILE_NOT_IN_STORAGE,
+                params={"location": archive_url},
+                is_retryable=True,
+            )
+            raw_report_info.error = result.error
+            return result
+        except (ReadTimeoutError, ProtocolError, TimeoutError) as e:
+            # Transient network failure while streaming the file from storage
+            # (e.g. GCS stalling mid-download). Mark as retryable so the task
+            # retries with backoff; if retries are exhausted, the upload
+            # processor task captures the failure to Sentry.
+            sentry_sdk.add_breadcrumb(
+                category="storage",
+                level="warning",
+                message="Transient error when fetching raw report from storage",
+                data={
+                    "archive_path": archive_url,
+                    "reportid": reportid,
+                    "error_type": type(e).__name__,
+                },
+            )
+            log.warning(
+                "Transient error when fetching raw report from storage",
+                extra={
+                    "archive_path": archive_url,
+                    "reportid": reportid,
+                    "error_type": type(e).__name__,
+                    "error": str(e),
+                },
+                exc_info=True,
+            )
+            result.error = ProcessingError(
+                code=UploadErrorCode.UNKNOWN_STORAGE,
                 params={"location": archive_url},
                 is_retryable=True,
             )
