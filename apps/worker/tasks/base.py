@@ -11,7 +11,6 @@ from django.db import InterfaceError, close_old_connections
 from sqlalchemy.exc import (
     DataError,
     IntegrityError,
-    InvalidRequestError,
     SQLAlchemyError,
 )
 
@@ -524,18 +523,42 @@ class BaseCodecovTask(celery_app.Task):
             try:
                 db_session.commit()
                 db_session.close()
-            except InvalidRequestError:
+            except SQLAlchemyError:
                 log.warning(
                     "DB session cannot be operated on any longer. Closing it and removing it",
                     exc_info=True,
                 )
-                get_db_session.remove()
-        except InvalidRequestError:
+                self._discard_dbsession(db_session)
+        except SQLAlchemyError:
+            # Covers InvalidRequestError as well as DBAPI errors such as
+            # InternalError (e.g. "savepoint does not exist" after a timeout
+            # interrupted a nested transaction). Without a rollback, the
+            # underlying connection stays in an aborted transaction and the
+            # reused scoped session breaks the next task in this process.
             log.warning(
                 "DB session cannot be operated on any longer. Closing it and removing it",
                 exc_info=True,
             )
-            get_db_session.remove()
+            self._discard_dbsession(db_session)
+
+    def _discard_dbsession(self, db_session):
+        """Roll back any aborted transaction and drop the scoped session so the
+        next task in this process starts with a clean session and connection."""
+        try:
+            db_session.rollback()
+        except Exception:
+            log.warning(
+                "Failed to roll back DB session while discarding it",
+                exc_info=True,
+            )
+        try:
+            db_session.close()
+        except Exception:
+            log.warning(
+                "Failed to close DB session while discarding it",
+                exc_info=True,
+            )
+        get_db_session.remove()
 
     def on_retry(self, exc, task_id, args, kwargs, einfo):
         res = super().on_retry(exc, task_id, args, kwargs, einfo)
