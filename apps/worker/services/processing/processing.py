@@ -116,13 +116,24 @@ def rewrite_or_delete_upload(
     should_delete_archive_setting = delete_archive_setting(commit_yaml)
     archive_url = report_info.archive_url
 
-    if should_delete_archive_setting and not report_info.error:
-        if not archive_url.startswith("http"):
-            archive_service.delete_file(archive_url)
+    # This is a best-effort cleanup step that runs after the upload has already
+    # been successfully processed. Transient storage failures (e.g. a 502 from
+    # the storage backend) must not fail the whole processing task / chord.
+    try:
+        if should_delete_archive_setting and not report_info.error:
+            if not archive_url.startswith("http"):
+                archive_service.delete_file(archive_url)
 
-    elif isinstance(report_info.raw_report, VersionOneParsedRawReport):
-        # only a version 1 report needs to be "rewritten readable"
+        elif isinstance(report_info.raw_report, VersionOneParsedRawReport):
+            # only a version 1 report needs to be "rewritten readable"
 
-        archive_service.write_file(
-            archive_url, report_info.raw_report.content().getvalue()
+            archive_service.write_file(
+                archive_url, report_info.raw_report.content().getvalue()
+            )
+    except Exception as e:
+        log.warning(
+            "Failed to rewrite or delete raw upload in archive",
+            extra={"archive_url": archive_url, "upload": report_info.upload},
+            exc_info=True,
         )
+        sentry_sdk.capture_exception(e)
