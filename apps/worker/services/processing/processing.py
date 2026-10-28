@@ -92,7 +92,21 @@ def process_upload(
                 }
             )
 
-        rewrite_or_delete_upload(archive_service, commit_yaml, report_info)
+        # Rewriting/deleting the raw upload is a non-critical cleanup step that
+        # runs after the upload was already processed and marked as such.
+        # Transient storage failures here must not mark the commit as errored.
+        try:
+            rewrite_or_delete_upload(archive_service, commit_yaml, report_info)
+        except Exception:
+            log.exception(
+                "Failed to rewrite or delete raw upload after processing",
+                extra={
+                    "repo_id": repo_id,
+                    "commit_sha": commit_sha,
+                    "upload_id": upload_id,
+                    "archive_url": report_info.archive_url,
+                },
+            )
 
     except CeleryError:
         raise
