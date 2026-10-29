@@ -1,3 +1,4 @@
+import glob
 import logging
 import os
 import sys
@@ -38,6 +39,28 @@ initialization_text = """
 @worker_process_shutdown.connect
 def mark_process_dead(pid, exitcode, **kwargs):
     multiprocess.mark_process_dead(pid)
+    _remove_dead_process_metric_files(pid)
+
+
+def _remove_dead_process_metric_files(pid):
+    """
+    `multiprocess.mark_process_dead` only removes live gauge files. Counter and
+    histogram files (`<type>_<pid>.db`) of dead child processes are otherwise
+    kept forever, and every recycled Celery child gets a new pid, so the
+    multiprocess directory grows until the volume runs out of space (ENOSPC).
+    """
+    multiproc_dir = os.environ.get("PROMETHEUS_MULTIPROC_DIR")
+    if not multiproc_dir or not pid:
+        return
+    for filename in glob.glob(os.path.join(multiproc_dir, f"*_{pid}.db")):
+        try:
+            os.remove(filename)
+        except OSError:
+            log.warning(
+                "Failed to remove Prometheus metric file of dead process",
+                extra={"pid": pid, "filename": filename},
+                exc_info=True,
+            )
 
 
 @click.group()

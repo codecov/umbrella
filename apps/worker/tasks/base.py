@@ -49,6 +49,32 @@ from shared.utils.sentry import current_sentry_trace_id
 
 log = logging.getLogger("worker")
 
+
+def _safe_metric_call(metric_name: str, func, *args, **kwargs) -> None:
+    """
+    Run a Prometheus metric operation without letting metric storage failures
+    (e.g. ENOSPC in PROMETHEUS_MULTIPROC_DIR, or a partially reset mmap file)
+    fail the task. Failures are still reported via a warning log.
+    """
+    try:
+        func(*args, **kwargs)
+    except (OSError, TypeError, ValueError):
+        log.warning(
+            "Failed to record task metric",
+            extra={"metric": metric_name},
+            exc_info=True,
+        )
+
+
+@contextmanager
+def _safe_metric_timer(metric_name: str, histogram):
+    start = time.perf_counter()
+    try:
+        yield
+    finally:
+        duration = max(time.perf_counter() - start, 0)
+        _safe_metric_call(metric_name, histogram.observe, duration)
+
 REQUEST_TIMEOUT_COUNTER = Counter(
     "worker_task_counts_timeouts",
     "Number of times a task experienced any kind of timeout",
@@ -408,7 +434,7 @@ class BaseCodecovTask(celery_app.Task):
 
     @sentry_sdk.trace
     def run(self, *args, **kwargs):
-        with self.task_full_runtime.time():
+        with _safe_metric_timer("task_full_runtime", self.task_full_runtime):
             db_session = get_db_session()
 
             log_context = LogContext(
@@ -434,7 +460,7 @@ class BaseCodecovTask(celery_app.Task):
             set_log_context(log_context)
             load_checkpoints_from_kwargs([UploadFlow, TestResultsFlow], kwargs)
 
-            self.task_run_counter.inc()
+            _safe_metric_call("task_run_counter", self.task_run_counter.inc)
             if (
                 hasattr(self, "request")
                 and self.request is not None
@@ -455,12 +481,16 @@ class BaseCodecovTask(celery_app.Task):
                     time_in_queue_timer = TASK_TIME_IN_QUEUE.labels(
                         task=self.name, queue=queue_name
                     )
-                    time_in_queue_timer.observe(delta.total_seconds())
+                    _safe_metric_call(
+                        "time_in_queue",
+                        time_in_queue_timer.observe,
+                        delta.total_seconds(),
+                    )
 
             close_old_connections()
 
             try:
-                with self.task_core_runtime.time():
+                with _safe_metric_timer("task_core_runtime", self.task_core_runtime):
                     return self.run_impl(db_session, *args, **kwargs)
             except InterfaceError as ex:
                 sentry_sdk.capture_exception(
