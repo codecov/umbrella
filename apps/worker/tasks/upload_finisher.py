@@ -6,6 +6,7 @@ from enum import Enum
 import sentry_sdk
 from asgiref.sync import async_to_sync
 from celery.exceptions import Retry, SoftTimeLimitExceeded
+from sqlalchemy.exc import DBAPIError
 
 from app import celery_app
 from celery_config import notify_error_task_name
@@ -67,6 +68,14 @@ UPLOAD_FINISHER_ALREADY_COMPLETED_COUNTER = Counter(
 )
 
 regexp_ci_skip = re.compile(r"\[(ci|skip| |-){3,}\]")
+
+DB_DISCONNECT_RETRY_COUNTDOWN_SECONDS = 15
+
+
+def _is_db_disconnect(exc: BaseException) -> bool:
+    """True when SQLAlchemy flagged the error as a dropped DB connection
+    (e.g. "server closed the connection unexpectedly")."""
+    return isinstance(exc, DBAPIError) and bool(exc.connection_invalidated)
 
 
 class ShouldCallNotifyResult(Enum):
@@ -416,6 +425,30 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
             }
 
         except Exception as e:
+            if _is_db_disconnect(e) and not self._has_exceeded_max_attempts(
+                UPLOAD_FINISHER_MAX_RETRIES
+            ):
+                log.warning(
+                    "run_impl: DB connection dropped, retrying upload finisher",
+                    extra={
+                        "upload_ids": upload_ids,
+                        "repoid": repoid,
+                        "commitid": commitid,
+                        "attempts": self.attempts,
+                    },
+                    exc_info=True,
+                )
+                try:
+                    db_session.rollback()
+                except Exception:
+                    log.warning(
+                        "run_impl: rollback after DB disconnect failed",
+                        exc_info=True,
+                    )
+                self.retry(
+                    max_retries=UPLOAD_FINISHER_MAX_RETRIES,
+                    countdown=DB_DISCONNECT_RETRY_COUNTDOWN_SECONDS,
+                )
             log.exception("run_impl: unexpected error in upload finisher")
             sentry_sdk.capture_exception(e)
             log.exception(
@@ -606,7 +639,9 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                     )
 
                 log.info("handle_finisher_lock: Invalidating caches")
-                self.invalidate_caches(lock_manager.redis_connection, commit)
+                self._invalidate_caches_with_reconnect(
+                    db_session, lock_manager.redis_connection, commit
+                )
                 self._call_upload_breadcrumb_task(
                     commit_sha=commitid,
                     repo_id=repoid,
@@ -858,6 +893,44 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                 return ShouldCallNotifyResult.DO_NOT_NOTIFY
 
         return ShouldCallNotifyResult.NOTIFY
+
+    def _invalidate_caches_with_reconnect(
+        self, db_session, redis_connection, commit: Commit
+    ):
+        """Invalidate caches, recovering from a dropped DB connection.
+
+        Report merging and notify scheduling have already completed by the
+        time this runs, so a stale/dropped connection here must not fail the
+        whole finisher. Rolling back releases the (possibly dead) connection;
+        the next lazy load gets a fresh one validated by pool_pre_ping.
+        """
+        repoid = commit.repoid
+        commitid = commit.commitid
+        db_session.rollback()
+        try:
+            self.invalidate_caches(redis_connection, commit)
+            return
+        except DBAPIError as exc:
+            if not _is_db_disconnect(exc):
+                raise
+            log.warning(
+                "invalidate_caches: DB connection dropped, retrying with fresh connection",
+                extra={"repoid": repoid, "commitid": commitid},
+                exc_info=True,
+            )
+            db_session.rollback()
+
+        try:
+            self.invalidate_caches(redis_connection, commit)
+        except DBAPIError as exc:
+            if not _is_db_disconnect(exc):
+                raise
+            db_session.rollback()
+            log.exception(
+                "invalidate_caches: failed after reconnect, caches not invalidated",
+                extra={"repoid": repoid, "commitid": commitid},
+            )
+            sentry_sdk.capture_exception(exc)
 
     def invalidate_caches(self, redis_connection, commit: Commit):
         redis_connection.delete(f"cache/{commit.repoid}/tree/{commit.branch}")
