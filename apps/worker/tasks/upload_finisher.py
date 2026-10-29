@@ -6,6 +6,7 @@ from enum import Enum
 import sentry_sdk
 from asgiref.sync import async_to_sync
 from celery.exceptions import Retry, SoftTimeLimitExceeded
+from sqlalchemy.exc import DBAPIError
 
 from app import celery_app
 from celery_config import notify_error_task_name
@@ -658,6 +659,38 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                 max_retries=UPLOAD_FINISHER_MAX_RETRIES, countdown=retry.countdown
             )
 
+    def _update_pull_and_comparison(
+        self, db_session, commit: Commit, repoid: int, pullid: int
+    ) -> None:
+        """Update the pull head and schedule the pulls/comparison tasks.
+
+        Safe to re-run: the pull is re-queried, comparisons are created via
+        get_or_create_comparison, and re-dispatching the tasks is harmless.
+        """
+        pull = db_session.query(Pull).filter_by(repoid=repoid, pullid=pullid).first()
+        if not pull:
+            return
+        head = pull.get_head_commit()
+        if head is None or head.timestamp <= commit.timestamp:
+            pull.head = commit.commitid
+        if pull.head != commit.commitid:
+            return
+        db_session.commit()
+        self.app.tasks[pulls_task_name].apply_async(
+            kwargs={
+                "repoid": repoid,
+                "pullid": pull.pullid,
+                "should_send_notifications": False,
+            }
+        )
+        compared_to = pull.get_comparedto_commit()
+        if compared_to:
+            comparison = get_or_create_comparison(db_session, compared_to, commit)
+            db_session.commit()
+            self.app.tasks[compute_comparison_task_name].apply_async(
+                kwargs={"comparison_id": comparison.id}
+            )
+
     def finish_reports_processing(
         self,
         db_session,
@@ -710,36 +743,34 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                             "parent_task": self.request.parent_id,
                         },
                     )
-                    if commit.pullid:
-                        pull = (
-                            db_session.query(Pull)
-                            .filter_by(repoid=commit.repoid, pullid=commit.pullid)
-                            .first()
-                        )
-                        if pull:
-                            head = pull.get_head_commit()
-                            if head is None or head.timestamp <= commit.timestamp:
-                                pull.head = commit.commitid
-                            if pull.head == commit.commitid:
-                                db_session.commit()
-                                self.app.tasks[pulls_task_name].apply_async(
-                                    kwargs={
-                                        "repoid": repoid,
-                                        "pullid": pull.pullid,
-                                        "should_send_notifications": False,
-                                    }
-                                )
-                                compared_to = pull.get_comparedto_commit()
-                                if compared_to:
-                                    comparison = get_or_create_comparison(
-                                        db_session, compared_to, commit
-                                    )
-                                    db_session.commit()
-                                    self.app.tasks[
-                                        compute_comparison_task_name
-                                    ].apply_async(
-                                        kwargs={"comparison_id": comparison.id}
-                                    )
+                    pullid = commit.pullid
+                    if pullid:
+                        try:
+                            self._update_pull_and_comparison(
+                                db_session, commit, repoid, pullid
+                            )
+                        except DBAPIError as exc:
+                            if not exc.connection_invalidated:
+                                raise
+                            # The DB connection was dropped (e.g. failover or
+                            # PgBouncer reset). Roll back so the next query
+                            # checks out a fresh connection validated by
+                            # pool_pre_ping, then retry this idempotent step once.
+                            # If the retry fails too, the error propagates to
+                            # run_impl, which reports it to Sentry.
+                            log.warning(
+                                "finish_reports_processing: DB connection lost while updating pull/comparison, retrying once",
+                                extra={
+                                    "repoid": repoid,
+                                    "commitid": commitid,
+                                    "pullid": pullid,
+                                    "error": repr(exc),
+                                },
+                            )
+                            db_session.rollback()
+                            self._update_pull_and_comparison(
+                                db_session, commit, repoid, pullid
+                            )
                 case ShouldCallNotifyResult.DO_NOT_NOTIFY:
                     notifications_called = False
                     log.info(
