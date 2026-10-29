@@ -1,4 +1,5 @@
 import logging
+import os
 import time
 from contextlib import contextmanager
 from datetime import datetime
@@ -172,6 +173,57 @@ TASK_TIME_IN_QUEUE = Histogram(
         1200,
     ],
 )
+
+
+_metrics_failure_reported = False
+
+
+def _report_metrics_failure(metric, exc: Exception) -> None:
+    """Log (and report once per process) a failure to record a Prometheus metric.
+
+    Prometheus multiprocess mode writes metrics to mmap'd files on disk. If the
+    disk fills up (e.g. ``OSError: [Errno 28] No space left on device``), the
+    client can be left with closed mmaps and subsequent writes raise
+    ``TypeError``. Metric recording must never fail the task itself.
+    """
+    global _metrics_failure_reported
+    log.warning(
+        "Failed to record Prometheus metric",
+        extra={
+            "metric": repr(metric),
+            "error": repr(exc),
+            "prometheus_multiproc_dir": os.environ.get("PROMETHEUS_MULTIPROC_DIR"),
+        },
+        exc_info=True,
+    )
+    if not _metrics_failure_reported:
+        _metrics_failure_reported = True
+        sentry_sdk.capture_exception(exc)
+
+
+def _safe_inc(metric, amount: float = 1) -> None:
+    try:
+        metric.inc(amount)
+    except (OSError, TypeError, ValueError) as exc:
+        _report_metrics_failure(metric, exc)
+
+
+def _safe_observe(metric, value: float) -> None:
+    try:
+        metric.observe(value)
+    except (OSError, TypeError, ValueError) as exc:
+        _report_metrics_failure(metric, exc)
+
+
+@contextmanager
+def _safe_timer(metric):
+    """Like ``Histogram.time()`` but a failure to record never masks the task's
+    own result or exception."""
+    start = time.monotonic()
+    try:
+        yield
+    finally:
+        _safe_observe(metric, max(time.monotonic() - start, 0))
 
 
 def _get_request_headers(request) -> dict:
@@ -408,7 +460,7 @@ class BaseCodecovTask(celery_app.Task):
 
     @sentry_sdk.trace
     def run(self, *args, **kwargs):
-        with self.task_full_runtime.time():
+        with _safe_timer(self.task_full_runtime):
             db_session = get_db_session()
 
             log_context = LogContext(
@@ -434,7 +486,7 @@ class BaseCodecovTask(celery_app.Task):
             set_log_context(log_context)
             load_checkpoints_from_kwargs([UploadFlow, TestResultsFlow], kwargs)
 
-            self.task_run_counter.inc()
+            _safe_inc(self.task_run_counter)
             if (
                 hasattr(self, "request")
                 and self.request is not None
@@ -455,12 +507,12 @@ class BaseCodecovTask(celery_app.Task):
                     time_in_queue_timer = TASK_TIME_IN_QUEUE.labels(
                         task=self.name, queue=queue_name
                     )
-                    time_in_queue_timer.observe(delta.total_seconds())
+                    _safe_observe(time_in_queue_timer, delta.total_seconds())
 
             close_old_connections()
 
             try:
-                with self.task_core_runtime.time():
+                with _safe_timer(self.task_core_runtime):
                     return self.run_impl(db_session, *args, **kwargs)
             except InterfaceError as ex:
                 sentry_sdk.capture_exception(
@@ -539,24 +591,26 @@ class BaseCodecovTask(celery_app.Task):
 
     def on_retry(self, exc, task_id, args, kwargs, einfo):
         res = super().on_retry(exc, task_id, args, kwargs, einfo)
-        self.task_retry_counter.inc()
+        _safe_inc(self.task_retry_counter)
         retry_count = (
             getattr(self.request, "retries", 0) if hasattr(self, "request") else 0
         )
-        TASK_RETRY_WITH_COUNT_COUNTER.labels(
-            task=self.name, retry_count=str(retry_count)
-        ).inc()
+        _safe_inc(
+            TASK_RETRY_WITH_COUNT_COUNTER.labels(
+                task=self.name, retry_count=str(retry_count)
+            )
+        )
         return res
 
     def on_success(self, retval, task_id, args, kwargs):
         res = super().on_success(retval, task_id, args, kwargs)
-        self.task_success_counter.inc()
+        _safe_inc(self.task_success_counter)
         return res
 
     def on_failure(self, exc, task_id, args, kwargs, einfo):
         """Handle task failure, logging flow checkpoints and incrementing metrics."""
         res = super().on_failure(exc, task_id, args, kwargs, einfo)
-        self.task_failure_counter.inc()
+        _safe_inc(self.task_failure_counter)
 
         if UploadFlow.has_begun():
             UploadFlow.log(UploadFlow.CELERY_FAILURE)
