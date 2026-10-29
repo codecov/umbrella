@@ -10,6 +10,7 @@ from celery.worker.request import Request
 from django.db import InterfaceError, close_old_connections
 from sqlalchemy.exc import (
     DataError,
+    DBAPIError,
     IntegrityError,
     InvalidRequestError,
     SQLAlchemyError,
@@ -529,13 +530,46 @@ class BaseCodecovTask(celery_app.Task):
                     "DB session cannot be operated on any longer. Closing it and removing it",
                     exc_info=True,
                 )
-                get_db_session.remove()
+                self._discard_db_session(db_session)
+            except DBAPIError:
+                self._handle_db_connection_error_on_wrap_up(db_session)
         except InvalidRequestError:
             log.warning(
                 "DB session cannot be operated on any longer. Closing it and removing it",
                 exc_info=True,
             )
-            get_db_session.remove()
+            self._discard_db_session(db_session)
+        except DBAPIError:
+            self._handle_db_connection_error_on_wrap_up(db_session)
+
+    def _handle_db_connection_error_on_wrap_up(self, db_session):
+        """Handle DB driver errors (e.g. the server closing the connection
+        unexpectedly) raised while committing at the end of a task.
+
+        Raising from here would mask the task's original outcome (e.g. a
+        `SoftTimeLimitExceeded`) and leave a broken session/connection to be
+        reused by the next task in this process, so we log it and discard the
+        session instead.
+        """
+        log.warning(
+            "DB connection error while committing session at the end of the task. Discarding session",
+            exc_info=True,
+            extra={"task_name": self.name},
+        )
+        self._discard_db_session(db_session)
+
+    def _discard_db_session(self, db_session):
+        """Best-effort rollback/close of a broken session, then remove it from
+        the scoped registry so the next task gets a fresh session/connection."""
+        try:
+            db_session.rollback()
+        except SQLAlchemyError:
+            log.debug("Failed to rollback broken DB session", exc_info=True)
+        try:
+            db_session.close()
+        except SQLAlchemyError:
+            log.debug("Failed to close broken DB session", exc_info=True)
+        get_db_session.remove()
 
     def on_retry(self, exc, task_id, args, kwargs, einfo):
         res = super().on_retry(exc, task_id, args, kwargs, einfo)
