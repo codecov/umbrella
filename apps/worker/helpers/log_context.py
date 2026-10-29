@@ -101,6 +101,17 @@ class LogContext:
 
         except Exception:
             log.exception("Failed to populate log context")
+            # A failed query (e.g. a dropped connection) leaves the session's
+            # transaction in an invalid state. Roll it back so the task that
+            # shares this session can keep using it instead of hitting
+            # PendingRollbackError on its first query.
+            try:
+                dbsession.rollback()
+            except Exception:
+                log.warning(
+                    "Failed to roll back session after log context population error",
+                    exc_info=True,
+                )
 
         self._populated_from_db = True
 
