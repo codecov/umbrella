@@ -3,7 +3,7 @@ import functools
 import json
 import logging
 from collections import Counter
-from collections.abc import Generator
+from collections.abc import Generator, Iterable
 from dataclasses import dataclass, field
 from datetime import datetime
 
@@ -1290,6 +1290,42 @@ class CommitComparisonService:
             compare_commit__repository_id=obj.repository_id,
         ).select_related("compare_commit", "base_commit")
         return comparison_qs.first()
+
+    @staticmethod
+    def get_commit_comparisons_for_pulls(
+        repo_id: int, pulls: Iterable[Pull]
+    ) -> dict[tuple[str, str], CommitComparison]:
+        """
+        Batch version of `get_commit_comparison_for_pull`: fetches the commit
+        comparisons for all the given pulls in a single query, keyed by
+        `(base commitid, head commitid)`.
+        """
+        pairs = {
+            (pull.compared_to, pull.head)
+            for pull in pulls
+            if pull.compared_to is not None and pull.head is not None
+        }
+        if not pairs:
+            return {}
+
+        comparison_qs = (
+            CommitComparison.objects.filter(
+                base_commit__commitid__in={base for base, _ in pairs},
+                compare_commit__commitid__in={head for _, head in pairs},
+                base_commit__repository_id=repo_id,
+                compare_commit__repository_id=repo_id,
+            )
+            .select_related("compare_commit", "base_commit")
+            .order_by("id")
+        )
+
+        comparisons: dict[tuple[str, str], CommitComparison] = {}
+        for comparison in comparison_qs:
+            key = (comparison.base_commit.commitid, comparison.compare_commit.commitid)
+            # keep the first (lowest id) match to mirror `.first()` semantics
+            if key in pairs and key not in comparisons:
+                comparisons[key] = comparison
+        return comparisons
 
     @classmethod
     def fetch_precomputed(self, repo_id: int, keys: list[tuple]) -> QuerySet:
