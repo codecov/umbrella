@@ -28,6 +28,7 @@ BOT_USER_EMAILS = [
     "xgopilot[bot]@users.noreply.github.com",  # CCMRG-1850
     "231223108+xgopilot[bot]@users.noreply.github.com",  # CCMRG-1850
     "161369871+google-labs-jules[bot]@users.noreply.github.com",  # https://github.com/codecov/umbrella/issues/629
+    "noreply@anthropic.com",  # claude
 ]
 BOT_USER_IDS = [
     "49699333",
