@@ -353,7 +353,32 @@ class AsyncGraphqlView(GraphQLAsyncView):
         formatted["type"] = "ServerError"
         # if this is one of our own command exception, we can tell a bit more
         original_error = error.original_error
-        if isinstance(original_error, BaseException) or isinstance(
+        if original_error is None:
+            # GraphQL errors without an underlying exception are produced by
+            # graphql-core while parsing/validating the client's document
+            # (e.g. unused variables, unknown fields, syntax errors). These are
+            # client mistakes, not server failures, so surface the real message.
+            formatted["message"] = error.message
+            formatted["type"] = "ValidationError"
+            log.warning(
+                "GraphQL query validation error",
+                extra={
+                    "error_message": error.message,
+                    "query": self.get_clean_query(
+                        json.loads(self.request.body.decode("utf-8"))
+                        if self.request.body
+                        else {}
+                    ),
+                },
+            )
+            inc_counter(
+                GQL_ERROR_TYPE_COUNTER,
+                labels={
+                    "error_type": "validation",
+                    "path": self.request.get_full_path(),
+                },
+            )
+        elif isinstance(original_error, BaseException) or isinstance(
             original_error, ServiceException
         ):
             formatted["message"] = original_error.message  # type: ignore
