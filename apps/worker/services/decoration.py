@@ -28,6 +28,7 @@ BOT_USER_EMAILS = [
     "xgopilot[bot]@users.noreply.github.com",  # CCMRG-1850
     "231223108+xgopilot[bot]@users.noreply.github.com",  # CCMRG-1850
     "161369871+google-labs-jules[bot]@users.noreply.github.com",  # https://github.com/codecov/umbrella/issues/629
+    "noreply@anthropic.com",  # claude
 ]
 BOT_USER_IDS = [
     "49699333",
@@ -38,7 +39,8 @@ BOT_USER_IDS = [
     "158243242",
     "231223108",  # CCMRG-1850
     "161369871",  # https://github.com/codecov/umbrella/issues/629
-]  # dependabot[bot], renovate[bot], sentry-autofix[bot], copilot-swe-agent[bot], devin-ai-integration, devin-ai-integration[bot], xgopilot[bot], google-labs-jules[bot]
+    "188414",
+]  # dependabot[bot], renovate[bot], sentry-autofix[bot], copilot-swe-agent[bot], devin-ai-integration, devin-ai-integration[bot], xgopilot[bot], google-labs-jules[bot], claude
 USER_BASIC_LIMIT_UPLOAD = 250
 
 
