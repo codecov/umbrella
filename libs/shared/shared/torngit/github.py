@@ -829,9 +829,23 @@ class Github(TorngitBaseAdapter):
                                 **log_dict,
                             ),
                         )
-                        return Response(
-                            status_code=204,
-                            headers={"X-Codecov-Public-Bot-Dropped": "true"},
+                        # Raise a rate-limit error rather than returning a synthetic
+                        # empty response: callers parse the body and would otherwise
+                        # receive None (e.g. get_commit -> res["author"] TypeError).
+                        # TorngitRateLimitError subclasses TorngitClientError, which
+                        # callers already handle.
+                        raise TorngitRateLimitError(
+                            response_data={
+                                "public_bot": entity_name,
+                                "repo_slug": self.slug,
+                                "repo_usage": usage,
+                                "repo_cap": repo_cap(budget),
+                            },
+                            message=(
+                                f"Repo {self.slug} exceeded per-repo cap on shared "
+                                f"public bot {entity_name}"
+                            ),
+                            reset=reset_ts,
                         )
                 except RedisError:
                     log.warning("Public bot rate limit check failed; allowing request")
