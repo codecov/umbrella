@@ -26,6 +26,7 @@ from rest_framework.exceptions import APIException
 from sentry_sdk import capture_exception
 
 from codecov.commands.exceptions import BaseException
+from codecov.sentry_filters import is_query_validation_error
 from codecov.commands.executor import get_executor_from_request
 from codecov_auth.helpers import get_client_ip_address
 from codecov_auth.middleware import jwt_middleware
@@ -348,6 +349,27 @@ class AsyncGraphqlView(GraphQLAsyncView):
         is_bad_query = "Cannot query field" in error.formatted["message"]
         if debug or (not is_anonymous and is_bad_query):
             return format_error(error, debug)
+        if is_query_validation_error(error):
+            # The client sent a query that fails schema validation (e.g. it
+            # asks for a field that doesn't exist). It is rejected before any
+            # resolver runs, so it is a client error, not a server fault.
+            # Don't report it as an internal server error, but keep it visible.
+            log.warning(
+                "GraphQL query validation error",
+                extra={
+                    "error_message": error.formatted.get("message"),
+                    "is_anonymous": is_anonymous,
+                    "query": (self.request.body or b"").decode(
+                        "utf-8", errors="replace"
+                    )[:2000],
+                },
+            )
+            formatted = error.formatted
+            if is_anonymous:
+                # avoid leaking schema details to anonymous callers
+                formatted["message"] = "Invalid query"
+            formatted["type"] = "BadRequest"
+            return formatted
         formatted = error.formatted
         formatted["message"] = "INTERNAL SERVER ERROR"
         formatted["type"] = "ServerError"
