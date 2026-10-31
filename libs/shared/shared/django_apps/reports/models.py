@@ -205,7 +205,7 @@ class ReportSession(
 
     @property
     def flag_names(self):
-        return [flag.flag_name for flag in self.flags.all()]
+        return list(self.flags.values_list("flag_name", flat=True))
 
 
 class UploadLevelTotals(AbstractTotals):
