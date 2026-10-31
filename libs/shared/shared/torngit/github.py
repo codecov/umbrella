@@ -806,6 +806,8 @@ class Github(TorngitBaseAdapter):
 
             entity_name = token_to_use.get("entity_name") if token_to_use else None
             if is_public_bot(entity_name) and self.slug:
+                over_cap = False
+                reset_ts = None
                 try:
                     reset_ts = get_pool_reset(self._redis_connection, entity_name)
                     usage = get_repo_usage(
@@ -816,6 +818,7 @@ class Github(TorngitBaseAdapter):
                     )
                     budget = get_pool_budget(self._redis_connection, entity_name)
                     if is_over_cap(usage, budget):
+                        over_cap = True
                         inc_counter(
                             PUBLIC_BOT_OVER_CAP_COUNTER,
                             {"bot": entity_name, "repo_slug": self.slug},
@@ -829,12 +832,16 @@ class Github(TorngitBaseAdapter):
                                 **log_dict,
                             ),
                         )
-                        return Response(
-                            status_code=204,
-                            headers={"X-Codecov-Public-Bot-Dropped": "true"},
-                        )
                 except RedisError:
                     log.warning("Public bot rate limit check failed; allowing request")
+                if over_cap:
+                    # Surface the dropped request as a typed rate-limit error instead of
+                    # a synthetic empty response, so callers never receive a None body.
+                    raise TorngitRateLimitError(
+                        response_data=None,
+                        message="Request dropped: repo exceeded per-repo cap on shared public bot",
+                        reset=reset_ts,
+                    )
 
         url = url_concat(url, args).replace(" ", "%20")
 
@@ -1893,6 +1900,10 @@ class Github(TorngitBaseAdapter):
                 slug=self.slug, base=base, head=head
             )
             res = await self.api(client, "get", url, token=token)
+        if not isinstance(res, dict):
+            raise TorngitClientGeneralError(
+                204, response_data=res, message="Empty or invalid compare response"
+            )
         files = {}
         for f in res["files"]:
             diff = self.diff_to_json(
