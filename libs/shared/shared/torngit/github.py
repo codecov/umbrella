@@ -1893,6 +1893,14 @@ class Github(TorngitBaseAdapter):
                 slug=self.slug, base=base, head=head
             )
             res = await self.api(client, "get", url, token=token)
+        if res is None:
+            # A None response means the request was dropped locally (e.g. the
+            # repo exceeded its per-repo cap on a shared public bot, which
+            # yields a synthetic 204) and no compare data is available.
+            raise TorngitRateLimitError(
+                response_data=None,
+                message=f"Compare request for {self.slug} ({base}...{head}) returned no content; request was likely dropped by the public bot rate limiter",
+            )
         files = {}
         for f in res["files"]:
             diff = self.diff_to_json(
