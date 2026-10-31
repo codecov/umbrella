@@ -228,6 +228,8 @@ def insert_testruns_timeseries(
     parsing_infos: list[test_results_parser.ParsingInfo],
 ):
     flaky_test_set = get_flaky_tests_set(repoid)
+    # fetch the upload's flags once instead of re-querying for every parsing_info
+    flag_names = upload.flag_names
 
     for parsing_info in parsing_infos:
         insert_testrun(
@@ -236,7 +238,7 @@ def insert_testruns_timeseries(
             commit_sha=commitid,
             branch=branch,
             upload_id=upload.id,
-            flags=upload.flag_names,
+            flags=flag_names,
             parsing_info=parsing_info,
             flaky_test_ids=flaky_test_set,
         )
