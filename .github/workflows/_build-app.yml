@@ -36,6 +36,7 @@ jobs:
         name: "Authenticate to Google Cloud"
         uses: "google-github-actions/auth@v2.1.2"
         with:
+          create_credentials_file: false
           token_format: "access_token"
           workload_identity_provider: ${{ secrets.CODECOV_GCP_WIDP }}
           service_account: ${{ secrets.CODECOV_GCP_WIDSA }}
@@ -100,6 +101,7 @@ jobs:
         name: "Authenticate to Google Cloud"
         uses: "google-github-actions/auth@v2.1.2"
         with:
+          create_credentials_file: false
           token_format: "access_token"
           workload_identity_provider: ${{ secrets.CODECOV_GCP_WIDP }}
           service_account: ${{ secrets.CODECOV_GCP_WIDSA }}
