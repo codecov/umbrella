@@ -348,6 +348,28 @@ class AsyncGraphqlView(GraphQLAsyncView):
         is_bad_query = "Cannot query field" in error.formatted["message"]
         if debug or (not is_anonymous and is_bad_query):
             return format_error(error, debug)
+        # Errors with no original exception and no execution path come from
+        # parsing/validation of the client's query (e.g. unknown fields).
+        # These are client errors, not server failures.
+        is_validation_error = (
+            getattr(error, "original_error", None) is None
+            and getattr(error, "path", None) is None
+        )
+        if is_validation_error:
+            log.warning(
+                "GraphQL query validation error",
+                extra={
+                    "error_message": error.formatted.get("message"),
+                    "is_anonymous": is_anonymous,
+                    "user_id": getattr(user, "pk", None),
+                },
+            )
+            formatted = error.formatted
+            if is_bad_query:
+                # don't leak schema details (e.g. field suggestions) to anonymous users
+                formatted["message"] = "Invalid query"
+            formatted["type"] = "BadQuery"
+            return formatted
         formatted = error.formatted
         formatted["message"] = "INTERNAL SERVER ERROR"
         formatted["type"] = "ServerError"
