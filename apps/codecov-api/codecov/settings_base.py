@@ -449,6 +449,36 @@ SENTRY_ORG_URL = get_config(
     "services", "sentry", "org_domain", default="https://sentry.io"
 )
 
+# Messages produced by graphql-core when a client query fails schema
+# validation or parsing. These are client mistakes (harmless to the server and
+# still recorded via a warning log in graphql_api.views), so the auto-enabled
+# Ariadne integration should not report them as unhandled errors.
+GRAPHQL_CLIENT_ERROR_PREFIXES = (
+    "Cannot query field",
+    "Unknown argument",
+    "Unknown type",
+    "Syntax Error",
+)
+
+
+def sentry_before_send(event, hint):
+    mechanism_is_ariadne = any(
+        (value.get("mechanism") or {}).get("type") == "ariadne"
+        for value in (event.get("exception") or {}).get("values") or []
+    )
+    exc_info = hint.get("exc_info") if hint else None
+    exc = exc_info[1] if exc_info else None
+    if (
+        mechanism_is_ariadne
+        and exc is not None
+        and type(exc).__name__ == "GraphQLError"
+        and getattr(exc, "original_error", None) is None
+        and str(getattr(exc, "message", "")).startswith(GRAPHQL_CLIENT_ERROR_PREFIXES)
+    ):
+        return None
+    return event
+
+
 if SENTRY_DSN is not None:
     SENTRY_SAMPLE_RATE = float(
         get_config("services", "sentry", "sample_rate", default="1.0")
@@ -478,6 +508,7 @@ if SENTRY_DSN is not None:
             webhook_github_rate=SENTRY_WEBHOOK_GITHUB_SAMPLE_RATE,
         ),
         enable_backpressure_handling=False,
+        before_send=sentry_before_send,
         profiles_sample_rate=float(
             get_config("services", "sentry", "profile_sample_rate", default="0.01")
         ),

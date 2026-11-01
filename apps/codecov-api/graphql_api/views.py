@@ -349,10 +349,34 @@ class AsyncGraphqlView(GraphQLAsyncView):
         if debug or (not is_anonymous and is_bad_query):
             return format_error(error, debug)
         formatted = error.formatted
+        original_error = error.original_error
+        # Validation/parse errors happen before execution: they have no
+        # original exception and no execution path. They are caused by the
+        # client sending a query that doesn't match the schema, not by a server
+        # bug, so don't report them as internal errors.
+        # Cost-limit errors are handled separately in `post` via their extensions.
+        is_cost_error = bool((error.extensions or {}).get("cost"))
+        is_validation_error = (
+            original_error is None and not error.path and not is_cost_error
+        )
+        if is_validation_error:
+            query = None
+            try:
+                body = self.request.body
+                query = self.get_clean_query(json.loads(body.decode("utf-8"))) if body else None
+            except Exception:
+                pass
+            log.warning(
+                "GraphQL query validation failed",
+                extra={"error_message": error.formatted.get("message"), "query": query},
+            )
+            # don't leak schema details (e.g. "Did you mean ...") to anonymous users
+            formatted["message"] = "Invalid query"
+            formatted["type"] = "ValidationError"
+            return formatted
         formatted["message"] = "INTERNAL SERVER ERROR"
         formatted["type"] = "ServerError"
         # if this is one of our own command exception, we can tell a bit more
-        original_error = error.original_error
         if isinstance(original_error, BaseException) or isinstance(
             original_error, ServiceException
         ):
