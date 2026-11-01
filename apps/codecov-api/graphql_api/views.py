@@ -349,6 +349,17 @@ class AsyncGraphqlView(GraphQLAsyncView):
         if debug or (not is_anonymous and is_bad_query):
             return format_error(error, debug)
         formatted = error.formatted
+        if is_bad_query and error.original_error is None:
+            # Schema validation failure caused by client input (e.g. querying a
+            # field that does not exist). This is a client error, not a server
+            # bug, so don't report it to Sentry as an internal server error.
+            log.info(
+                "GraphQL query failed schema validation",
+                extra={"error_message": error.message},
+            )
+            formatted["message"] = "Invalid query"
+            formatted["type"] = "ValidationError"
+            return formatted
         formatted["message"] = "INTERNAL SERVER ERROR"
         formatted["type"] = "ServerError"
         # if this is one of our own command exception, we can tell a bit more
