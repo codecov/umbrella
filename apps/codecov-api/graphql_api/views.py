@@ -43,6 +43,17 @@ from .validation import (
 
 log = logging.getLogger(__name__)
 
+
+def is_validation_error(error: Any) -> bool:
+    """
+    True for GraphQL parse/validation errors: they have no underlying exception
+    and no execution path, i.e. the query was rejected before any resolver ran.
+    """
+    return (
+        getattr(error, "original_error", None) is None
+        and getattr(error, "path", None) is None
+    )
+
 GQL_HIT_COUNTER = Counter(
     "api_gql_counts_hits",
     "Number of times API GQL endpoint request starts",
@@ -344,11 +355,34 @@ class AsyncGraphqlView(GraphQLAsyncView):
     def error_formatter(self, error: Any, debug: bool = False) -> dict[str, Any]:
         user = self.request.user
         is_anonymous = user.is_anonymous if user else True
-        # the only way to check for a malformed query
-        is_bad_query = "Cannot query field" in error.formatted["message"]
-        if debug or (not is_anonymous and is_bad_query):
+        if debug or (not is_anonymous and is_validation_error(error)):
             return format_error(error, debug)
         formatted = error.formatted
+        if is_validation_error(error):
+            # Parse/validation errors (e.g. "Cannot query field X on type Y") are
+            # caused by malformed client queries, not by a server fault. Treat them
+            # as client errors for anonymous users too, without leaking schema info.
+            log.warning(
+                "GraphQL query validation error",
+                extra={
+                    "message": error.message,
+                    "query": self.get_clean_query(
+                        json.loads(self.request.body.decode("utf-8"))
+                        if self.request.body
+                        else {}
+                    ),
+                },
+            )
+            inc_counter(
+                GQL_ERROR_TYPE_COUNTER,
+                labels={
+                    "error_type": "validation",
+                    "path": self.request.get_full_path(),
+                },
+            )
+            formatted["message"] = "Invalid query"
+            formatted["type"] = "ValidationError"
+            return formatted
         formatted["message"] = "INTERNAL SERVER ERROR"
         formatted["type"] = "ServerError"
         # if this is one of our own command exception, we can tell a bit more
