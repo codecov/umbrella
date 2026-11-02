@@ -449,6 +449,24 @@ SENTRY_ORG_URL = get_config(
     "services", "sentry", "org_domain", default="https://sentry.io"
 )
 
+def _drop_graphql_validation_errors(event, hint):
+    """
+    The auto-enabled Sentry Ariadne integration captures every GraphQLError in
+    a response. Errors without an original_error come from query parsing or
+    validation (malformed client documents rejected before execution), so they
+    are harmless client input. Resolver/execution errors always carry an
+    original_error and are still reported.
+    """
+    exc_info = hint.get("exc_info") if hint else None
+    if exc_info:
+        from graphql import GraphQLError
+
+        exc = exc_info[1]
+        if isinstance(exc, GraphQLError) and exc.original_error is None:
+            return None
+    return event
+
+
 if SENTRY_DSN is not None:
     SENTRY_SAMPLE_RATE = float(
         get_config("services", "sentry", "sample_rate", default="1.0")
@@ -472,6 +490,7 @@ if SENTRY_DSN is not None:
             HttpxIntegration(),
         ],
         environment=SENTRY_ENV,
+        before_send=_drop_graphql_validation_errors,
         traces_sampler=make_traces_sampler(
             default_rate=SENTRY_SAMPLE_RATE,
             badge_rate=SENTRY_BADGE_SAMPLE_RATE,
