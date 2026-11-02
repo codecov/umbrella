@@ -1,13 +1,16 @@
 import logging
+import threading
+import time
 from datetime import datetime, timedelta
 from functools import cached_property
 
 from django.conf import settings
+from django.db.models.signals import post_delete, post_save
 from django.utils import timezone
 
 from shared.config import get_config
 from shared.django_apps.codecov.commands.exceptions import ValidationError
-from shared.django_apps.codecov_auth.models import Owner, Plan, Service
+from shared.django_apps.codecov_auth.models import Owner, Plan, Service, Tier
 from shared.license import get_current_license
 from shared.plan.constants import (
     DEFAULT_FREE_PLAN,
@@ -22,6 +25,56 @@ from shared.plan.constants import (
 from shared.self_hosted.service import enterprise_has_seats_left, license_seats
 
 log = logging.getLogger(__name__)
+
+# Plans/tiers are a tiny, rarely-changing table that is read on hot paths
+# (e.g. every PR comment build in the Notify task). Cache them in-process so a
+# loaded database / pgbouncer pool doesn't stall those lookups.
+PLAN_CACHE_TTL_SECONDS = 300
+
+_plan_cache: dict[str, Plan] = {}
+_plan_cache_loaded_at: float | None = None
+_plan_cache_lock = threading.Lock()
+
+
+def clear_plan_cache(*args, **kwargs) -> None:
+    """Drops the in-process plan cache. Usable directly or as a signal receiver."""
+    global _plan_cache, _plan_cache_loaded_at
+    with _plan_cache_lock:
+        _plan_cache = {}
+        _plan_cache_loaded_at = None
+
+
+def _load_plan_cache() -> dict[str, Plan]:
+    global _plan_cache, _plan_cache_loaded_at
+    plans = {plan.name: plan for plan in Plan.objects.select_related("tier").all()}
+    with _plan_cache_lock:
+        _plan_cache = plans
+        _plan_cache_loaded_at = time.monotonic()
+    return plans
+
+
+def get_plan_with_tier(name: str) -> Plan | None:
+    """Returns the Plan (with its Tier preloaded) for `name`, or None if it doesn't exist."""
+    with _plan_cache_lock:
+        plans = _plan_cache
+        loaded_at = _plan_cache_loaded_at
+    is_fresh = (
+        loaded_at is not None
+        and time.monotonic() - loaded_at < PLAN_CACHE_TTL_SECONDS
+    )
+    if is_fresh and name in plans:
+        return plans[name]
+    # Stale cache, or a plan we haven't seen yet: reload everything in one query.
+    return _load_plan_cache().get(name)
+
+
+for _model in (Plan, Tier):
+    post_save.connect(
+        clear_plan_cache, sender=_model, dispatch_uid=f"clear_plan_cache_save_{_model.__name__}"
+    )
+    post_delete.connect(
+        clear_plan_cache, sender=_model, dispatch_uid=f"clear_plan_cache_delete_{_model.__name__}"
+    )
 
 
 # This originally belongs to the sentry service in API but this is a temporary fn to avoid importing the whole service
@@ -51,19 +104,20 @@ class PlanService:
         else:
             self.current_org = current_org
 
-        if not Plan.objects.filter(name=self.current_org.plan).exists():
+        if get_plan_with_tier(self.current_org.plan) is None:
             raise ValueError("Unsupported plan")
         self._plan_data = None
 
     def update_plan(self, name: str, user_count: int | None) -> None:
         """Updates the organization's plan and user count."""
-        if not Plan.objects.filter(name=name).exists():
+        plan = get_plan_with_tier(name)
+        if plan is None:
             raise ValueError("Unsupported plan")
         if not user_count:
             raise ValueError("Quantity Needed")
         self.current_org.plan = name
         self.current_org.plan_user_count = user_count
-        self._plan_data = Plan.objects.select_related("tier").get(name=name)
+        self._plan_data = plan
         self.current_org.delinquent = False
         self.current_org.save()
 
@@ -85,11 +139,15 @@ class PlanService:
     def plan_data(self) -> Plan:
         """Returns the plan data for the organization, either from account or default."""
         if self._plan_data is None:
-            self._plan_data = Plan.objects.select_related("tier").get(
-                name=self.current_org.account.plan
+            name = (
+                self.current_org.account.plan
                 if self.current_org.has_billing_account
                 else self.current_org.plan
             )
+            plan = get_plan_with_tier(name)
+            if plan is None:
+                raise Plan.DoesNotExist(f"Plan matching name {name!r} does not exist.")
+            self._plan_data = plan
         return self._plan_data
 
     @property
