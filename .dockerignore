@@ -2,3 +2,4 @@ pytest_cache/
 ruff_cache/
 .venv/
 .vscode/
+gha-creds-*.json
