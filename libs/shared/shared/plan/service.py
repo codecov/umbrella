@@ -1,13 +1,16 @@
 import logging
+import threading
+import time
 from datetime import datetime, timedelta
 from functools import cached_property
 
 from django.conf import settings
+from django.db.models.signals import post_delete, post_save
 from django.utils import timezone
 
 from shared.config import get_config
 from shared.django_apps.codecov.commands.exceptions import ValidationError
-from shared.django_apps.codecov_auth.models import Owner, Plan, Service
+from shared.django_apps.codecov_auth.models import Owner, Plan, Service, Tier
 from shared.license import get_current_license
 from shared.plan.constants import (
     DEFAULT_FREE_PLAN,
@@ -22,6 +25,44 @@ from shared.plan.constants import (
 from shared.self_hosted.service import enterprise_has_seats_left, license_seats
 
 log = logging.getLogger(__name__)
+
+
+# Plans are a small, rarely-changing lookup table, but they are read on hot paths
+# (e.g. every PR comment built by the Notify task). Caching them per process avoids
+# a replica round trip each time, which can stall when the DB pool is saturated.
+PLAN_CACHE_TTL_SECONDS = 300
+_plan_cache: dict[str, tuple[float, Plan | None]] = {}
+_plan_cache_lock = threading.Lock()
+
+
+def clear_plan_cache(*args, **kwargs) -> None:
+    """Clears the per-process plan cache. Usable as a Django signal receiver."""
+    with _plan_cache_lock:
+        _plan_cache.clear()
+
+
+def get_cached_plan(name: str | None) -> Plan | None:
+    """Returns the Plan (with its tier) for the given name, or None if it doesn't exist."""
+    if name is None:
+        return None
+    now = time.monotonic()
+    with _plan_cache_lock:
+        cached = _plan_cache.get(name)
+    if cached is not None and cached[0] > now:
+        return cached[1]
+    plan = Plan.objects.select_related("tier").filter(name=name).first()
+    with _plan_cache_lock:
+        _plan_cache[name] = (now + PLAN_CACHE_TTL_SECONDS, plan)
+    return plan
+
+
+for _model in (Plan, Tier):
+    post_save.connect(
+        clear_plan_cache, sender=_model, dispatch_uid=f"clear_plan_cache_save_{_model.__name__}"
+    )
+    post_delete.connect(
+        clear_plan_cache, sender=_model, dispatch_uid=f"clear_plan_cache_delete_{_model.__name__}"
+    )
 
 
 # This originally belongs to the sentry service in API but this is a temporary fn to avoid importing the whole service
@@ -51,19 +92,21 @@ class PlanService:
         else:
             self.current_org = current_org
 
-        if not Plan.objects.filter(name=self.current_org.plan).exists():
+        org_plan = get_cached_plan(self.current_org.plan)
+        if org_plan is None:
             raise ValueError("Unsupported plan")
-        self._plan_data = None
+        self._plan_data = None if self.current_org.has_billing_account else org_plan
 
     def update_plan(self, name: str, user_count: int | None) -> None:
         """Updates the organization's plan and user count."""
-        if not Plan.objects.filter(name=name).exists():
+        plan = get_cached_plan(name)
+        if plan is None:
             raise ValueError("Unsupported plan")
         if not user_count:
             raise ValueError("Quantity Needed")
         self.current_org.plan = name
         self.current_org.plan_user_count = user_count
-        self._plan_data = Plan.objects.select_related("tier").get(name=name)
+        self._plan_data = plan
         self.current_org.delinquent = False
         self.current_org.save()
 
@@ -85,11 +128,16 @@ class PlanService:
     def plan_data(self) -> Plan:
         """Returns the plan data for the organization, either from account or default."""
         if self._plan_data is None:
-            self._plan_data = Plan.objects.select_related("tier").get(
-                name=self.current_org.account.plan
+            name = (
+                self.current_org.account.plan
                 if self.current_org.has_billing_account
                 else self.current_org.plan
             )
+            plan = get_cached_plan(name)
+            if plan is None:
+                # Preserve previous behavior of raising Plan.DoesNotExist
+                plan = Plan.objects.select_related("tier").get(name=name)
+            self._plan_data = plan
         return self._plan_data
 
     @property
