@@ -39,6 +39,12 @@ def resolve_owner(user, _):
     return user
 
 
+@me_bindable.field("defaultOrgUsername")
+@sync_to_async
+def resolve_default_org_username(user: Owner, info: GraphQLResolveInfo, **kwargs) -> str | None:
+    return None if user.default_org is None else user.default_org.username
+
+
 @me_bindable.field("viewableRepositories")
 @sentry_sdk.trace
 def resolve_viewable_repositories(
