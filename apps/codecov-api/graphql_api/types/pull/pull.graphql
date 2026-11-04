@@ -17,4 +17,6 @@ type Pull {
     before: String
   ): CommitConnection @cost(complexity: 10, multipliers: ["first", "last"])
   firstPull: Boolean!
+  "CoverageAnalytics are fields related to Codecov's Coverage product offering"
+  coverageAnalytics: CoverageAnalytics
 }
