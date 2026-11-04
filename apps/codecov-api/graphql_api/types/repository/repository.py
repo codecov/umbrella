@@ -218,6 +218,11 @@ def resolve_graph_token(repository: Repository, info: GraphQLResolveInfo) -> str
     return repository.image_token
 
 
+@repository_bindable.field("imageToken")
+def resolve_image_token(repository: Repository, info: GraphQLResolveInfo) -> str:
+    return repository.image_token
+
+
 @repository_bindable.field("yaml")
 def resolve_repo_yaml(repository: Repository, info: GraphQLResolveInfo) -> str | None:
     if repository.yaml is None:
