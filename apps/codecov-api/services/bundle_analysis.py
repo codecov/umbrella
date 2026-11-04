@@ -384,14 +384,12 @@ class BundleAnalysisComparison:
 
     @cached_property
     def bundles(self) -> list["BundleComparison"]:
-        bundle_comparisons = []
-        for bundle_change in self.comparison.bundle_changes():
-            head_bundle_report = self.comparison.head_report.bundle_report(
-                bundle_change.bundle_name
-            )
-            head_size = head_bundle_report.total_size() if head_bundle_report else 0
-            bundle_comparisons.append(BundleComparison(bundle_change, head_size))
-        return bundle_comparisons
+        # Fetch all bundle sizes in a single grouped query to avoid N+1
+        head_sizes = BundleAnalysisReport(self.comparison.head_report).bundle_sizes()
+        return [
+            BundleComparison(bundle_change, head_sizes.get(bundle_change.bundle_name, 0))
+            for bundle_change in self.comparison.bundle_changes()
+        ]
 
     @cached_property
     def size_delta(self) -> int:
