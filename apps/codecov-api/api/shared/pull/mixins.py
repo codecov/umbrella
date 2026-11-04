@@ -1,4 +1,5 @@
 from django.db.models import OuterRef, Subquery
+from django.http import Http404
 from django.shortcuts import get_object_or_404
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import filters, viewsets
@@ -21,6 +22,10 @@ class PullViewSetMixin(
 
     def get_object(self):
         pullid = self.kwargs.get("pullid")
+        try:
+            pullid = int(pullid)
+        except (TypeError, ValueError):
+            raise Http404
         return get_object_or_404(self.get_queryset(), pullid=pullid)
 
     def get_queryset(self):
