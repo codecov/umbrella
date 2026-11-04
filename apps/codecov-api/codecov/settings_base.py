@@ -10,6 +10,7 @@ from sentry_sdk.integrations.redis import RedisIntegration
 from sentry_sdk.scrubber import DEFAULT_DENYLIST, EventScrubber
 
 from codecov.sentry_sampling import make_traces_sampler
+from codecov.sentry_filters import before_send
 from shared.django_apps.db_settings import *
 from shared.helpers.redis import get_redis_url
 from shared.license import startup_license_logging
@@ -461,6 +462,7 @@ if SENTRY_DSN is not None:
     )
     sentry_sdk.init(
         dsn=SENTRY_DSN,
+        before_send=before_send,
         event_scrubber=EventScrubber(denylist=SENTRY_DENY_LIST),
         _experiments={
             "enable_logs": True,
@@ -486,6 +488,7 @@ if SENTRY_DSN is not None:
         sentry_sdk.set_tag("cluster", os.getenv("CLUSTER_ENV"))
 elif IS_DEV:
     sentry_sdk.init(
+        before_send=before_send,
         spotlight=IS_DEV,
         event_scrubber=EventScrubber(denylist=SENTRY_DENY_LIST),
     )
