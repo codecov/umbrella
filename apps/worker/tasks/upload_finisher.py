@@ -466,6 +466,13 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                 retry_num=self.attempts,
             ):
                 db_session.refresh(commit)
+                # Pre-load the repository relationship while the connection is
+                # fresh.  perform_report_merging() does significant cloud-storage
+                # I/O that can leave the DB connection idle long enough for the
+                # server to close it.  Without this, accessing commit.repository
+                # inside save_report() triggers a lazy-load on a stale connection,
+                # causing psycopg2.OperationalError: server closed the connection.
+                _ = commit.repository
                 report_service = ReportService(commit_yaml)
 
                 log.info("run_impl: Performing report merging")
