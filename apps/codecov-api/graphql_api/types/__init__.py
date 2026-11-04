@@ -26,7 +26,14 @@ from .commit import (
     commit_bundle_analysis_bindable,
     commit_coverage_analytics_bindable,
 )
-from .comparison import comparison, comparison_bindable, comparison_result_bindable
+from .comparison import (
+    comparison,
+    comparison_bindable,
+    comparison_result_bindable,
+    file_comparison_bindable,
+    file_comparison_connection_bindable,
+    file_comparison_edge_bindable,
+)
 from .component import component, component_bindable
 from .component_comparison import component_comparison, component_comparison_bindable
 from .config import config, config_bindable
@@ -156,6 +163,9 @@ bindables = [
     commit_coverage_analytics_bindable,
     comparison_bindable,
     comparison_result_bindable,
+    file_comparison_bindable,
+    file_comparison_edge_bindable,
+    file_comparison_connection_bindable,
     component_bindable,
     component_comparison_bindable,
     config_bindable,
