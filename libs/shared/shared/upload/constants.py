@@ -231,6 +231,8 @@ class UploadErrorCode(StrEnum):
     PROCESSING_TIMEOUT = "processing_timeout"
     UNSUPPORTED_FILE_FORMAT = "unsupported_file_format"
 
+    COMMIT_NOT_FOUND = "commit_not_found"
+
     # We don't want these - try to add error cases when they arise
     UNKNOWN_PROCESSING = "unknown_processing"
     UNKNOWN_STORAGE = "unknown_storage"
