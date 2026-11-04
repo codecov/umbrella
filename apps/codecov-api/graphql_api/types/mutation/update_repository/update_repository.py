@@ -13,12 +13,13 @@ async def resolve_update_repository(_, info, input):
     repo_name = input.get("repo_name")
     default_branch = input.get("branch")
     activated = input.get("activated")
-    await command.update_repository(
+    repo = await command.update_repository(
         repo_name,
         owner,
         default_branch,
         activated,
     )
+    return {"repository": repo}
 
 
 error_update_repository = UnionType("UpdateRepositoryError")

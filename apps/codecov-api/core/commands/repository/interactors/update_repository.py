@@ -39,3 +39,4 @@ class UpdateRepositoryInteractor(BaseInteractor):
         if activated:
             repo.activated = activated
         repo.save()
+        return repo
