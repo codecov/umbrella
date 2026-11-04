@@ -149,9 +149,30 @@ CONN_HEALTH_CHECKS = get_config(
     "services", "database", "conn_health_checks", default=True
 )
 
+# libpq connection params so dead/stalled sockets (e.g. a dropped read replica
+# or pgbouncer connection) are detected in seconds instead of hanging for
+# minutes. These are libpq-level and safe through PgBouncer; do not set
+# OPTIONS["options"] (-c ...) here — PgBouncer rejects it.
+DATABASE_CONNECTION_OPTIONS = {
+    "connect_timeout": int(
+        get_config("services", "database", "connect_timeout", default=5)
+    ),
+    "keepalives": 1,
+    "keepalives_idle": int(
+        get_config("services", "database", "keepalives_idle", default=30)
+    ),
+    "keepalives_interval": int(
+        get_config("services", "database", "keepalives_interval", default=10)
+    ),
+    "keepalives_count": int(
+        get_config("services", "database", "keepalives_count", default=3)
+    ),
+}
+
 DATABASES = {
     "default": {
         "ENGINE": "psqlextra.backend",
+        "OPTIONS": dict(DATABASE_CONNECTION_OPTIONS),
         "NAME": DATABASE_NAME,
         "USER": DATABASE_USER,
         "PASSWORD": DATABASE_PASSWORD,
@@ -159,6 +180,7 @@ DATABASES = {
         "PORT": DATABASE_PORT,
         "CONN_MAX_AGE": CONN_MAX_AGE,
         "CONN_HEALTH_CHECKS": CONN_HEALTH_CHECKS,
+        "OPTIONS": dict(DATABASE_CONNECTION_OPTIONS),
     }
 }
 
