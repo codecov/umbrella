@@ -890,18 +890,21 @@ class Gitlab(TorngitBaseAdapter):
                         ]
                     },
                 )
-                first_commit = all_commits[-1]
-                if len(first_commit["parent_ids"]) > 0:
-                    parent = first_commit["parent_ids"][0]
+                if not all_commits:
+                    parent = None
                 else:
-                    # try querying the parent commit for this parent
-                    url = self.count_and_get_url_template(
-                        "get_pull_request_get_parent"
-                    ).substitute(
-                        service_id=self.data["repo"]["service_id"],
-                        first_commit=first_commit["id"],
-                    )
-                    parent = (await self.api("get", url, token=token))["parent_ids"][0]
+                    first_commit = all_commits[-1]
+                    if len(first_commit["parent_ids"]) > 0:
+                        parent = first_commit["parent_ids"][0]
+                    else:
+                        # try querying the parent commit for this parent
+                        url = self.count_and_get_url_template(
+                            "get_pull_request_get_parent"
+                        ).substitute(
+                            service_id=self.data["repo"]["service_id"],
+                            first_commit=first_commit["id"],
+                        )
+                        parent = (await self.api("get", url, token=token))["parent_ids"][0]
 
             if pull["state"] == "locked":
                 pull["state"] = "closed"
