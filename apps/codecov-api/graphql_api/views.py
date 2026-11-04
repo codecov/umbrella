@@ -342,17 +342,27 @@ class AsyncGraphqlView(GraphQLAsyncView):
         }
 
     def error_formatter(self, error: Any, debug: bool = False) -> dict[str, Any]:
-        user = self.request.user
-        is_anonymous = user.is_anonymous if user else True
-        # the only way to check for a malformed query
-        is_bad_query = "Cannot query field" in error.formatted["message"]
-        if debug or (not is_anonymous and is_bad_query):
+        if debug:
             return format_error(error, debug)
+        original_error = error.original_error
+        # Errors without an original_error come from parsing/validating the
+        # query document itself (e.g. unknown fields, missing subselections).
+        # These are client errors, not server failures: return them as-is and
+        # don't report them to Sentry.
+        if original_error is None:
+            user = self.request.user
+            is_anonymous = user.is_anonymous if user else True
+            if not is_anonymous:
+                return format_error(error, debug)
+            # Avoid leaking schema details (field suggestions) to anonymous users
+            formatted = error.formatted
+            formatted["message"] = "INTERNAL SERVER ERROR"
+            formatted["type"] = "ServerError"
+            return formatted
         formatted = error.formatted
         formatted["message"] = "INTERNAL SERVER ERROR"
         formatted["type"] = "ServerError"
         # if this is one of our own command exception, we can tell a bit more
-        original_error = error.original_error
         if isinstance(original_error, BaseException) or isinstance(
             original_error, ServiceException
         ):
