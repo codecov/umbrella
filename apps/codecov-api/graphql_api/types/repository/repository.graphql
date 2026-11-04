@@ -56,6 +56,9 @@ type Repository {
   "CoverageAnalytics are fields related to Codecov's Coverage product offering"
   coverageAnalytics: CoverageAnalytics
 
+  "ComponentsMeasurementsActive is deprecated. Use coverageAnalytics { componentsMeasurementsActive } instead."
+  componentsMeasurementsActive: Boolean! @deprecated(reason: "Use coverageAnalytics { componentsMeasurementsActive } instead")
+
   "TestAnalytics are fields related to Codecov's Test Analytics product offering"
   testAnalytics: TestAnalytics
 }
