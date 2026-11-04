@@ -55,6 +55,8 @@ class StatusSetErrorTask(BaseCodecovTask, name=status_set_error_task_name):
                             if data.get("informational")
                             else data.get("if_ci_failed", "error")
                         )
+                        if state == "ignore":
+                            continue
                         message = (
                             message or "Coverage not measured fully because CI failed"
                         )
