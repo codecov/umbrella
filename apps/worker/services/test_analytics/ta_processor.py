@@ -31,6 +31,7 @@ def ta_processor(
     commit_yaml: dict[str, Any],
     argument: UploadArguments,
     update_state: bool = False,
+    ta_proc_info: TAProcInfo | None = None,
 ) -> bool:
     log.info("Processing single TA argument")
 
@@ -48,7 +49,8 @@ def ta_processor(
             handle_file_not_found(upload)
         return False
 
-    ta_proc_info = get_ta_processing_info(repoid, commitid, commit_yaml)
+    if ta_proc_info is None:
+        ta_proc_info = get_ta_processing_info(repoid, commitid, commit_yaml)
 
     archive_service = ArchiveService(ta_proc_info.repository)
 
