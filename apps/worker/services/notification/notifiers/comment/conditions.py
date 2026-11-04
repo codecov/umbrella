@@ -141,7 +141,7 @@ class HasEnoughRequiredChanges(NotifyCondition):
             # We don't know if there was a coverage drop, because we can't compare BASE and HEAD (missing some info)
             # But we default to showing the comment. It might have info for the user about _what_ info we are missing
             return True
-        head_coverage = Decimal(comparison.head.report.totals.coverage).quantize(
+        head_coverage = Decimal(comparison.head.report.totals.coverage or 0).quantize(
             Decimal("0.00000")
         )
         project_status_config = read_yaml_field(
