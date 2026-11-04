@@ -1037,6 +1037,7 @@ class Github(TorngitBaseAdapter):
         ! side effect: updates the self._token value
         ! raises TorngitCantRefreshTokenError
         ! raises TorngitRefreshTokenFailedError
+        ! raises TorngitServerUnreachableError (network/timeout errors)
         """
         creds_from_token = self._oauth_consumer_token()
         creds_to_send = {
@@ -1061,11 +1062,24 @@ class Github(TorngitBaseAdapter):
             self.service_url
             + self.count_and_get_url_template(url_name="refresh_token").substitute()
         )
-        res = await client.request(
-            "POST",
-            url,
-            params=params,
-        )
+        try:
+            res = await client.request(
+                "POST",
+                url,
+                params=params,
+            )
+        except (
+            httpx.TimeoutException,
+            httpx.NetworkError,
+            httpx.RemoteProtocolError,
+        ):
+            log.warning(
+                "GitHub was not able to be reached while refreshing token",
+                extra=dict(original_url=original_url),
+            )
+            raise TorngitServerUnreachableError(
+                "GitHub was not able to be reached during token refresh."
+            )
         if res.status_code >= 300:
             raise TorngitRefreshTokenFailedError(
                 {
