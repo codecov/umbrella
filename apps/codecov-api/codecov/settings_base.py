@@ -1,6 +1,7 @@
 import os
 
 import sentry_sdk
+from sentry_sdk.integrations.ariadne import AriadneIntegration
 from corsheaders.defaults import default_headers
 from csp.constants import NONE, SELF
 from sentry_sdk.integrations.celery import CeleryIntegration
@@ -471,6 +472,10 @@ if SENTRY_DSN is not None:
             RedisIntegration(cache_prefixes=["cache:"]),
             HttpxIntegration(),
         ],
+        # GraphQL errors are reported explicitly in `graphql_api.views.error_formatter`.
+        # The auto-enabled Ariadne integration would otherwise report client-side
+        # query validation errors (malformed queries) as unhandled server errors.
+        disabled_integrations=[AriadneIntegration()],
         environment=SENTRY_ENV,
         traces_sampler=make_traces_sampler(
             default_rate=SENTRY_SAMPLE_RATE,
