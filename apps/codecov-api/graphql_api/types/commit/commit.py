@@ -411,6 +411,23 @@ def resolve_coverage_file(commit, info, path, flags=None, components=None):
     }
 
 
+@commit_coverage_analytics_bindable.field("componentsCount")
+@sync_to_async
+@sentry_sdk.trace
+def resolve_commit_components_count(commit: Commit, info) -> int:
+    current_owner = info.context["request"].current_owner
+    all_components = components_service.commit_components(
+        commit,
+        current_owner,
+        should_use_sentry_app=getattr(
+            info.context["request"],
+            USE_SENTRY_APP_INDICATOR,
+            False,
+        ),
+    )
+    return len(all_components)
+
+
 @commit_coverage_analytics_bindable.field("components")
 @sync_to_async
 @sentry_sdk.trace
