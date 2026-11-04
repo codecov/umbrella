@@ -5,6 +5,7 @@ union BundleAnalysisReportResult =
 type BundleAnalysisReport {
   bundles: [BundleReport]!
   bundleData: BundleData!
+  bundleSize: BundleSize!
   bundle(name: String!, filters: BundleAnalysisReportFilters): BundleReport
   isCached: Boolean!
 }
