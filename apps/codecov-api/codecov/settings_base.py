@@ -449,6 +449,32 @@ SENTRY_ORG_URL = get_config(
     "services", "sentry", "org_domain", default="https://sentry.io"
 )
 
+GRAPHQL_CLIENT_ERROR_PREFIXES = ("Cannot query field",)
+
+
+def sentry_before_send(event, hint):
+    """
+    Drop GraphQL schema-validation errors (e.g. querying a field that does
+    not exist). These are client mistakes, not server errors, but the
+    auto-enabled Ariadne integration reports them anyway.
+    """
+    exc_info = hint.get("exc_info") if hint else None
+    if exc_info:
+        exc = exc_info[1]
+        if type(exc).__name__ == "GraphQLError" and str(
+            getattr(exc, "message", exc)
+        ).startswith(GRAPHQL_CLIENT_ERROR_PREFIXES):
+            return None
+
+    for value in (event.get("exception") or {}).get("values") or []:
+        if value.get("type") == "GraphQLError" and str(
+            value.get("value") or ""
+        ).startswith(GRAPHQL_CLIENT_ERROR_PREFIXES):
+            return None
+
+    return event
+
+
 if SENTRY_DSN is not None:
     SENTRY_SAMPLE_RATE = float(
         get_config("services", "sentry", "sample_rate", default="1.0")
@@ -462,6 +488,7 @@ if SENTRY_DSN is not None:
     sentry_sdk.init(
         dsn=SENTRY_DSN,
         event_scrubber=EventScrubber(denylist=SENTRY_DENY_LIST),
+        before_send=sentry_before_send,
         _experiments={
             "enable_logs": True,
         },
