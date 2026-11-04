@@ -31,7 +31,7 @@ def get_line_coverage(location, cov, line_type):
     if not sl or (sc + 1 == ec and sl == el):
         return None, None, None
 
-    if line_type != "m" and sl == el and sc != 0:
+    if line_type != "m" and sl == el and sc != 0 and ec is not None:
         partial = [sc, ec, cov]
     else:
         partial = None
@@ -207,6 +207,8 @@ def next_from_json(
                         sc, ec = sc + 4, cur_partials[0][0] - 2
                         _isc, iec, icov = inline_part
                         if sc > ec:
+                            if cur_partials[-1][1] is None:
+                                continue
                             cur_partials.append([cur_partials[-1][1] + 2, iec, icov])
                             _file[sl] = report_builder_session.create_coverage_line(
                                 cov,
