@@ -6,7 +6,12 @@ from services.report.report_builder import ReportBuilderSession
 
 class SalesforceProcessor(BaseLanguageProcessor):
     def matches_content(self, content: list, first_line: str, name: str) -> bool:
-        return bool(content) and isinstance(content, list) and "name" in content[0]
+        return (
+            bool(content)
+            and isinstance(content, list)
+            and content[0] is not None
+            and "name" in content[0]
+        )
 
     @sentry_sdk.trace
     def process(
