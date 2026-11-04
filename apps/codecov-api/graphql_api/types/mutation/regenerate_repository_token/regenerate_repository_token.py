@@ -14,7 +14,7 @@ async def resolve_regenerate_repository_token(_, info, input):
 
     token = await command.regenerate_repository_token(
         repo_name=input.get("repo_name"),
-        owner_username=input.get("owner"),
+        owner_username=input.get("owner_username"),
         token_type=input.get("token_type"),
     )
 
