@@ -105,13 +105,66 @@ def _get_repo_provider_service_instance(service: str, adapter_params: dict):
     )
 
 
+def _collect_ancestors_by_depth(ancestors_tree: dict) -> list[tuple[int, str]]:
+    """
+    BFS traversal of the ancestors tree returned by get_ancestors_tree.
+    Returns a list of (depth, commitid) tuples ordered from shallowest to deepest.
+    """
+    result = []
+    elements = [ancestors_tree]
+    depth = 0
+    while elements:
+        parents = [k for el in elements for k in el["parents"]]
+        for p in parents:
+            result.append((depth, p["commitid"]))
+        elements = parents
+        depth += 1
+    return result
+
+
+
+def _pick_closest_commit_with_branch(
+    commit: Commit,
+    ancestors_by_depth: list[tuple[int, str]],
+    db_rows: list,
+) -> str | None:
+    """
+    Like _pick_closest_commit but uses (commitid, branch) rows from the DB
+    to prefer a branch-matching result when multiple commits share the same depth.
+    """
+    if not db_rows:
+        return None
+
+    row_map: dict[str, str] = {row.commitid: row.branch for row in db_rows}
+    by_depth: dict[int, list[str]] = {}
+    for depth, commitid in ancestors_by_depth:
+        if commitid in row_map:
+            by_depth.setdefault(depth, []).append(commitid)
+
+    if not by_depth:
+        return None
+
+    min_depth = min(by_depth)
+    commits_at_min = by_depth[min_depth]
+
+    if len(commits_at_min) == 1:
+        return commits_at_min[0]
+
+    for commitid in commits_at_min:
+        if row_map[commitid] == commit.branch:
+            return commitid
+
+    return commits_at_min[0]
+
+
 @sentry_sdk.trace
 async def fetch_appropriate_parent_for_commit(
     repository_service: TorngitBaseAdapter, commit: Commit, git_commit=None
 ) -> str | None:
-    closest_parent_without_message = None
     db_session = commit.get_db_session()
     commitid = commit.commitid
+
+    # Fast path: if the caller already fetched the git commit, check direct parents first.
     if git_commit:
         parents = git_commit["parents"]
         possible_commit_query = db_session.query(Commit.commitid, Commit.branch).filter(
@@ -125,36 +178,53 @@ async def fetch_appropriate_parent_for_commit(
             return possible_commit.commitid
 
     ancestors_tree = await repository_service.get_ancestors_tree(commitid)
-    elements = [ancestors_tree]
-    while elements:
-        parents = [k for el in elements for k in el["parents"]]
-        parent_commits = [p["commitid"] for p in parents]
-        closest_parent_query = db_session.query(Commit.commitid, Commit.branch).filter(
-            Commit.commitid.in_(parent_commits),
+
+    # Flatten the entire ancestor tree into (depth, commitid) pairs in one pass.
+    ancestors_by_depth = _collect_ancestors_by_depth(ancestors_tree)
+    if not ancestors_by_depth:
+        log.warning(
+            "Unable to find a parent commit that was properly found on Github",
+            extra={"commit": commit.commitid, "repoid": commit.repoid},
+        )
+        return None
+
+    all_ancestor_ids = [cid for _, cid in ancestors_by_depth]
+
+    # Single query for commits that have a message (preferred parents).
+    with_message_rows = (
+        db_session.query(Commit.commitid, Commit.branch)
+        .filter(
+            Commit.commitid.in_(all_ancestor_ids),
             Commit.repoid == commit.repoid,
             ~Commit.message.is_(None),
             ~Commit.deleted.is_(True),
         )
-        closest_parent = _possibly_filter_out_branch(commit, closest_parent_query)
-        if closest_parent:
-            return closest_parent.commitid
-
-        if closest_parent_without_message is None:
-            parent_query = db_session.query(Commit.commitid, Commit.branch).filter(
-                Commit.commitid.in_(parent_commits),
-                Commit.repoid == commit.repoid,
-                ~Commit.deleted.is_(True),
-            )
-            parent = _possibly_filter_out_branch(commit, parent_query)
-            if parent:
-                closest_parent_without_message = parent.commitid
-        elements = parents
-
-    log.warning(
-        "Unable to find a parent commit that was properly found on Github",
-        extra={"commit": commit.commitid, "repoid": commit.repoid},
+        .all()
     )
-    return closest_parent_without_message
+    closest = _pick_closest_commit_with_branch(commit, ancestors_by_depth, with_message_rows)
+    if closest:
+        return closest
+
+    # Fallback: single query for commits without a message constraint.
+    without_message_rows = (
+        db_session.query(Commit.commitid, Commit.branch)
+        .filter(
+            Commit.commitid.in_(all_ancestor_ids),
+            Commit.repoid == commit.repoid,
+            ~Commit.deleted.is_(True),
+        )
+        .all()
+    )
+    closest_without_message = _pick_closest_commit_with_branch(
+        commit, ancestors_by_depth, without_message_rows
+    )
+
+    if closest_without_message is None:
+        log.warning(
+            "Unable to find a parent commit that was properly found on Github",
+            extra={"commit": commit.commitid, "repoid": commit.repoid},
+        )
+    return closest_without_message
 
 
 def _possibly_filter_out_branch(commit: Commit, query: Query) -> Commit | None:
