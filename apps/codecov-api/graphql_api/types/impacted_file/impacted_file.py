@@ -11,6 +11,7 @@ from graphql_api.types.segment_comparison.segment_comparison import SegmentCompa
 from services.comparison import (
     Comparison,
     ImpactedFile,
+    MissingComparisonCommit,
     MissingComparisonReport,
 )
 from shared.reports.types import ReportTotals
@@ -77,7 +78,7 @@ def resolve_segments(
     comparison: Comparison = info.context["comparison"]
     try:
         comparison.validate()
-    except MissingComparisonReport:
+    except (MissingComparisonReport, MissingComparisonCommit):
         return SegmentComparisons(results=[])
     path = impacted_file.head_name
 
