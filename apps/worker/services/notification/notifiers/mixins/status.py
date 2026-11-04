@@ -322,7 +322,7 @@ class StatusProjectMixin:
         )
         threshold = self._get_threshold()
 
-        head_coverage = Decimal(comparison.head.report.totals.coverage)
+        head_coverage = Decimal(comparison.head.report.totals.coverage or 0)
         log.info(
             "Adjust base applied to project status",
             extra={
