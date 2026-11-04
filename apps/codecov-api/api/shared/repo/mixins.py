@@ -9,6 +9,7 @@ from api.shared.mixins import OwnerPropertyMixin
 from api.shared.permissions import RepositoryPermissionsService, UserIsAdminPermissions
 from core.models import Repository
 from services.decorators import torngit_safe
+from codecov_auth.models import Service
 
 from .repository_accessors import RepoAccessors
 
@@ -76,6 +77,11 @@ class RepositoryViewSetMixin(
         repo_name = self.kwargs.get("repo_name")
         org_name = self.kwargs.get("owner_username")
         service = self.kwargs.get("service")
+
+        try:
+            Service(service)
+        except ValueError:
+            raise Http404()
 
         repo = self.accessors.get_repo_details(
             user=self.request.current_owner,
