@@ -15,6 +15,9 @@ from shared.django_apps.ta_timeseries.models import (
 from shared.django_apps.test_analytics.models import Flake
 
 
+TESTRUN_BULK_INSERT_BATCH_SIZE = 500
+
+
 def get_flaky_tests_set(repo_id: int) -> set[bytes]:
     return {
         bytes(test_id)
@@ -76,7 +79,9 @@ def insert_testrun(
                 upload_id=upload_id,
             )
         )
-    Testrun.objects.bulk_create(testruns_to_create)
+    Testrun.objects.bulk_create(
+        testruns_to_create, batch_size=TESTRUN_BULK_INSERT_BATCH_SIZE
+    )
 
 
 class FailedTestInstance(TypedDict):
