@@ -344,9 +344,17 @@ class AsyncGraphqlView(GraphQLAsyncView):
     def error_formatter(self, error: Any, debug: bool = False) -> dict[str, Any]:
         user = self.request.user
         is_anonymous = user.is_anonymous if user else True
-        # the only way to check for a malformed query
-        is_bad_query = "Cannot query field" in error.formatted["message"]
-        if debug or (not is_anonymous and is_bad_query):
+        # client-caused GraphQL errors: malformed query or invalid variable types
+        error_message = error.formatted["message"]
+        is_bad_query = "Cannot query field" in error_message
+        # Variable coercion errors have no original_error and contain recognisable
+        # patterns; they are always client-caused regardless of auth status.
+        is_variable_coercion_error = error.original_error is None and (
+            "Expected type" in error_message
+            or "to be a mapping" in error_message
+            or "Variable" in error_message
+        )
+        if debug or is_variable_coercion_error or (not is_anonymous and is_bad_query):
             return format_error(error, debug)
         formatted = error.formatted
         formatted["message"] = "INTERNAL SERVER ERROR"
