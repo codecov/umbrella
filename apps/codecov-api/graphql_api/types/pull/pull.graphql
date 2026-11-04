@@ -8,6 +8,7 @@ type Pull {
   updatestamp: DateTime
   head: Commit
   comparedTo: Commit
+  changedFiles: Int
   compareWithBase: ComparisonResult
   bundleAnalysisCompareWithBase: BundleAnalysisComparisonResult
   commits(
