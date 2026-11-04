@@ -59,21 +59,23 @@ def pre_process_yaml(inputted_yaml_dict):
     Args:
         inputted_yaml_dict (dict): The yaml dict inputted by the user
     """
-    coverage = inputted_yaml_dict.get("coverage", {})
-    if "flags" in coverage:
-        inputted_yaml_dict["flags"] = coverage.pop("flags")
-    if "parsers" in coverage:
-        inputted_yaml_dict["parsers"] = coverage.pop("parsers")
-    if "ignore" in coverage:
-        inputted_yaml_dict["ignore"] = coverage.pop("ignore")
-    if "fixes" in coverage:
-        inputted_yaml_dict["fixes"] = coverage.pop("fixes")
-    if inputted_yaml_dict.get("codecov") and inputted_yaml_dict["codecov"].get(
-        "notify"
-    ):
-        if "require_ci_to_pass" in inputted_yaml_dict["codecov"]["notify"]:
-            val = inputted_yaml_dict["codecov"]["notify"].pop("require_ci_to_pass")
-            inputted_yaml_dict["codecov"]["require_ci_to_pass"] = val
+    # Values may be None (e.g. a bare `coverage:` key) or other non-dict types;
+    # leave those untouched so schema validation reports a proper error.
+    coverage = inputted_yaml_dict.get("coverage")
+    if isinstance(coverage, dict):
+        if "flags" in coverage:
+            inputted_yaml_dict["flags"] = coverage.pop("flags")
+        if "parsers" in coverage:
+            inputted_yaml_dict["parsers"] = coverage.pop("parsers")
+        if "ignore" in coverage:
+            inputted_yaml_dict["ignore"] = coverage.pop("ignore")
+        if "fixes" in coverage:
+            inputted_yaml_dict["fixes"] = coverage.pop("fixes")
+    codecov = inputted_yaml_dict.get("codecov")
+    if isinstance(codecov, dict):
+        notify = codecov.get("notify")
+        if isinstance(notify, dict) and "require_ci_to_pass" in notify:
+            codecov["require_ci_to_pass"] = notify.pop("require_ci_to_pass")
 
     remove_reserved_keys(inputted_yaml_dict)
 
