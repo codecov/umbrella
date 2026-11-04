@@ -45,16 +45,10 @@ def get_testruns(upload: ReportSession) -> QuerySet[Testrun]:
 def get_testruns_for_uploads(
     uploads: list[ReportSession],
 ) -> dict[int, list[Testrun]]:
-    upload_ids = [upload.id for upload in uploads]
-    testruns = Testrun.objects.filter(
-        Q(timestamp__gte=timezone.now() - timedelta(days=1))
-        & Q(upload_id__in=upload_ids)
-    ).order_by("timestamp")
-
-    grouped: dict[int, list[Testrun]] = {upload_id: [] for upload_id in upload_ids}
-    for testrun in testruns:
-        grouped[testrun.upload_id].append(testrun)
-    return grouped
+    # Query per-upload instead of using a single large IN query, to avoid
+    # triggering PostgreSQL parallel workers on the ta_timeseries connection
+    # which can be terminated by a statement timeout (AdminShutdown).
+    return {upload.id: list(get_testruns(upload)) for upload in uploads}
 
 
 def handle_pass(curr_flakes: dict[bytes, Flake], test_id: bytes):
