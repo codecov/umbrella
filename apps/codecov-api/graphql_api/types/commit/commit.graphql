@@ -23,6 +23,7 @@ type Commit {
   totalUploads: Int!
   bundleStatus: CommitStatus
   coverageStatus: CommitStatus
+  sourceFile(path: String!, flags: [String], components: [String]): File
   coverageAnalytics: CommitCoverageAnalytics
   bundleAnalysis: CommitBundleAnalysis
   latestUploadError: LatestUploadError
