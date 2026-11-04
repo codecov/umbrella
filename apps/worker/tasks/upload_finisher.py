@@ -6,6 +6,8 @@ from enum import Enum
 import sentry_sdk
 from asgiref.sync import async_to_sync
 from celery.exceptions import Retry, SoftTimeLimitExceeded
+from sqlalchemy.exc import DBAPIError
+from sqlalchemy.exc import OperationalError as SQLAlchemyOperationalError
 
 from app import celery_app
 from celery_config import notify_error_task_name
@@ -67,6 +69,15 @@ UPLOAD_FINISHER_ALREADY_COMPLETED_COUNTER = Counter(
 )
 
 regexp_ci_skip = re.compile(r"\[(ci|skip| |-){3,}\]")
+
+
+def _is_transient_db_error(exc: BaseException) -> bool:
+    """Return True for DB errors caused by a dropped/invalidated connection."""
+    if isinstance(exc, SQLAlchemyOperationalError):
+        return True
+    return isinstance(exc, DBAPIError) and bool(
+        getattr(exc, "connection_invalidated", False)
+    )
 
 
 class ShouldCallNotifyResult(Enum):
@@ -416,6 +427,40 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
             }
 
         except Exception as e:
+            if _is_transient_db_error(e):
+                # The DB connection was dropped (e.g. by PgBouncer / LB / server).
+                # Discard the dead connection and retry the task instead of leaving
+                # the uploads unmerged. The finisher is idempotent: already-merged
+                # uploads are skipped, and intermediate reports are only cleaned up
+                # after a successful commit.
+                try:
+                    db_session.rollback()
+                except Exception:
+                    log.warning(
+                        "run_impl: failed to rollback session after DB disconnect",
+                        exc_info=True,
+                    )
+                log.warning(
+                    "run_impl: transient database error in upload finisher, retrying",
+                    extra={
+                        "upload_ids": upload_ids,
+                        "commitid": commitid,
+                        "repoid": repoid,
+                        "attempts": self.attempts,
+                    },
+                    exc_info=True,
+                )
+                sentry_sdk.add_breadcrumb(
+                    category="upload_finisher",
+                    message="Retrying upload finisher after transient DB error",
+                    level="warning",
+                    data={"upload_ids": upload_ids, "error": repr(e)},
+                )
+                # Raises Retry if a retry was scheduled; returns False when
+                # max attempts are exhausted, in which case fall through to the
+                # existing error reporting below.
+                self.safe_retry(countdown=FINISHER_BASE_RETRY_COUNTDOWN_SECONDS, exc=e)
+
             log.exception("run_impl: unexpected error in upload finisher")
             sentry_sdk.capture_exception(e)
             log.exception(
