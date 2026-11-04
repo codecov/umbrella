@@ -51,6 +51,7 @@ type Repository {
   bundleAnalysisEnabled: Boolean
   coverageEnabled: Boolean
   testAnalyticsEnabled: Boolean
+  coverageCoverage: CoverageAnalytics @deprecated(reason: "Use coverageAnalytics instead")
   isGithubRateLimited: Boolean
 
   "CoverageAnalytics are fields related to Codecov's Coverage product offering"

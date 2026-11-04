@@ -339,6 +339,7 @@ def resolve_is_github_rate_limited(
 
 
 @repository_bindable.field("coverageAnalytics")
+@repository_bindable.field("coverageCoverage")
 def resolve_coverage_analytics(
     repository: Repository, info: GraphQLResolveInfo
 ) -> CoverageAnalyticsProps:
