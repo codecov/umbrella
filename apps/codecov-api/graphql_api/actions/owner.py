@@ -27,6 +27,19 @@ def get_owner(service, username):
     )
 
 
+@sync_to_async
+def get_owner_by_id(service, ownerid):
+    if not service:
+        raise MissingService()
+
+    long_service = get_long_service_name(service)
+    return (
+        Owner.objects.filter(ownerid=ownerid, service=long_service)
+        .prefetch_related("account")
+        .first()
+    )
+
+
 def get_owner_login_sessions(current_user):
     return current_user.session_set.filter(type="login").all()
 
