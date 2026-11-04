@@ -11,7 +11,6 @@ import sentry_sdk
 from sqlalchemy import asc, desc, text
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session as DbSession
-from sqlalchemy.orm import aliased
 from sqlalchemy.orm.query import Query
 from sqlalchemy.sql import func
 from sqlalchemy.sql.functions import coalesce
@@ -151,19 +150,23 @@ class AssetReport:
         model for each Chunk of the current Asset.
         """
         with get_db_session(self.db_path) as session:
-            # Reattach self.asset to the current session to avoid DetachedInstanceError
-            asset = session.merge(self.asset)
-
-            # Alias the chunks table for the Asset.chunks relationship
-            asset_chunks = aliased(Chunk)
+            # Build a subquery for chunk IDs belonging to this asset via the
+            # assets_chunks join table. This avoids the previous pattern of
+            # session.merge() + lazy-loading asset.chunks, which issued two
+            # extra queries per call (SELECT assets WHERE id=? and
+            # SELECT chunks WHERE asset_id=?).
+            chunk_ids_subquery = (
+                session.query(Chunk.id)
+                .join(Chunk.assets)
+                .filter(Asset.id == self.asset.id)
+                .subquery()
+            )
 
             assets = (
                 session.query(Asset)
                 .distinct()
                 .join(DynamicImport, DynamicImport.asset_id == Asset.id)
-                .join(Chunk, DynamicImport.chunk_id == Chunk.id)
-                .join(asset_chunks, asset_chunks.id == DynamicImport.chunk_id)
-                .filter(asset_chunks.id.in_([chunk.id for chunk in asset.chunks]))
+                .filter(DynamicImport.chunk_id.in_(chunk_ids_subquery))
             )
 
             return (
