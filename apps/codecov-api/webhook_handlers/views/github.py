@@ -45,6 +45,7 @@ class GithubWebhookHandler(APIView):
     """
 
     permission_classes = [AllowAny]
+    http_method_names = ["post"]
     redis = get_redis_connection()
 
     service_name = "github"

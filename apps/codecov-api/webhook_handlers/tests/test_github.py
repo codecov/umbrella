@@ -235,6 +235,22 @@ class GithubWebhookHandlerTests(APITestCase):
         assert response.status_code == status.HTTP_200_OK
         assert not self.repo.branches.filter(name=branch.name).exists()
 
+    def test_http_delete_does_not_delete_branch(self):
+        branch = BranchFactory(repository=self.repo)
+
+        response = self.client.delete(
+            reverse("github-webhook"),
+            data={
+                "ref": "refs/heads/" + branch.name,
+                "ref_type": "branch",
+                "repository": {"id": self.repo.service_id},
+            },
+            format="json",
+        )
+
+        assert response.status_code == status.HTTP_405_METHOD_NOT_ALLOWED
+        assert self.repo.branches.filter(name=branch.name).exists()
+
     def test_public_sets_repo_private_false_and_activated_false(self):
         self.repo.private = True
         self.repo.activated = True
