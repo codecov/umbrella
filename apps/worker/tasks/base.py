@@ -12,8 +12,10 @@ from sqlalchemy.exc import (
     DataError,
     IntegrityError,
     InvalidRequestError,
+    OperationalError,
     SQLAlchemyError,
 )
+from sqlalchemy.exc import InterfaceError as SQLAlchemyInterfaceError
 
 from app import celery_app
 from celery_task_router import _get_ownerid_from_task, _get_user_plan_from_task
@@ -459,9 +461,12 @@ class BaseCodecovTask(celery_app.Task):
 
             close_old_connections()
 
+            task_completed = False
             try:
                 with self.task_core_runtime.time():
-                    return self.run_impl(db_session, *args, **kwargs)
+                    result = self.run_impl(db_session, *args, **kwargs)
+                task_completed = True
+                return result
             except InterfaceError as ex:
                 sentry_sdk.capture_exception(
                     ex,
@@ -503,19 +508,51 @@ class BaseCodecovTask(celery_app.Task):
                 if TestResultsFlow.has_begun():
                     TestResultsFlow.log(TestResultsFlow.UNCAUGHT_RETRY_EXCEPTION)
             finally:
-                self.wrap_up_dbsession(db_session)
+                self.wrap_up_dbsession(db_session, task_completed=task_completed)
 
-    def wrap_up_dbsession(self, db_session):
+    def wrap_up_dbsession(self, db_session, task_completed: bool = False):
         """Commit and close database session, handling timeout edge cases.
 
         Handles the corner case where `SoftTimeLimitExceeded` is raised during
         `db_session.commit()`, which can leave the session in an unusable state.
         Since we reuse sessions across tasks, this would break future tasks in
         the same process, so we catch both timeout and invalid state exceptions.
+
+        Also handles the database connection being dropped (e.g.
+        "server closed the connection unexpectedly") during commit/close.
+        Since this runs in a `finally` block, letting that error escape would
+        replace whatever exception the task was already raising (such as a
+        Celery `Retry`). Instead we report it, discard the broken session, and
+        - if the task had otherwise completed successfully - retry the task,
+        since its work was not committed.
         """
         try:
             db_session.commit()
             db_session.close()
+        except (OperationalError, SQLAlchemyInterfaceError) as ex:
+            log.warning(
+                "Database connection error while committing DB session at end of task",
+                extra={
+                    "task_name": self.name,
+                    "task_completed": task_completed,
+                    "connection_invalidated": getattr(
+                        ex, "connection_invalidated", None
+                    ),
+                },
+                exc_info=True,
+            )
+            sentry_sdk.capture_exception(ex)
+            try:
+                db_session.rollback()
+            except Exception:
+                log.warning(
+                    "Failed to rollback DB session after connection error",
+                    exc_info=True,
+                )
+            get_db_session.remove()
+            if task_completed:
+                # The task's work was not persisted, so it must run again.
+                self.safe_retry()
         except SoftTimeLimitExceeded:
             log.warning(
                 "We had an issue where a timeout happened directly during the DB commit",
