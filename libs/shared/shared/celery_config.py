@@ -363,7 +363,29 @@ class BaseCeleryConfig:
     # Can be overridden via: setup.tasks.celery.visibility_timeout config
     broker_transport_options = {
         "visibility_timeout": TASK_VISIBILITY_TIMEOUT_SECONDS,
+        # Enable TCP keepalive so the OS sends probes on idle broker connections,
+        # preventing the Redis server from silently closing them during long tasks.
+        "socket_keepalive": bool(
+            get_config(
+                "setup", "tasks", "celery", "socket_keepalive", default=True
+            )
+        ),
     }
+
+    # Periodically verify that Redis backend connections are alive before use.
+    # Connections idle longer than this interval are health-checked and replaced
+    # if stale, preventing TimeoutError when Celery reads chord/task results.
+    # Default: 25 seconds (well under Redis's default 300s idle timeout).
+    # Can be overridden via: setup.tasks.celery.redis_backend_health_check_interval
+    redis_backend_health_check_interval = int(
+        get_config(
+            "setup",
+            "tasks",
+            "celery",
+            "redis_backend_health_check_interval",
+            default=25,
+        )
+    )
     result_extended = True
     task_default_queue = get_config(
         "setup", "tasks", "celery", "default_queue", default="celery"
