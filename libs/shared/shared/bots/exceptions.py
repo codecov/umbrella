@@ -17,3 +17,14 @@ class NoConfiguredAppsAvailable(Exception):
 
 class RepositoryWithoutValidBotError(Exception):
     pass
+
+
+class UnsupportedRepoProviderError(RepositoryWithoutValidBotError):
+    """Raised when no torngit adapter exists for a service (e.g. `to_be_deleted`).
+
+    Subclasses `RepositoryWithoutValidBotError` so existing handlers degrade gracefully.
+    """
+
+    def __init__(self, service) -> None:
+        super().__init__(f"Unsupported repository provider service: {service!r}")
+        self.service = service

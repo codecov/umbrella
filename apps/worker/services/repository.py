@@ -15,6 +15,7 @@ from database.enums import CommitErrorTypes
 from database.models import Commit, Owner, Pull
 from database.models import Repository as SQLAlchemyRepository
 from database.models.core import GITHUB_APP_INSTALLATION_DEFAULT_NAME
+from helpers.exceptions import UnsupportedRepoProviderError
 from helpers.save_commit_error import save_commit_error
 from helpers.token_refresh import get_token_refresh_callback
 from services.owner import clear_identical_owners
@@ -92,7 +93,7 @@ def _get_repo_provider_service_instance(service: str, adapter_params: dict):
         get_config("setup", "http", "timeouts", "connect", default=30),
         get_config("setup", "http", "timeouts", "receive", default=60),
     ]
-    return torngit.get(
+    adapter = torngit.get(
         service,
         # Args for the Torngit instance
         timeouts=_timeouts,
@@ -103,6 +104,10 @@ def _get_repo_provider_service_instance(service: str, adapter_params: dict):
         },
         **adapter_params,
     )
+    if adapter is None:
+        # e.g. owner.service == "to_be_deleted" after MarkOwnerForDeletionTask
+        raise UnsupportedRepoProviderError(service)
+    return adapter
 
 
 @sentry_sdk.trace

@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 
 import shared.torngit as torngit
 from database.models import LoginSession, Owner
+from helpers.exceptions import UnsupportedRepoProviderError
 from helpers.token_refresh import get_token_refresh_callback
 from shared.bots import get_adapter_auth_information
 from shared.config import get_config, get_verify_ssl
@@ -55,7 +56,10 @@ def get_owner_provider_service(
 
 
 def _get_owner_provider_service_instance(service_name, **adapter_params):
-    return torngit.get(service_name, **adapter_params)
+    adapter = torngit.get(service_name, **adapter_params)
+    if adapter is None:
+        raise UnsupportedRepoProviderError(service_name)
+    return adapter
 
 
 def clear_identical_owners(
