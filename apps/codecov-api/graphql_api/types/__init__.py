@@ -70,6 +70,7 @@ from .repository_config import (
 from .segment_comparison import (
     segment_comparison,
     segment_comparison_bindable,
+    segments_bindable,
     segments_result_bindable,
 )
 from .self_hosted_license import self_hosted_license, self_hosted_license_bindable
@@ -186,6 +187,7 @@ bindables = [
     repository_config_bindable,
     repository_result_bindable,
     segment_comparison_bindable,
+    segments_bindable,
     segments_result_bindable,
     self_hosted_license_bindable,
     session_bindable,
