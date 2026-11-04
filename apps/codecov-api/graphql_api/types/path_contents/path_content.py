@@ -56,6 +56,11 @@ def resolve_percent_covered(item: File | Dir, info) -> float:
     return item.coverage
 
 
+@path_content_file_bindable.field("isCriticalFile")
+def resolve_is_critical_file(item: File, info) -> bool:
+    return False
+
+
 path_contents_result_bindable = UnionType("PathContentsResult")
 
 
