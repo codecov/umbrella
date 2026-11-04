@@ -13,10 +13,14 @@ import shared.rate_limits as rate_limits
 from codecov_auth.helpers import current_user_part_of_org
 from codecov_auth.models import SERVICE_GITHUB, SERVICE_GITHUB_ENTERPRISE, Owner
 from core.models import Branch, Commit, Pull, Repository
+from reports.models import ReportSession
 from graphql_api.actions.commits import load_commit_statuses, repo_commits
 from graphql_api.dataloader.commit import CommitLoader
 from graphql_api.dataloader.owner import OwnerLoader
-from graphql_api.helpers.connection import queryset_to_connection
+from graphql_api.helpers.connection import (
+    queryset_to_connection,
+    queryset_to_connection_sync,
+)
 from graphql_api.helpers.mutation import is_called_from_sentry_app
 from graphql_api.helpers.requested_fields import selected_fields
 from graphql_api.types.coverage_analytics.coverage_analytics import (
@@ -354,3 +358,20 @@ def resolve_test_analytics(
     resolve_test_analytics defines the data that will get passed to the testAnalytics resolvers
     """
     return repository
+
+
+@repository_bindable.field("uploads")
+@sync_to_async
+def resolve_uploads(
+    repository: Repository, info: GraphQLResolveInfo, **kwargs: Any
+):
+    queryset = ReportSession.objects.filter(
+        report__commit__repository=repository
+    ).select_related("report__commit")
+
+    if not kwargs:
+        kwargs["first"] = 100
+
+    return queryset_to_connection_sync(
+        queryset, ordering=("id",), ordering_direction=OrderingDirection.ASC, **kwargs
+    )
