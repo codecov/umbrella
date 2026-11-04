@@ -23,6 +23,10 @@ jobs:
   push-worker-image:
     needs: [create-release]
     if: ${{ github.event.pull_request.merged == true && startsWith(github.head_ref, 'release/') && github.repository_owner == 'codecov' }}
+    # pull_request (including closed) cannot write default-branch caches unless
+    # the caller opts in. The publish job restores an image saved earlier in
+    # this run, so a read-only cache token fails the Docker Hub push.
+    cache-mode: write
     uses: ./.github/workflows/_self-hosted.yml
     secrets: inherit
     with:
@@ -34,6 +38,7 @@ jobs:
   push-api-image:
     needs: [create-release]
     if: ${{ github.event.pull_request.merged == true && startsWith(github.head_ref, 'release/') && github.repository_owner == 'codecov' }}
+    cache-mode: write
     uses: ./.github/workflows/_self-hosted.yml
     secrets: inherit
     with:
