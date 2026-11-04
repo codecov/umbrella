@@ -41,7 +41,30 @@ def insert_testrun(
     parsing_info: test_results_parser.ParsingInfo,
     flaky_test_ids: set[bytes] | None = None,
 ):
-    testruns_to_create = []
+    testruns_to_create = build_testruns(
+        timestamp=timestamp,
+        repo_id=repo_id,
+        commit_sha=commit_sha,
+        branch=branch,
+        upload_id=upload_id,
+        flags=flags,
+        parsing_info=parsing_info,
+        flaky_test_ids=flaky_test_ids,
+    )
+    Testrun.objects.bulk_create(testruns_to_create)
+
+
+def build_testruns(
+    timestamp: datetime,
+    repo_id: int | None,
+    commit_sha: str | None,
+    branch: str | None,
+    upload_id: int | None,
+    flags: list[str] | None,
+    parsing_info: test_results_parser.ParsingInfo,
+    flaky_test_ids: set[bytes] | None = None,
+) -> list[Testrun]:
+    testruns_to_create: list[Testrun] = []
     for testrun in parsing_info["testruns"]:
         test_id = calc_test_id(
             testrun["name"], testrun["classname"], testrun["testsuite"]
@@ -76,7 +99,7 @@ def insert_testrun(
                 upload_id=upload_id,
             )
         )
-    Testrun.objects.bulk_create(testruns_to_create)
+    return testruns_to_create
 
 
 class FailedTestInstance(TypedDict):
