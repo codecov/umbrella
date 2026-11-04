@@ -185,7 +185,14 @@ def get_ta_processing_info(
     commitid: str,
     commit_yaml: dict[str, Any],
 ) -> TAProcInfo:
-    repository = Repository.objects.using("default").get(repoid=repoid)
+    # Eagerly load the owner on the same ("default") connection: ArchiveService
+    # reads `repository.service` (-> `repository.author`), and a lazy FK load would
+    # be routed to the read replica, opening a new connection on every task.
+    repository = (
+        Repository.objects.using("default")
+        .select_related("author")
+        .get(repoid=repoid)
+    )
 
     commit = Commit.objects.using("default").get(
         repository=repository, commitid=commitid
