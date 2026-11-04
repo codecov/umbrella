@@ -37,6 +37,7 @@ type LatestUploadError {
 type CommitCoverageAnalytics {
   components(filters: ComponentsFilters): [Component!]!
   coverageFile(path: String!, flags: [String], components: [String]): File
+  commitFile(path: String!, flags: [String], components: [String]): File @deprecated(reason: "Use coverageFile instead.")
   flagNames: [String]
   totals: CoverageTotals
 }
