@@ -348,11 +348,32 @@ class AsyncGraphqlView(GraphQLAsyncView):
         is_bad_query = "Cannot query field" in error.formatted["message"]
         if debug or (not is_anonymous and is_bad_query):
             return format_error(error, debug)
+        original_error = error.original_error
+        if original_error is None:
+            # Parse/validation errors (e.g. unused or undefined variables,
+            # unknown fields) are raised by graphql-core before any resolver
+            # runs and carry no original exception. They are caused by a
+            # malformed client query, not a server fault, so surface the real
+            # message to the client and log a warning instead of reporting
+            # them to Sentry as internal server errors.
+            formatted = format_error(error, debug)
+            formatted["type"] = "ValidationError"
+            log.warning(
+                "GraphQL validation error",
+                extra={
+                    "error_message": error.message,
+                    "query_slice": (
+                        self.request.body.decode("utf-8", errors="replace")[:500]
+                        if getattr(self.request, "body", None)
+                        else None
+                    ),
+                },
+            )
+            return formatted
         formatted = error.formatted
         formatted["message"] = "INTERNAL SERVER ERROR"
         formatted["type"] = "ServerError"
         # if this is one of our own command exception, we can tell a bit more
-        original_error = error.original_error
         if isinstance(original_error, BaseException) or isinstance(
             original_error, ServiceException
         ):
