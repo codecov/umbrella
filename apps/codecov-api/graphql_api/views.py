@@ -77,6 +77,17 @@ GQL_ERROR_TYPE_COUNTER = Counter(
 # covers named and 3 unnamed operations (see graphql_api/types/query/query.py)
 GQL_TYPE_AND_NAME_PATTERN = r"^(query|mutation|subscription)(?:\(\$input:|) (\w+)(?:\(| \(|{| {|!)|^(?:{) (me|owner|config)(?:\(| |{)"
 
+# GraphQL schema validation error phrases that indicate a malformed client query
+GQL_VALIDATION_ERROR_PHRASES = (
+    "Cannot query field",
+    "must not have a selection",
+    "Unknown field",
+    "Unknown argument",
+    "Unknown type",
+    "Unknown directive",
+    "Field is not defined",
+)
+
 
 class QueryMetricsExtension(Extension):
     """
@@ -345,7 +356,10 @@ class AsyncGraphqlView(GraphQLAsyncView):
         user = self.request.user
         is_anonymous = user.is_anonymous if user else True
         # the only way to check for a malformed query
-        is_bad_query = "Cannot query field" in error.formatted["message"]
+        is_bad_query = any(
+            phrase in error.formatted["message"]
+            for phrase in GQL_VALIDATION_ERROR_PHRASES
+        )
         if debug or (not is_anonymous and is_bad_query):
             return format_error(error, debug)
         formatted = error.formatted
