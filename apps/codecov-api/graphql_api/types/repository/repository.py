@@ -26,6 +26,7 @@ from graphql_api.types.enums import OrderingDirection
 from graphql_api.types.enums.enum_types import PullRequestState
 from graphql_api.types.errors.errors import NotFoundError, OwnerNotActivatedError
 from shared.helpers.redis import get_redis_connection
+from shared.yaml import UserYaml
 
 TOKEN_UNAVAILABLE = "Token Unavailable. Please contact your admin."
 
@@ -343,6 +344,28 @@ def resolve_coverage_analytics(
     repository: Repository, info: GraphQLResolveInfo
 ) -> CoverageAnalyticsProps:
     return CoverageAnalyticsProps(repository=repository)
+
+
+@repository_bindable.field("componentsYaml")
+def resolve_components_yaml(
+    repository: Repository, info: GraphQLResolveInfo, term_id: str | None = None
+) -> list[dict]:
+    """
+    Convenience accessor for componentsYaml directly on Repository, delegating
+    to the same logic as CoverageAnalytics.componentsYaml.
+    """
+    components = UserYaml.get_final_yaml(
+        owner_yaml=repository.author.yaml,
+        repo_yaml=repository.yaml,
+        ownerid=repository.author.ownerid,
+    ).get_components()
+
+    result = [{"id": c.component_id, "name": c.name} for c in components]
+
+    if term_id:
+        result = [c for c in result if term_id in c["id"]]
+
+    return result
 
 
 @repository_bindable.field("testAnalytics")
