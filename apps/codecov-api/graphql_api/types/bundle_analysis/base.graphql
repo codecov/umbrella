@@ -71,6 +71,8 @@ type BundleReportInfo {
 type BundleReport {
   name: String!
   moduleCount: Int!
+  sizeTotal: Int!
+  loadTimeTotal: Int!
   assets: [BundleAsset]!
   asset(name: String!): BundleAsset
   bundleData: BundleData!
