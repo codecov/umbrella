@@ -125,30 +125,53 @@ async def fetch_appropriate_parent_for_commit(
             return possible_commit.commitid
 
     ancestors_tree = await repository_service.get_ancestors_tree(commitid)
+
+    # Flatten the ancestors tree into BFS levels (closest ancestors first),
+    # so we can look all of them up in the DB with a single query instead of
+    # issuing queries level-by-level (N+1).
+    levels: list[list[str]] = []
     elements = [ancestors_tree]
     while elements:
         parents = [k for el in elements for k in el["parents"]]
-        parent_commits = [p["commitid"] for p in parents]
-        closest_parent_query = db_session.query(Commit.commitid, Commit.branch).filter(
-            Commit.commitid.in_(parent_commits),
-            Commit.repoid == commit.repoid,
-            ~Commit.message.is_(None),
-            ~Commit.deleted.is_(True),
-        )
-        closest_parent = _possibly_filter_out_branch(commit, closest_parent_query)
-        if closest_parent:
-            return closest_parent.commitid
+        if not parents:
+            break
+        levels.append(list(dict.fromkeys(p["commitid"] for p in parents)))
+        elements = parents
 
-        if closest_parent_without_message is None:
-            parent_query = db_session.query(Commit.commitid, Commit.branch).filter(
-                Commit.commitid.in_(parent_commits),
+    all_ancestor_ids = {cid for level in levels for cid in level}
+    if all_ancestor_ids:
+        rows = (
+            db_session.query(
+                Commit.commitid,
+                Commit.branch,
+                Commit.message.isnot(None).label("has_message"),
+            )
+            .filter(
+                Commit.commitid.in_(all_ancestor_ids),
                 Commit.repoid == commit.repoid,
                 ~Commit.deleted.is_(True),
             )
-            parent = _possibly_filter_out_branch(commit, parent_query)
-            if parent:
-                closest_parent_without_message = parent.commitid
-        elements = parents
+            .all()
+        )
+        rows_by_commitid: dict[str, list] = {}
+        for row in rows:
+            rows_by_commitid.setdefault(row.commitid, []).append(row)
+
+        for level in levels:
+            level_rows = [r for cid in level for r in rows_by_commitid.get(cid, [])]
+            if not level_rows:
+                continue
+
+            closest_parent = _pick_by_branch(
+                commit, [r for r in level_rows if r.has_message]
+            )
+            if closest_parent:
+                return closest_parent.commitid
+
+            if closest_parent_without_message is None:
+                parent = _pick_by_branch(commit, level_rows)
+                if parent:
+                    closest_parent_without_message = parent.commitid
 
     log.warning(
         "Unable to find a parent commit that was properly found on Github",
@@ -158,7 +181,10 @@ async def fetch_appropriate_parent_for_commit(
 
 
 def _possibly_filter_out_branch(commit: Commit, query: Query) -> Commit | None:
-    commits = query.all()
+    return _pick_by_branch(commit, query.all())
+
+
+def _pick_by_branch(commit: Commit, commits: list) -> Commit | None:
     if len(commits) == 1:
         return commits[0]
 
