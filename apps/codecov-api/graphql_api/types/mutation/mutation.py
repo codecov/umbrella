@@ -69,6 +69,7 @@ from .update_default_organization import (
 )
 from .update_profile import error_update_profile, resolve_update_profile
 from .update_repository import error_update_repository, resolve_update_repository
+from .transplant_report import error_transplant_report, resolve_transplant_report
 from .update_self_hosted_settings import (
     error_update_self_hosted_settings,
     resolve_update_self_hosted_settings,
@@ -118,6 +119,7 @@ mutation_bindable.field("saveOktaConfig")(resolve_save_okta_config)
 mutation_bindable.field("setUploadTokenRequired")(resolve_set_upload_token_required)
 mutation_bindable.field("updateBundleCacheConfig")(resolve_update_bundle_cache_config)
 mutation_bindable.field("deleteOwner")(resolve_delete_owner)
+mutation_bindable.field("transplantReport")(resolve_transplant_report)
 
 mutation_resolvers = [
     mutation_bindable,
@@ -152,4 +154,5 @@ mutation_resolvers = [
     error_set_upload_token_required,
     error_update_bundle_cache_config,
     error_delete_owner,
+    error_transplant_report,
 ]
