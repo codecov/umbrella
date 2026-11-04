@@ -34,7 +34,7 @@ type Owner {
   repository(name: String!): RepositoryResult!
   repositories(
     filters: RepositorySetFilters
-    ordering: RepositoryOrdering
+    ordering: String
     orderingDirection: OrderingDirection
     first: Int
     after: String
