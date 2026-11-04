@@ -133,6 +133,11 @@ def resolve_misses_count(impacted_file: ImpactedFile, info) -> int:
     return impacted_file.misses_count
 
 
+@impacted_file_bindable.field("linesCount")
+def resolve_lines_count(impacted_file: ImpactedFile, info) -> int:
+    return impacted_file.lines_count
+
+
 impacted_files_result_bindable = UnionType("ImpactedFilesResult")
 
 
