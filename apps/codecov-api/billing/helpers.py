@@ -10,6 +10,8 @@ log = logging.getLogger(__name__)
 
 
 def on_enterprise_plan(owner: Owner) -> bool:
+    if not owner.plan:
+        return settings.IS_ENTERPRISE
     plan = Plan.objects.select_related("tier").get(name=owner.plan)
     return settings.IS_ENTERPRISE or (plan.tier.tier_name == TierName.ENTERPRISE.value)
 
