@@ -25,6 +25,25 @@ from shared.helpers.redis import get_redis_connection
 log = logging.getLogger(__name__)
 
 
+@signals.worker_init.connect
+def add_redis_readonly_to_recoverable_errors(**kwargs) -> None:
+    """Treat Redis ReadOnlyError as a recoverable broker error.
+
+    During a Redis primary failover the connected node may temporarily reject
+    writes with ReadOnlyError.  By adding it to the transport's connection_errors
+    tuple Celery will reconnect and retry rather than treating it as an
+    unrecoverable crash (which kills the worker process).
+    """
+    try:
+        from redis.exceptions import ReadOnlyError
+        from kombu.transport.redis import Transport
+
+        if ReadOnlyError not in Transport.connection_errors:
+            Transport.connection_errors += (ReadOnlyError,)
+    except Exception:
+        pass  # Do not prevent worker startup if patching fails
+
+
 @signals.worker_before_create_process.connect
 def prefork_gc_freeze(**kwargs) -> None:
     """Freeze GC to reduce memory usage in worker subprocesses.
