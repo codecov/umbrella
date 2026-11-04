@@ -126,6 +126,8 @@ class OwnersViewSet(viewsets.GenericViewSet, mixins.ListModelMixin):
             raise NotFound(f"Service not found: {service}")
 
         current_owner = self.request.current_owner
+        if current_owner is None:
+            return Owner.objects.none()
         return Owner.objects.filter(
             Q(service=service, ownerid__in=current_owner.organizations)
             | Q(service=service, username=current_owner.username)
