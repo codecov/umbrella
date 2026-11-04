@@ -93,7 +93,7 @@ def repo_commits(
     if hide_failed_ci is True:
         queryset = queryset.filter(ci_passed=True)
 
-    branch_name = filters.get("branch_name")
+    branch_name = filters.get("branch_name") or filters.get("branch")
     if branch_name:
         queryset = queryset.filter(branch=branch_name)
 
