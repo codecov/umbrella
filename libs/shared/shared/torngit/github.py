@@ -2056,11 +2056,18 @@ class Github(TorngitBaseAdapter):
             }
             all_commits_in_pr = {val["sha"] for val in commits}
             current_level = [res["head"]["sha"]]
+            # Walk the PR commit DAG level by level (BFS). Deduplicate nodes and
+            # skip already-visited commits; otherwise merge-heavy histories make
+            # the frontier grow exponentially and the loop effectively hangs.
+            visited: set[str] = set(current_level)
             while current_level and all(x in all_commits_in_pr for x in current_level):
-                new_level = []
+                new_level: dict[str, None] = {}
                 for x in current_level:
-                    new_level.extend(commit_mapping[x])
-                current_level = new_level
+                    for parent in commit_mapping[x]:
+                        if parent not in visited:
+                            visited.add(parent)
+                            new_level[parent] = None
+                current_level = list(new_level)
             result = self._pull(res)
             if current_level == [res["head"]["sha"]]:
                 log.warning(
