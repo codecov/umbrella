@@ -9,6 +9,7 @@ from sentry_sdk.integrations.httpx import HttpxIntegration
 from sentry_sdk.integrations.redis import RedisIntegration
 from sentry_sdk.scrubber import DEFAULT_DENYLIST, EventScrubber
 
+from codecov.sentry_filters import before_send as sentry_before_send
 from codecov.sentry_sampling import make_traces_sampler
 from shared.django_apps.db_settings import *
 from shared.helpers.redis import get_redis_url
@@ -478,6 +479,7 @@ if SENTRY_DSN is not None:
             webhook_github_rate=SENTRY_WEBHOOK_GITHUB_SAMPLE_RATE,
         ),
         enable_backpressure_handling=False,
+        before_send=sentry_before_send,
         profiles_sample_rate=float(
             get_config("services", "sentry", "profile_sample_rate", default="0.01")
         ),
