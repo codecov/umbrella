@@ -449,6 +449,20 @@ SENTRY_ORG_URL = get_config(
     "services", "sentry", "org_domain", default="https://sentry.io"
 )
 
+def _sentry_before_send(event, hint):
+    # Drop GraphQL validation/syntax errors (e.g. "Cannot query field ...").
+    # They are caused by malformed client queries, have no original_error, and
+    # are auto-captured by Sentry's Ariadne integration as unhandled errors.
+    exc_info = hint.get("exc_info") if hint else None
+    if exc_info:
+        from graphql import GraphQLError
+
+        exc = exc_info[1]
+        if isinstance(exc, GraphQLError) and exc.original_error is None:
+            return None
+    return event
+
+
 if SENTRY_DSN is not None:
     SENTRY_SAMPLE_RATE = float(
         get_config("services", "sentry", "sample_rate", default="1.0")
@@ -472,6 +486,7 @@ if SENTRY_DSN is not None:
             HttpxIntegration(),
         ],
         environment=SENTRY_ENV,
+        before_send=_sentry_before_send,
         traces_sampler=make_traces_sampler(
             default_rate=SENTRY_SAMPLE_RATE,
             badge_rate=SENTRY_BADGE_SAMPLE_RATE,

@@ -351,6 +351,11 @@ class AsyncGraphqlView(GraphQLAsyncView):
         formatted = error.formatted
         formatted["message"] = "INTERNAL SERVER ERROR"
         formatted["type"] = "ServerError"
+        # Errors without an original_error are raised by GraphQL itself (e.g.
+        # schema validation or syntax errors from a malformed client query).
+        # These are client errors, so don't log/report them as server errors.
+        if error.original_error is None:
+            return formatted
         # if this is one of our own command exception, we can tell a bit more
         original_error = error.original_error
         if isinstance(original_error, BaseException) or isinstance(
