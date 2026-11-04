@@ -363,7 +363,22 @@ class BaseCeleryConfig:
     # Can be overridden via: setup.tasks.celery.visibility_timeout config
     broker_transport_options = {
         "visibility_timeout": TASK_VISIBILITY_TIMEOUT_SECONDS,
+        "retry_on_timeout": True,
     }
+
+    # Redis connection resilience settings.
+    # When a Redis pod is restarted/rescheduled in Kubernetes its pod IP changes,
+    # leaving stale connections in the pool that get ECONNREFUSED on next use.
+    # These settings ensure stale connections are detected and recovered quickly.
+
+    # Ping the result-backend connection before each use; reconnect if dead.
+    redis_backend_health_check_interval = 5  # seconds
+
+    # Fail fast when connecting to an unreachable Redis pod IP.
+    redis_socket_connect_timeout = 5  # seconds
+
+    # Let the OS detect dead TCP connections via keepalive probes.
+    redis_socket_keepalive = True
     result_extended = True
     task_default_queue = get_config(
         "setup", "tasks", "celery", "default_queue", default="celery"
