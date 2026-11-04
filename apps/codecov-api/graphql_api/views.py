@@ -306,8 +306,26 @@ class AsyncGraphqlView(GraphQLAsyncView):
                     labels={"error_type": "all", "path": req_path},
                 )
                 try:
-                    if data["errors"][0]["extensions"]["cost"]:
-                        costs = data["errors"][0]["extensions"]["cost"]
+                    first_error = data["errors"][0]
+                    if first_error.get("type") == "ValidationError":
+                        # Variable coercion/type errors are client mistakes;
+                        # return 400 instead of 200 with an error payload.
+                        inc_counter(
+                            GQL_ERROR_TYPE_COUNTER,
+                            labels={
+                                "error_type": "variable_coercion",
+                                "path": req_path,
+                            },
+                        )
+                        return JsonResponse(
+                            data={
+                                "status": 400,
+                                "detail": first_error.get("message", "Invalid variable value."),
+                            },
+                            status=400,
+                        )
+                    if first_error["extensions"]["cost"]:
+                        costs = first_error["extensions"]["cost"]
                         log.error(
                             "Query Cost Exceeded",
                             extra={
@@ -346,14 +364,23 @@ class AsyncGraphqlView(GraphQLAsyncView):
         is_anonymous = user.is_anonymous if user else True
         # the only way to check for a malformed query
         is_bad_query = "Cannot query field" in error.formatted["message"]
+        # native GraphQL variable coercion/type errors have no wrapped Python
+        # exception (original_error is None); they represent invalid client input
+        is_variable_coercion_error = error.original_error is None
         if debug or (not is_anonymous and is_bad_query):
             return format_error(error, debug)
+        original_error = error.original_error
+        original_message = error.formatted["message"]
         formatted = error.formatted
         formatted["message"] = "INTERNAL SERVER ERROR"
         formatted["type"] = "ServerError"
-        # if this is one of our own command exception, we can tell a bit more
-        original_error = error.original_error
-        if isinstance(original_error, BaseException) or isinstance(
+        if is_variable_coercion_error:
+            # Invalid variable types from the client (e.g. passing a string
+            # where an input object is expected). Treat as a client error — do
+            # not log or send to Sentry.
+            formatted["message"] = original_message
+            formatted["type"] = "ValidationError"
+        elif isinstance(original_error, BaseException) or isinstance(
             original_error, ServiceException
         ):
             formatted["message"] = original_error.message  # type: ignore
