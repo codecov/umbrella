@@ -39,12 +39,12 @@ log = logging.getLogger(__name__)
 
 class GithubWebhookHandler(APIView):
     """
-    GitHub Webhook Handler. Method names correspond to events in
-    GitHubWebhookEvents, except `delete`, which is `_handle_delete`.
+    GitHub Webhook Handler. Method names correspond to events as defined in
+
+        webhook_handlers.constants.GitHubWebhookEvents
     """
 
     permission_classes = [AllowAny]
-    # Webhooks are POST-only. `delete` is a GitHub event, not an HTTP method.
     http_method_names = ["post"]
     redis = get_redis_connection()
 
@@ -744,7 +744,6 @@ class GithubWebhookHandler(APIView):
         )
         self.validate_signature(request)
 
-        # `delete` collides with APIView's HTTP DELETE handler, so it is dispatched explicitly.
         if self.event == GitHubWebhookEvents.DELETE:
             handler = self._handle_delete
         elif self.event:
