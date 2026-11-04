@@ -36,8 +36,10 @@ type LatestUploadError {
 "fields related to Codecov's Coverage product offering"
 type CommitCoverageAnalytics {
   components(filters: ComponentsFilters): [Component!]!
+  componentsCount: Int!
   coverageFile(path: String!, flags: [String], components: [String]): File
   flagNames: [String]
+  flagsCount: Int!
   totals: CoverageTotals
 }
 
