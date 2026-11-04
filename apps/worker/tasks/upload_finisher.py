@@ -468,6 +468,15 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                 db_session.refresh(commit)
                 report_service = ReportService(commit_yaml)
 
+                # Release the DB connection back to the pool before the long
+                # in-memory report merge. For large repos this merge can take
+                # tens of minutes; holding the connection idle that long causes
+                # the DB server (or a network proxy) to drop it. Committing
+                # here flushes any pending state and returns the connection to
+                # the pool. pool_pre_ping will supply a fresh, validated
+                # connection when save_report / commit need it afterward.
+                db_session.commit()
+
                 log.info("run_impl: Performing report merging")
 
                 report = perform_report_merging(
@@ -910,15 +919,7 @@ def perform_report_merging(
     log.info(
         "perform_report_merging: Updating uploads", extra={"upload_ids": upload_ids}
     )
-    # Release the potentially stale DB connection before writing.
-    # The non-DB work above (storage reads, Redis, CPU merge) can take long enough
-    # for infrastructure (LB idle timeout, PgBouncer) to drop the connection.
-    # Rollback releases the (possibly dead) connection back to the pool while
-    # keeping ORM objects associated with the session in expired state.
-    # The next query gets a fresh connection validated by pool_pre_ping.
     db_session = commit.get_db_session()
-    db_session.rollback()
-
     update_uploads(
         db_session,
         commit_yaml,
