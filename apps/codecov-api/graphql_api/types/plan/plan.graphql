@@ -11,6 +11,8 @@ type Plan {
   isTrialPlan: Boolean!
   marketingName: String!
   monthlyUploadLimit: Int
+  planName: String!
+    @deprecated(reason: "Use value instead")
   planUserCount: Int
   freeSeatCount: Int
   pretrialUsersCount: Int
