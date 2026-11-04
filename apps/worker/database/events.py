@@ -7,7 +7,11 @@ from sqlalchemy import event, inspect, select
 from database.models.core import Owner, Repository
 from helpers.environment import is_enterprise
 from shared.config import get_config
-from shared.plan.change_log import PLAN_TRACKED_FIELDS, log_owner_plan_change
+from shared.plan.change_log import (
+    PLAN_TRACKED_FIELDS,
+    has_plan_change,
+    log_owner_plan_change,
+)
 
 _pubsub_publisher = None
 
@@ -135,15 +139,23 @@ def after_update_owner(mapper, connection, target: Owner):
                 break
 
 
-@event.listens_for(Owner, "after_update")
+@event.listens_for(Owner, "before_update")
 def log_owner_plan_change_on_update(mapper, connection, target: Owner):
     state = inspect(target)
-    previous = {}
+    added = {}
     for field in PLAN_TRACKED_FIELDS:
         history = state.attrs[field].history
         if history.added:
-            # Expired attributes (e.g. server defaults after insert) have no
-            # recorded old value.
-            previous[field] = history.deleted[0] if history.deleted else None
-    if previous:
-        log_owner_plan_change(target, previous)
+            added[field] = history.added[0]
+    if not has_plan_change(added):
+        return
+
+    # Attribute history has no old value for expired attributes (e.g. after
+    # commit), so read the row before it's updated.
+    row = connection.execute(
+        select(*(mapper.columns[field] for field in PLAN_TRACKED_FIELDS)).where(
+            mapper.columns["ownerid"] == target.ownerid
+        )
+    ).one()
+    previous = dict(zip(PLAN_TRACKED_FIELDS, row))
+    log_owner_plan_change(target, previous, {**previous, **added})

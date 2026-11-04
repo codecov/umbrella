@@ -214,6 +214,47 @@ def test_logs_github_marketplace_cancellation(dbsession, mocker, caplog):
     assert record.github_marketplace_account_id == "98766"
 
 
+def test_logs_github_marketplace_purchase_by_new_owner(dbsession, mocker, caplog):
+    ghm_service = mocker.MagicMock()
+    ghm_service.get_user.return_value = {
+        "login": "new-org",
+        "name": "New Org",
+        "email": None,
+    }
+    caplog.set_level(logging.INFO, logger="shared.plan.change_log")
+
+    SyncPlansTask().create_or_update_plan(
+        dbsession, ghm_service, "98767", {"unit_count": 10}
+    )
+    dbsession.flush()
+
+    (record,) = _plan_change_records(caplog)
+    assert record.username == "new-org"
+    assert record.previous_plan == DEFAULT_FREE_PLAN
+    assert record.new_plan == PlanName.GHM_PLAN_NAME.value
+    assert record.previous_plan_user_count == 1
+    assert record.new_plan_user_count == 10
+    assert record.github_marketplace_account_id == "98767"
+
+
+def test_plan_log_uses_db_values_for_expired_attributes(dbsession, caplog):
+    owner = OwnerFactory(plan=DEFAULT_FREE_PLAN, plan_user_count=4)
+    dbsession.add(owner)
+    dbsession.commit()
+    caplog.set_level(logging.INFO, logger="shared.plan.change_log")
+
+    owner.plan = DEFAULT_FREE_PLAN
+    owner.plan_user_count = 4
+    dbsession.commit()
+    assert _plan_change_records(caplog) == []
+
+    owner.plan_user_count = 6
+    dbsession.commit()
+    (record,) = _plan_change_records(caplog)
+    assert record.previous_plan_user_count == 4
+    assert record.new_plan_user_count == 6
+
+
 def test_no_plan_log_for_unrelated_owner_update(dbsession, caplog):
     owner = OwnerFactory(plan=DEFAULT_FREE_PLAN)
     dbsession.add(owner)

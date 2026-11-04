@@ -13,7 +13,7 @@ from django.db import models
 from django.db.models import Case, QuerySet, Sum, When
 from django.db.models.fields import AutoField, BooleanField, IntegerField
 from django.db.models.manager import BaseManager
-from django.db.models.signals import post_save
+from django.db.models.signals import post_save, pre_save
 from django.forms import ValidationError
 from django.utils import timezone
 from django_prometheus.models import ExportModelOperationsMixin
@@ -33,7 +33,11 @@ from shared.django_apps.core.managers import RepositoryManager
 from shared.django_apps.core.models import DateTimeWithoutTZField, Repository
 from shared.django_apps.db_fields import CaseInsensitiveTextField
 from shared.helpers.github_apps import is_configured
-from shared.plan.change_log import PLAN_TRACKED_FIELDS, log_django_owner_plan_change
+from shared.plan.change_log import (
+    load_missing_plan_snapshot,
+    log_django_owner_plan_change,
+    update_plan_snapshot,
+)
 from shared.plan.constants import DEFAULT_FREE_PLAN, PlanName, TierName, TrialDaysAmount
 
 # Added to avoid 'doesn't declare an explicit app_label and isn't in an application in INSTALLED_APPS' error\
@@ -497,17 +501,22 @@ class Owner(ExportModelOperationsMixin("codecov_auth.owner"), models.Model):
 
     objects = OwnerManager()
     tracker = FieldTracker(
-        fields=[
-            "username",
-            "service",
-            "upload_token_required_for_public_repos",
-            *PLAN_TRACKED_FIELDS,
-        ]
+        fields=["username", "service", "upload_token_required_for_public_repos"]
     )
     repository_set = RepositoryManager()
 
     def __str__(self):
         return f"{self.service}/{self.username}"
+
+    @classmethod
+    def from_db(cls, db, field_names, values):
+        instance = super().from_db(db, field_names, values)
+        update_plan_snapshot(instance)
+        return instance
+
+    def refresh_from_db(self, using=None, fields=None, from_queryset=None):
+        super().refresh_from_db(using=using, fields=fields, from_queryset=from_queryset)
+        update_plan_snapshot(self, fields)
 
     def save(self, *args, **kwargs):
         self.updatestamp = timezone.now()
@@ -837,6 +846,11 @@ class Owner(ExportModelOperationsMixin("codecov_auth.owner"), models.Model):
             self.save(update_fields=["admins"])
 
 
+pre_save.connect(
+    load_missing_plan_snapshot,
+    sender=Owner,
+    dispatch_uid="load_missing_plan_snapshot",
+)
 post_save.connect(
     log_django_owner_plan_change,
     sender=Owner,

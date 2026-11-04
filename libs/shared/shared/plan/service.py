@@ -260,10 +260,11 @@ class PlanService:
         self.current_org.trial_end_date = now
         self.set_default_plan_data()
 
-    def expire_trial_when_upgrading(self) -> None:
+    def expire_trial_when_upgrading(self, save: bool = True) -> None:
         """
         Method that expires trial on an organization based on it's current trial status.
 
+        Pass save=False when a following update_plan() call will persist the changes.
 
         Returns:
             No value
@@ -280,7 +281,8 @@ class PlanService:
             )
             self.current_org.trial_end_date = timezone.now()
 
-            self.current_org.save()
+            if save:
+                self.current_org.save()
 
     @property
     def trial_status(self) -> TrialStatus:

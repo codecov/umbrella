@@ -2,6 +2,7 @@ import logging
 
 import pytest
 
+from shared.django_apps.codecov_auth.models import Owner
 from shared.django_apps.codecov_auth.tests.factories import OwnerFactory
 from shared.plan.constants import (
     DEFAULT_FREE_PLAN,
@@ -136,6 +137,92 @@ def test_logs_github_marketplace_identifier(plans, caplog):
     (record,) = _plan_change_records(caplog)
     assert record.billing_provider == "github_marketplace"
     assert record.github_marketplace_account_id == "98765"
+
+
+def test_github_marketplace_to_stripe_is_labeled_stripe(plans, caplog):
+    owner = OwnerFactory(
+        plan=PlanName.GHM_PLAN_NAME.value,
+        plan_provider="github",
+        plan_user_count=10,
+    )
+    owner.stripe_customer_id = "cus_123"
+    owner.stripe_subscription_id = "sub_123"
+    owner.save()
+    caplog.set_level(logging.INFO, logger=LOGGER)
+
+    owner.plan = PlanName.CODECOV_PRO_MONTHLY.value
+    owner.save()
+
+    (record,) = _plan_change_records(caplog)
+    assert record.previous_plan == PlanName.GHM_PLAN_NAME.value
+    assert record.billing_provider == "stripe"
+    assert record.new_stripe_subscription_id == "sub_123"
+
+
+def test_trial_upgrade_in_one_save_logs_once(plans, caplog):
+    owner = OwnerFactory(plan=DEFAULT_FREE_PLAN, plan_user_count=3)
+    PlanService(current_org=owner).start_trial(current_owner=owner)
+    caplog.set_level(logging.INFO, logger=LOGGER)
+
+    plan_service = PlanService(current_org=owner)
+    plan_service.expire_trial_when_upgrading(save=False)
+    plan_service.update_plan(name=PlanName.CODECOV_PRO_MONTHLY.value, user_count=8)
+
+    (record,) = _plan_change_records(caplog)
+    assert record.previous_plan == PlanName.TRIAL_PLAN_NAME.value
+    assert record.new_plan == PlanName.CODECOV_PRO_MONTHLY.value
+    assert record.previous_plan_user_count == TRIAL_PLAN_SEATS
+    assert record.new_plan_user_count == 8
+    assert record.previous_trial_status == TrialStatus.ONGOING.value
+    assert record.new_trial_status == TrialStatus.EXPIRED.value
+
+
+def test_update_fields_only_logs_persisted_fields(plans, caplog):
+    owner = OwnerFactory(plan=DEFAULT_FREE_PLAN, plan_user_count=1)
+    caplog.set_level(logging.INFO, logger=LOGGER)
+
+    owner.plan = PlanName.CODECOV_PRO_MONTHLY.value
+    owner.plan_user_count = 5
+    owner.name = "new name"
+    owner.save(update_fields=["name"])
+    assert _plan_change_records(caplog) == []
+
+    owner.save(update_fields=["plan"])
+    (record,) = _plan_change_records(caplog)
+    assert record.new_plan == PlanName.CODECOV_PRO_MONTHLY.value
+    assert record.previous_plan_user_count == 1
+    assert record.new_plan_user_count == 1
+
+    owner.save()
+    first, second = _plan_change_records(caplog)
+    assert second.previous_plan == second.new_plan
+    assert second.previous_plan_user_count == 1
+    assert second.new_plan_user_count == 5
+
+
+def test_logs_change_to_deferred_field(plans, caplog):
+    owner = OwnerFactory(plan=DEFAULT_FREE_PLAN, plan_user_count=2)
+    caplog.set_level(logging.INFO, logger=LOGGER)
+
+    deferred = Owner.objects.only("ownerid", "username").get(pk=owner.pk)
+    deferred.plan_user_count = 9
+    deferred.save()
+
+    (record,) = _plan_change_records(caplog)
+    assert record.previous_plan_user_count == 2
+    assert record.new_plan_user_count == 9
+    assert record.previous_plan == record.new_plan == DEFAULT_FREE_PLAN
+
+
+def test_refresh_from_db_resets_snapshot(plans, caplog):
+    owner = OwnerFactory(plan=DEFAULT_FREE_PLAN, plan_user_count=2)
+    Owner.objects.filter(pk=owner.pk).update(plan_user_count=7)
+    caplog.set_level(logging.INFO, logger=LOGGER)
+
+    owner.refresh_from_db()
+    owner.save()
+
+    assert _plan_change_records(caplog) == []
 
 
 def test_no_log_for_unrelated_changes(plans, caplog):
