@@ -16,6 +16,7 @@ from shared.torngit.exceptions import (
     TorngitClientError,
     TorngitClientGeneralError,
     TorngitObjectNotFoundError,
+    TorngitRateLimitError,
     TorngitRefreshTokenFailedError,
     TorngitServer5xxCodeError,
     TorngitServerUnreachableError,
@@ -469,10 +470,20 @@ class Gitlab(TorngitBaseAdapter):
                     token = await self.refresh_token(client)
                     if callable(self._on_token_refresh):
                         await self._on_token_refresh(token)
+                elif res.status_code == 429:
+                    raise TorngitRateLimitError(
+                        response_data=res.text,
+                        message="Gitlab API: 429",
+                        retry_after=res.headers.get("Retry-After"),
+                    )
                 elif res.status_code >= 400:
                     message = f"Gitlab API: {res.status_code}"
+                    try:
+                        response_data = res.json()
+                    except Exception:
+                        response_data = res.text
                     raise TorngitClientGeneralError(
-                        res.status_code, response_data=res.json(), message=message
+                        res.status_code, response_data=response_data, message=message
                     )
                 else:
                     # Success case
