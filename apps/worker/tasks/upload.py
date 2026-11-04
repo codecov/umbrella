@@ -13,6 +13,7 @@ from celery import chain, chord
 from celery.exceptions import SoftTimeLimitExceeded
 from django.conf import settings
 from redis import Redis
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from app import celery_app
@@ -542,6 +543,13 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
                 error=Errors.INTERNAL_RETRYING,
             )
             self.retry(countdown=60, kwargs=upload_context.kwargs_for_retry(kwargs))
+        except OperationalError:
+            log.warning(
+                "Transient database connection error during initialize_and_save_report, will retry",
+                extra=upload_context.log_extra(),
+                exc_info=True,
+            )
+            raise
         except Exception as e:
             log.error(
                 "Unexpected error during initialize_and_save_report",
