@@ -38,7 +38,13 @@ from graphql_api.types.enums import OrderingDirection, PathContentDisplayType
 from graphql_api.types.errors import MissingCoverage, UnknownPath
 from graphql_api.types.errors.errors import UnknownFlags
 from reports.models import CommitReport
-from services.bundle_analysis import BundleAnalysisComparison, BundleAnalysisReport
+from services.bundle_analysis import (
+    BundleAnalysisComparison,
+    BundleAnalysisReport,
+    BundleData,
+    BundleLoadTime,
+    BundleSize,
+)
 from services.comparison import Comparison, ComparisonReport
 from services.components import Component
 from services.path import Dir, File, ReportPaths
@@ -486,6 +492,26 @@ def resolve_commit_bundle_analysis_report(commit: Commit, info) -> BundleAnalysi
     info.context["commit"] = commit
 
     return bundle_analysis_report
+
+
+@commit_bundle_analysis_bindable.field("size")
+@sync_to_async
+def resolve_commit_bundle_analysis_size(commit: Commit, info) -> BundleSize | None:
+    bundle_analysis_report = load_bundle_analysis_report(commit)
+    if not isinstance(bundle_analysis_report, BundleAnalysisReport):
+        return None
+    return BundleData(bundle_analysis_report.size_total).size
+
+
+@commit_bundle_analysis_bindable.field("loadTime")
+@sync_to_async
+def resolve_commit_bundle_analysis_load_time(
+    commit: Commit, info
+) -> BundleLoadTime | None:
+    bundle_analysis_report = load_bundle_analysis_report(commit)
+    if not isinstance(bundle_analysis_report, BundleAnalysisReport):
+        return None
+    return BundleData(bundle_analysis_report.size_total).load_time
 
 
 @commit_bindable.field("latestUploadError")
