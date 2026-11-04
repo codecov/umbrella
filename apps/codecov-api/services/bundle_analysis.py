@@ -401,6 +401,10 @@ class BundleAnalysisComparison:
     def size_total(self) -> int:
         return BundleAnalysisReport(self.head_report).size_total
 
+    @cached_property
+    def load_time_delta(self) -> int:
+        return int((self.size_delta * 8 / BundleLoadTime.THREE_G_SPEED) * 1000)
+
 
 @dataclass
 class BundleComparison:
@@ -423,6 +427,14 @@ class BundleComparison:
     @cached_property
     def size_total(self) -> int:
         return self.head_bundle_report_size
+
+    @cached_property
+    def load_time_delta(self) -> int:
+        return int((self.size_delta * 8 / BundleLoadTime.THREE_G_SPEED) * 1000)
+
+    @cached_property
+    def load_time_total(self) -> int:
+        return int((self.size_total * 8 / BundleLoadTime.THREE_G_SPEED) * 1000)
 
 
 class BundleAnalysisMeasurementsService:
