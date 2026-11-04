@@ -39,12 +39,13 @@ log = logging.getLogger(__name__)
 
 class GithubWebhookHandler(APIView):
     """
-    GitHub Webhook Handler. Method names correspond to events as defined in
-
-        webhook_handlers.constants.GitHubWebhookEvents
+    GitHub Webhook Handler. Method names correspond to events in
+    GitHubWebhookEvents, except `delete`, which is `_handle_delete`.
     """
 
     permission_classes = [AllowAny]
+    # Webhooks are POST-only. `delete` is a GitHub event, not an HTTP method.
+    http_method_names = ["post"]
     redis = get_redis_connection()
 
     service_name = "github"
@@ -202,7 +203,7 @@ class GithubWebhookHandler(APIView):
             )
         return Response()
 
-    def delete(self, request, *args, **kwargs):
+    def _handle_delete(self, request, *args, **kwargs):
         ref_type = request.data.get("ref_type", "")
         repo = self._get_repo(request)
         if ref_type != "branch":
@@ -743,12 +744,19 @@ class GithubWebhookHandler(APIView):
         )
         self.validate_signature(request)
 
-        if handler := getattr(self, self.event, None):
+        # `delete` collides with APIView's HTTP DELETE handler, so it is dispatched explicitly.
+        if self.event == GitHubWebhookEvents.DELETE:
+            handler = self._handle_delete
+        elif self.event:
+            handler = getattr(self, self.event, None)
+        else:
+            handler = None
+
+        if handler:
             self._inc_recv()
             return handler(request, *args, **kwargs)
-        else:
-            self._inc_err("unhandled_event")
-            return self.unhandled_webhook_event(request, *args, **kwargs)
+        self._inc_err("unhandled_event")
+        return self.unhandled_webhook_event(request, *args, **kwargs)
 
 
 class GithubEnterpriseWebhookHandler(GithubWebhookHandler):
