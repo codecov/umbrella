@@ -13,6 +13,7 @@ from celery import chain, chord
 from celery.exceptions import SoftTimeLimitExceeded
 from django.conf import settings
 from redis import Redis
+from redis.exceptions import ConnectionError as RedisConnectionError
 from sqlalchemy.orm import Session
 
 from app import celery_app
@@ -858,7 +859,18 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
         finish_parallel_sig = upload_finisher_task.signature(kwargs=finisher_kwargs)
 
         parallel_tasks = chord(parallel_processing_tasks, finish_parallel_sig)
-        return parallel_tasks.apply_async()
+        try:
+            return parallel_tasks.apply_async()
+        except RedisConnectionError as exc:
+            log.warning(
+                "Redis connection error while dispatching coverage chord. Retrying Upload task.",
+                extra={
+                    "repoid": commit.repoid,
+                    "commitid": commit.commitid,
+                    "exc": str(exc),
+                },
+            )
+            raise self.retry(exc=exc, countdown=30, max_retries=5)
 
     def _schedule_bundle_analysis_processing_task(
         self,
