@@ -298,7 +298,11 @@ def branch_type(b):
     2 = partial
     """
     if "/" not in b:
-        if int(b) == 0:
+        try:
+            value = int(b)
+        except ValueError:
+            return None
+        if value == 0:
             return LineType.miss
         return LineType.hit
     b1, b2 = tuple(b.split("/", 1))
