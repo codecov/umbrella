@@ -36,6 +36,7 @@ from shared.metrics import Counter, Histogram, inc_counter
 from .schema import schema
 from .validation import (
     MissingVariablesError,
+    create_enum_variable_value_rule,
     create_max_aliases_rule,
     create_max_depth_rule,
     create_required_variables_rule,
@@ -208,8 +209,10 @@ class AsyncGraphqlView(GraphQLAsyncView):
         document: DocumentNode,
         data: dict,
     ) -> Collection | None:
+        variables = data.get("variables", {}) or {}
         return [
-            create_required_variables_rule(variables=data.get("variables", {})),
+            create_required_variables_rule(variables=variables),
+            create_enum_variable_value_rule(variables=variables, schema=self.schema),
             create_max_aliases_rule(max_aliases=settings.GRAPHQL_MAX_ALIASES),
             create_max_depth_rule(max_depth=settings.GRAPHQL_MAX_DEPTH),
             cost_validator(
