@@ -359,6 +359,15 @@ def resolve_commit_bundle_analysis(commit, info):
     return commit
 
 
+@commit_bindable.field("bundleAnalysisCompareWithParent")
+@sentry_sdk.trace
+async def resolve_commit_bundle_analysis_compare_with_parent_deprecated(
+    commit, info
+):
+    """Deprecated: delegates to CommitBundleAnalysis.bundleAnalysisCompareWithParent."""
+    return await resolve_commit_bundle_analysis_compare_with_parent(commit, info)
+
+
 ### Commit Coverage Bindable ###
 
 
