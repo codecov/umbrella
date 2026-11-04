@@ -2317,6 +2317,12 @@ class Github(TorngitBaseAdapter):
                     url_name="get_repos_with_languages_graphql"
                 ).substitute()
                 res = await self.api(client, "post", url, body=query, token=token)
+                if "data" not in res:
+                    raise TorngitClientGeneralError(
+                        200,
+                        response_data=res,
+                        message=f"GitHub GraphQL errors: {res.get('errors')}",
+                    )
                 repoOwner = res["data"]["repositoryOwner"]
                 if not repoOwner:
                     hasNextPage = False
