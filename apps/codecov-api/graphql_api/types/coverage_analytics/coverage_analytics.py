@@ -1,7 +1,7 @@
 import logging
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import sentry_sdk
@@ -125,12 +125,17 @@ def resolve_components_measurements(
     parent: CoverageAnalyticsProps,
     info: GraphQLResolveInfo,
     interval: Interval,
-    before: datetime,
-    after: datetime,
+    before: datetime | None = None,
+    after: datetime | None = None,
     branch: str | None = None,
     filters: Mapping | None = None,
     ordering_direction: OrderingDirection | None = OrderingDirection.ASC,
 ):
+    now = datetime.now(tz=timezone.utc)
+    if before is None:
+        before = now
+    if after is None:
+        after = now - timedelta(days=30)
     components = UserYaml.get_final_yaml(
         owner_yaml=parent.repository.author.yaml,
         repo_yaml=parent.repository.yaml,
