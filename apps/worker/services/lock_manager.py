@@ -8,6 +8,7 @@ import sentry_sdk
 from redis import Redis  # type: ignore
 from redis.exceptions import ConnectionError as RedisConnectionError  # type: ignore
 from redis.exceptions import LockError
+from redis.exceptions import ReadOnlyError
 from redis.exceptions import TimeoutError as RedisTimeoutError
 
 from database.enums import ReportType
@@ -103,7 +104,7 @@ class LockManager:
         """Clear the lock attempt counter. Log and swallow Redis errors so teardown does not mask other failures."""
         try:
             self.redis_connection.delete(attempt_key)
-        except (RedisConnectionError, RedisTimeoutError, OSError) as e:
+        except (RedisConnectionError, RedisTimeoutError, ReadOnlyError, OSError) as e:
             log.warning(
                 "Failed to clear lock attempt counter (Redis unavailable or error)",
                 extra={
@@ -143,14 +144,16 @@ class LockManager:
                     "repoid": self.repoid,
                 },
             )
-            with self.redis_connection.lock(
+            redis_lock = self.redis_connection.lock(
                 lock_name,
                 timeout=self.lock_timeout,
                 blocking_timeout=self.blocking_timeout,
-            ):
-                lock_acquired_time = time.time()
-                log.info(
-                    "Acquired lock",
+            )
+            try:
+                redis_lock.__enter__()
+            except ReadOnlyError:
+                log.warning(
+                    "Redis is read-only (replica) during lock acquisition - Redis failover in progress, retrying",
                     extra={
                         "commitid": self.commitid,
                         "lock_name": lock_name,
@@ -158,21 +161,33 @@ class LockManager:
                         "repoid": self.repoid,
                     },
                 )
-                try:
-                    yield
-                finally:
-                    self._clear_lock_attempt_counter(attempt_key, lock_name)
-                lock_duration = time.time() - lock_acquired_time
-                log.info(
-                    "Releasing lock",
-                    extra={
-                        "commitid": self.commitid,
-                        "lock_duration_seconds": lock_duration,
-                        "lock_name": lock_name,
-                        "lock_type": lock_type.value,
-                        "repoid": self.repoid,
-                    },
-                )
+                raise LockRetry(countdown=30)
+            lock_acquired_time = time.time()
+            log.info(
+                "Acquired lock",
+                extra={
+                    "commitid": self.commitid,
+                    "lock_name": lock_name,
+                    "lock_type": lock_type.value,
+                    "repoid": self.repoid,
+                },
+            )
+            try:
+                yield
+            finally:
+                self._clear_lock_attempt_counter(attempt_key, lock_name)
+                redis_lock.__exit__(None, None, None)
+            lock_duration = time.time() - lock_acquired_time
+            log.info(
+                "Releasing lock",
+                extra={
+                    "commitid": self.commitid,
+                    "lock_duration_seconds": lock_duration,
+                    "lock_name": lock_name,
+                    "lock_type": lock_type.value,
+                    "repoid": self.repoid,
+                },
+            )
         except LockError:
             #  incr/expire can raise RedisConnectionError/RedisTimeoutError when Redis
             # is unavailable; we let those propagate so the task fails once (no infinite loop).
