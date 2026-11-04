@@ -8,6 +8,11 @@ from database.models import Owner
 from helpers.admins import update_single_owner_admins
 from services.owner import get_owner_provider_service
 from shared.celery_config import sync_teams_task_name
+from shared.torngit.exceptions import (
+    TorngitClientError,
+    TorngitRefreshTokenFailedError,
+    TorngitServerFailureError,
+)
 from tasks.base import BaseCodecovTask
 
 log = logging.getLogger(__name__)
@@ -28,7 +33,24 @@ class SyncTeamsTask(BaseCodecovTask, name=sync_teams_task_name):
         git = get_owner_provider_service(owner, ignore_installation=True)
 
         # get list of teams with username, name, email, id (service_id), etc
-        teams = async_to_sync(git.list_teams)()
+        try:
+            teams = async_to_sync(git.list_teams)()
+        except (
+            TorngitRefreshTokenFailedError,
+            TorngitClientError,
+            TorngitServerFailureError,
+        ) as e:
+            # Don't touch owner.organizations: a failed fetch must not be
+            # interpreted as the user having lost access to their orgs.
+            log.warning(
+                "Failed to list teams from git provider, skipping team sync",
+                extra={
+                    "ownerid": ownerid,
+                    "username": username,
+                    "error_type": type(e).__name__,
+                },
+            )
+            return
 
         updated_teams = []
 
