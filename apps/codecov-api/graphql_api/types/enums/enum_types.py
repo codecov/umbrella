@@ -1,4 +1,5 @@
 from ariadne import EnumType
+from graphql import GraphQLError
 
 from codecov_auth.models import RepositoryToken
 from compare.commands.compare.interactors.fetch_impacted_files import (
@@ -30,30 +31,57 @@ from .enums import (
     UploadType,
 )
 
+
+class SafeEnumType(EnumType):
+    """
+    Subclass of ariadne's EnumType that wraps the bound parse_value with
+    TypeError handling. This prevents unhashable input values (e.g. a JSON
+    object `{}` sent in place of an enum string) from surfacing internal
+    Python implementation details in the GraphQL error message.
+    """
+
+    def bind_to_schema(self, schema) -> None:
+        super().bind_to_schema(schema)
+        graphql_type = schema.type_map.get(self.name)
+        if graphql_type is None:
+            return
+        original_parse_value = graphql_type.parse_value
+
+        def safe_parse_value(input_value):
+            try:
+                return original_parse_value(input_value)
+            except TypeError:
+                raise GraphQLError(
+                    f"Expected type '{self.name}'. Value must be a string enum member."
+                )
+
+        graphql_type.parse_value = safe_parse_value
+
+
 enum_types = [
-    EnumType("RepositoryOrdering", RepositoryOrdering),
-    EnumType("OrderingDirection", OrderingDirection),
-    EnumType("CoverageLine", CoverageLine),
-    EnumType("PathContentDisplayType", PathContentDisplayType),
-    EnumType("TypeProjectOnboarding", TypeProjectOnboarding),
-    EnumType("GoalOnboarding", GoalOnboarding),
-    EnumType("OrderingParameter", OrderingParameter),
-    EnumType("PullRequestState", PullRequestState),
-    EnumType("UploadState", UploadState),
-    EnumType("UploadType", UploadType),
-    EnumType("UploadErrorEnum", UploadErrorEnum),
-    EnumType("MeasurementInterval", MeasurementInterval),
-    EnumType("LoginProvider", LoginProvider),
-    EnumType("ImpactedFileParameter", ImpactedFileParameter),
-    EnumType("CommitState", Commit.CommitStates),
-    EnumType("MeasurementType", MeasurementName),
-    EnumType("RepositoryTokenType", RepositoryToken.TokenType),
-    EnumType("SyncProvider", SyncProvider),
-    EnumType("TierName", TierName),
-    EnumType("TrialStatus", TrialStatus),
-    EnumType("YamlStates", YamlStates),
-    EnumType("BundleLoadTypes", BundleLoadTypes),
-    EnumType("TestResultsOrderingParameter", TestResultsOrderingParameter),
-    EnumType("TestResultsFilterParameter", TestResultsFilterParameter),
-    EnumType("AssetOrdering", AssetOrdering),
+    SafeEnumType("RepositoryOrdering", RepositoryOrdering),
+    SafeEnumType("OrderingDirection", OrderingDirection),
+    SafeEnumType("CoverageLine", CoverageLine),
+    SafeEnumType("PathContentDisplayType", PathContentDisplayType),
+    SafeEnumType("TypeProjectOnboarding", TypeProjectOnboarding),
+    SafeEnumType("GoalOnboarding", GoalOnboarding),
+    SafeEnumType("OrderingParameter", OrderingParameter),
+    SafeEnumType("PullRequestState", PullRequestState),
+    SafeEnumType("UploadState", UploadState),
+    SafeEnumType("UploadType", UploadType),
+    SafeEnumType("UploadErrorEnum", UploadErrorEnum),
+    SafeEnumType("MeasurementInterval", MeasurementInterval),
+    SafeEnumType("LoginProvider", LoginProvider),
+    SafeEnumType("ImpactedFileParameter", ImpactedFileParameter),
+    SafeEnumType("CommitState", Commit.CommitStates),
+    SafeEnumType("MeasurementType", MeasurementName),
+    SafeEnumType("RepositoryTokenType", RepositoryToken.TokenType),
+    SafeEnumType("SyncProvider", SyncProvider),
+    SafeEnumType("TierName", TierName),
+    SafeEnumType("TrialStatus", TrialStatus),
+    SafeEnumType("YamlStates", YamlStates),
+    SafeEnumType("BundleLoadTypes", BundleLoadTypes),
+    SafeEnumType("TestResultsOrderingParameter", TestResultsOrderingParameter),
+    SafeEnumType("TestResultsFilterParameter", TestResultsFilterParameter),
+    SafeEnumType("AssetOrdering", AssetOrdering),
 ]
