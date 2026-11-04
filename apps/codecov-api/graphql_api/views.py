@@ -349,6 +349,24 @@ class AsyncGraphqlView(GraphQLAsyncView):
         if debug or (not is_anonymous and is_bad_query):
             return format_error(error, debug)
         formatted = error.formatted
+        if is_bad_query:
+            # Schema validation failure caused by the client's query (e.g. a field
+            # that doesn't exist). This is a client error, not a server error, so
+            # don't report it as one. For anonymous callers we hide the detailed
+            # message to avoid leaking schema hints ("Did you mean ...?").
+            log.info(
+                "GraphQL query failed schema validation",
+                extra={
+                    "error_message": error.formatted["message"],
+                    "request_body": self.request.body.decode("utf-8", errors="replace")[
+                        :1000
+                    ],
+                },
+            )
+            formatted["message"] = "Invalid query"
+            formatted["type"] = "ValidationError"
+            formatted.pop("extensions", None)
+            return formatted
         formatted["message"] = "INTERNAL SERVER ERROR"
         formatted["type"] = "ServerError"
         # if this is one of our own command exception, we can tell a bit more
