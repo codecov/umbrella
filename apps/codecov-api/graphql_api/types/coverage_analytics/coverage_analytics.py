@@ -61,6 +61,23 @@ def resolve_percent_covered(
     return parent.repository.recent_coverage if parent else None
 
 
+@coverage_analytics_bindable.field("totals")
+def resolve_totals(
+    parent: CoverageAnalyticsProps, info: GraphQLResolveInfo
+) -> dict | None:
+    if not parent:
+        return None
+    repo = parent.repository
+    return {
+        "coverage": repo.recent_coverage,
+        "hits": repo.hits,
+        "misses": repo.misses,
+        "lines": repo.lines,
+        "files": None,
+        "partials": None,
+    }
+
+
 @coverage_analytics_bindable.field("commitSha")
 def resolve_commit_sha(
     parent: CoverageAnalyticsProps, info: GraphQLResolveInfo
