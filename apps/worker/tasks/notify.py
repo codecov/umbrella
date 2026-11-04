@@ -705,6 +705,15 @@ class NotifyTask(BaseCodecovTask, name=notify_task_name):
         # Some code wrongly assumes things are non-`None` and will error.
         # Other code checks `report` and then errors on `commit`.
 
+        # Pre-fetch these attributes before the try block so they are available
+        # as plain local variables in the except handler. If the DB connection
+        # drops inside the try block (e.g. during try_to_auto_activate), the
+        # SQLAlchemy session is left in an invalid-transaction state. Accessing
+        # lazy-loaded ORM attributes on that session would raise a second
+        # PendingRollbackError, hiding the original exception.
+        commit_sha = commit.commitid
+        repo_id = commit.repoid
+
         try:
             comparison = ComparisonProxy(
                 Comparison(
@@ -742,8 +751,8 @@ class NotifyTask(BaseCodecovTask, name=notify_task_name):
             return notifications_service.notify(comparison)
         except Exception as e:
             self._call_upload_breadcrumb_task(
-                commit_sha=commit.commitid,
-                repo_id=commit.repoid,
+                commit_sha=commit_sha,
+                repo_id=repo_id,
                 milestone=Milestones.NOTIFICATIONS_SENT,
                 error=Errors.UNKNOWN,
                 error_text=repr(e),
