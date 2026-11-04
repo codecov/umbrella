@@ -131,7 +131,19 @@ def from_xml(xml: Element, report_builder_session: ReportBuilderSession) -> None
                 ):
                     cov = 1
 
-                ln = int(attr["nr"])
+                nr_raw = attr.get("nr", "")
+                if not nr_raw.strip():
+                    log.warning(
+                        f"Jacoco report has a line with missing or empty nr attribute. Skipping processing line."
+                    )
+                    continue
+                try:
+                    ln = int(nr_raw)
+                except ValueError:
+                    log.warning(
+                        f"Jacoco report has a line with non-numeric nr attribute: nr={nr_raw!r}. Skipping processing line."
+                    )
+                    continue
                 if ln > 0:
                     complexity = method_complixity.get(ln)
                     if complexity:
