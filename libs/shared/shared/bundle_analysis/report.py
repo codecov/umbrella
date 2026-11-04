@@ -130,13 +130,19 @@ class AssetReport:
 
             return [ModuleReport(self.db_path, module) for module in filtered_modules]
 
-    def routes(self) -> list[str] | None:
+    def routes(
+        self, prefetched_module_names: list[str] | None = None
+    ) -> list[str] | None:
         plugin_name = self.bundle_info.get("plugin_name")
         if plugin_name not in [item.value for item in AssetRoutePluginName]:
             return None
 
         asset_route_compute = AssetRoute(AssetRoutePluginName(plugin_name))
-        module_names, routes = [m.name for m in self.modules()], set()
+        if prefetched_module_names is not None:
+            module_names = prefetched_module_names
+        else:
+            module_names = [m.name for m in self.modules()]
+        routes = set()
         for module_name in module_names:
             route = asset_route_compute.get_from_filename(module_name)
             if route is not None:
@@ -256,8 +262,9 @@ class BundleReport:
                 chunk_entry,
                 chunk_initial,
             ).order_by(ordering(getattr(Asset, ordering_column)))
+            bundle_info = self.info()
             return (
-                AssetReport(self.db_path, asset, self.info()) for asset in assets.all()
+                AssetReport(self.db_path, asset, bundle_info) for asset in assets.all()
             )
 
     def total_size(
@@ -324,14 +331,41 @@ class BundleReport:
             result = session.query(Bundle).filter(Bundle.id == self.bundle.id).first()
             return result.is_cached
 
+    def _fetch_module_names_by_asset_id(
+        self, asset_ids: list[int]
+    ) -> dict[int, list[str]]:
+        """
+        Bulk-fetches module names for a list of asset IDs in a single query.
+        Returns a dict mapping asset_id -> list of module names.
+        """
+        if not asset_ids:
+            return {}
+        with get_db_session(self.db_path) as session:
+            rows = (
+                session.query(Asset.id, Module.name)
+                .join(Module.chunks)
+                .join(Chunk.assets)
+                .filter(Asset.id.in_(asset_ids))
+                .all()
+            )
+        result: dict[int, list[str]] = defaultdict(list)
+        for asset_id, module_name in rows:
+            result[asset_id].append(module_name)
+        return result
+
     def routes(self) -> dict[str, list[AssetReport]]:
         """
         Returns a mapping of routes and all Assets (as AssetReports) that belongs to it
         Note that this ignores dynamically imported Assets (ie only the direct asset)
         """
-        route_map = defaultdict(list)
-        for asset_report in self.asset_reports():
-            routes = asset_report.routes()
+        all_asset_reports = list(self.asset_reports())
+        modules_by_asset_id = self._fetch_module_names_by_asset_id(
+            [ar.id for ar in all_asset_reports]
+        )
+        route_map: dict[str, list[AssetReport]] = defaultdict(list)
+        for asset_report in all_asset_reports:
+            prefetched = modules_by_asset_id.get(asset_report.id, [])
+            routes = asset_report.routes(prefetched_module_names=prefetched)
             if routes is not None:
                 for route in routes:
                     route_map[route].append(asset_report)
