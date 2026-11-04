@@ -27,8 +27,8 @@ async def fetch_current_yaml_from_provider_via_reference(
         content = await repository_service.get_source(location, ref)
         return content["content"]
     except TorngitObjectNotFoundError:
-        log.exception(
-            "File not in %s for commit", extra={"commit": ref, "location": location}
+        log.warning(
+            "File not found for commit", extra={"commit": ref, "location": location}
         )
         return None
 
