@@ -1,6 +1,7 @@
 import os
 
 from shared.config import get_config
+from shared.torngit.exceptions import TorngitMisconfiguredCredentials
 from shared.torngit.gitlab import GITLAB_API_ENDPOINTS, Gitlab
 
 
@@ -23,7 +24,12 @@ class GitlabEnterprise(Gitlab):
 
     @classmethod
     def get_service_url(cls):
-        return get_config("gitlab_enterprise", "url")
+        url = get_config("gitlab_enterprise", "url")
+        if url is None:
+            raise TorngitMisconfiguredCredentials(
+                "gitlab_enterprise.url is not configured"
+            )
+        return url
 
     @property
     def service_url(self):
