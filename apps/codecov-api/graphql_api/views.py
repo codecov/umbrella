@@ -348,11 +348,21 @@ class AsyncGraphqlView(GraphQLAsyncView):
         is_bad_query = "Cannot query field" in error.formatted["message"]
         if debug or (not is_anonymous and is_bad_query):
             return format_error(error, debug)
+        original_error = error.original_error
+        if original_error is None:
+            # No underlying exception means this is a GraphQL syntax/validation
+            # error caused by a malformed client query, not a server failure.
+            # Don't log or report it to Sentry.
+            if not is_anonymous:
+                return format_error(error, debug)
+            formatted = error.formatted
+            formatted["message"] = "INTERNAL SERVER ERROR"
+            formatted["type"] = "ValidationError"
+            return formatted
         formatted = error.formatted
         formatted["message"] = "INTERNAL SERVER ERROR"
         formatted["type"] = "ServerError"
         # if this is one of our own command exception, we can tell a bit more
-        original_error = error.original_error
         if isinstance(original_error, BaseException) or isinstance(
             original_error, ServiceException
         ):
