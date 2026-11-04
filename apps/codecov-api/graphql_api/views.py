@@ -353,7 +353,14 @@ class AsyncGraphqlView(GraphQLAsyncView):
         formatted["type"] = "ServerError"
         # if this is one of our own command exception, we can tell a bit more
         original_error = error.original_error
-        if isinstance(original_error, BaseException) or isinstance(
+        if original_error is None:
+            # No underlying exception means this is a GraphQL parse/validation
+            # error caused by a malformed client query (e.g. a missing required
+            # argument). This is a client error, not a server failure, so don't
+            # log it as an internal error or report it to Sentry. The message
+            # stays masked to avoid leaking schema details to clients.
+            pass
+        elif isinstance(original_error, BaseException) or isinstance(
             original_error, ServiceException
         ):
             formatted["message"] = original_error.message  # type: ignore
