@@ -1139,6 +1139,7 @@ class StripeWebhookHandlerTests(APITestCase):
         self.owner.plan_user_count = 10
         self.owner.plan_auto_activate = False
         self.owner.save()
+        log_info_mock.reset_mock()
 
         self._send_event(
             payload={

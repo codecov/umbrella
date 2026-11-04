@@ -13,6 +13,7 @@ from django.db import models
 from django.db.models import Case, QuerySet, Sum, When
 from django.db.models.fields import AutoField, BooleanField, IntegerField
 from django.db.models.manager import BaseManager
+from django.db.models.signals import post_save
 from django.forms import ValidationError
 from django.utils import timezone
 from django_prometheus.models import ExportModelOperationsMixin
@@ -32,6 +33,7 @@ from shared.django_apps.core.managers import RepositoryManager
 from shared.django_apps.core.models import DateTimeWithoutTZField, Repository
 from shared.django_apps.db_fields import CaseInsensitiveTextField
 from shared.helpers.github_apps import is_configured
+from shared.plan.change_log import PLAN_TRACKED_FIELDS, log_django_owner_plan_change
 from shared.plan.constants import DEFAULT_FREE_PLAN, PlanName, TierName, TrialDaysAmount
 
 # Added to avoid 'doesn't declare an explicit app_label and isn't in an application in INSTALLED_APPS' error\
@@ -495,7 +497,12 @@ class Owner(ExportModelOperationsMixin("codecov_auth.owner"), models.Model):
 
     objects = OwnerManager()
     tracker = FieldTracker(
-        fields=["username", "service", "upload_token_required_for_public_repos"]
+        fields=[
+            "username",
+            "service",
+            "upload_token_required_for_public_repos",
+            *PLAN_TRACKED_FIELDS,
+        ]
     )
     repository_set = RepositoryManager()
 
@@ -828,6 +835,13 @@ class Owner(ExportModelOperationsMixin("codecov_auth.owner"), models.Model):
         if valid_admin_ids != set(self.admins):
             self.admins = list(valid_admin_ids)
             self.save(update_fields=["admins"])
+
+
+post_save.connect(
+    log_django_owner_plan_change,
+    sender=Owner,
+    dispatch_uid="log_owner_plan_change",
+)
 
 
 GITHUB_APP_INSTALLATION_DEFAULT_NAME = "codecov_app_installation"
