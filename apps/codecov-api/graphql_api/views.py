@@ -21,7 +21,7 @@ from django.http import (
     HttpResponseNotAllowed,
     JsonResponse,
 )
-from graphql import DocumentNode
+from graphql import DocumentNode, GraphQLError
 from rest_framework.exceptions import APIException
 from sentry_sdk import capture_exception
 
@@ -347,6 +347,10 @@ class AsyncGraphqlView(GraphQLAsyncView):
         # the only way to check for a malformed query
         is_bad_query = "Cannot query field" in error.formatted["message"]
         if debug or (not is_anonymous and is_bad_query):
+            return format_error(error, debug)
+        # Syntax/validation errors (e.g. missing subfield selection) don't wrap
+        # an underlying exception: they are client mistakes, not server errors.
+        if isinstance(error, GraphQLError) and error.original_error is None:
             return format_error(error, debug)
         formatted = error.formatted
         formatted["message"] = "INTERNAL SERVER ERROR"
