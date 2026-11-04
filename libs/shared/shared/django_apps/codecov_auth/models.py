@@ -13,6 +13,7 @@ from django.db import models
 from django.db.models import Case, QuerySet, Sum, When
 from django.db.models.fields import AutoField, BooleanField, IntegerField
 from django.db.models.manager import BaseManager
+from django.db.models.signals import post_save, pre_save
 from django.forms import ValidationError
 from django.utils import timezone
 from django_prometheus.models import ExportModelOperationsMixin
@@ -32,6 +33,11 @@ from shared.django_apps.core.managers import RepositoryManager
 from shared.django_apps.core.models import DateTimeWithoutTZField, Repository
 from shared.django_apps.db_fields import CaseInsensitiveTextField
 from shared.helpers.github_apps import is_configured
+from shared.plan.change_log import (
+    load_missing_plan_snapshot,
+    log_django_owner_plan_change,
+    update_plan_snapshot,
+)
 from shared.plan.constants import DEFAULT_FREE_PLAN, PlanName, TierName, TrialDaysAmount
 
 # Added to avoid 'doesn't declare an explicit app_label and isn't in an application in INSTALLED_APPS' error\
@@ -502,6 +508,16 @@ class Owner(ExportModelOperationsMixin("codecov_auth.owner"), models.Model):
     def __str__(self):
         return f"{self.service}/{self.username}"
 
+    @classmethod
+    def from_db(cls, db, field_names, values):
+        instance = super().from_db(db, field_names, values)
+        update_plan_snapshot(instance)
+        return instance
+
+    def refresh_from_db(self, using=None, fields=None, from_queryset=None):
+        super().refresh_from_db(using=using, fields=fields, from_queryset=from_queryset)
+        update_plan_snapshot(self, fields)
+
     def save(self, *args, **kwargs):
         self.updatestamp = timezone.now()
         super().save(*args, **kwargs)
@@ -828,6 +844,18 @@ class Owner(ExportModelOperationsMixin("codecov_auth.owner"), models.Model):
         if valid_admin_ids != set(self.admins):
             self.admins = list(valid_admin_ids)
             self.save(update_fields=["admins"])
+
+
+pre_save.connect(
+    load_missing_plan_snapshot,
+    sender=Owner,
+    dispatch_uid="load_missing_plan_snapshot",
+)
+post_save.connect(
+    log_django_owner_plan_change,
+    sender=Owner,
+    dispatch_uid="log_owner_plan_change",
+)
 
 
 GITHUB_APP_INSTALLATION_DEFAULT_NAME = "codecov_app_installation"

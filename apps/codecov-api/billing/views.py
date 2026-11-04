@@ -345,8 +345,7 @@ class StripeWebhookHandler(APIView):
             return
 
         plan_service = PlanService(current_org=owner)
-        plan_service.expire_trial_when_upgrading()
-
+        plan_service.expire_trial_when_upgrading(save=False)
         plan_service.update_plan(name=plan_name, user_count=subscription.quantity)
 
         log.info(

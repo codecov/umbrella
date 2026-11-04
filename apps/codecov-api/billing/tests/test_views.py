@@ -1081,6 +1081,52 @@ class StripeWebhookHandlerTests(APITestCase):
     @patch("billing.views.StripeWebhookHandler._has_unverified_initial_payment_method")
     @patch("services.billing.stripe.PaymentMethod.attach")
     @patch("services.billing.stripe.Customer.modify")
+    def test_customer_subscription_created_from_trial_logs_one_plan_change(
+        self,
+        c_mock,
+        pm_mock,
+        has_unverified_initial_payment_method_mock,
+    ):
+        has_unverified_initial_payment_method_mock.return_value = False
+        self.owner.plan = PlanName.TRIAL_PLAN_NAME.value
+        self.owner.plan_user_count = 1000
+        self.owner.pretrial_users_count = 1
+        self.owner.trial_status = "ongoing"
+        self.owner.stripe_subscription_id = None
+        self.owner.save()
+
+        with self.assertLogs("shared.plan.change_log", level="INFO") as logs:
+            self._send_event(
+                payload={
+                    "type": "customer.subscription.created",
+                    "data": {
+                        "object": {
+                            "id": "sub_new",
+                            "customer": "cus_123",
+                            "plan": {"id": "plan_pro_yearly"},
+                            "metadata": {"obo_organization": self.owner.ownerid},
+                            "quantity": 20,
+                            "default_payment_method": "blabla",
+                        }
+                    },
+                }
+            )
+
+        (record,) = logs.records
+        assert record.ownerid == self.owner.ownerid
+        assert record.previous_plan == PlanName.TRIAL_PLAN_NAME.value
+        assert record.new_plan == Plan.objects.get(stripe_id="plan_pro_yearly").name
+        assert record.previous_plan_user_count == 1000
+        assert record.new_plan_user_count == 20
+        assert record.previous_trial_status == "ongoing"
+        assert record.new_trial_status == "expired"
+        assert record.billing_provider == "stripe"
+        assert record.stripe_customer_id == "cus_123"
+        assert record.new_stripe_subscription_id == "sub_new"
+
+    @patch("billing.views.StripeWebhookHandler._has_unverified_initial_payment_method")
+    @patch("services.billing.stripe.PaymentMethod.attach")
+    @patch("services.billing.stripe.Customer.modify")
     def test_customer_subscription_updated_does_not_change_subscription_if_not_paid_user_plan(
         self,
         c_mock,
@@ -1139,6 +1185,7 @@ class StripeWebhookHandlerTests(APITestCase):
         self.owner.plan_user_count = 10
         self.owner.plan_auto_activate = False
         self.owner.save()
+        log_info_mock.reset_mock()
 
         self._send_event(
             payload={
