@@ -2184,6 +2184,11 @@ class Github(TorngitBaseAdapter):
             )
         async with self.get_client() as client:
             content = await self.api(client, "get", url, ref=ref, token=token)
+        # GitHub Contents API returns a single object (dict) when the path resolves
+        # to a file or symlink, and a list when it resolves to a directory.
+        # Normalize to a list so iteration always works correctly.
+        if isinstance(content, dict):
+            content = [content]
         return [
             {
                 "name": f["name"],
