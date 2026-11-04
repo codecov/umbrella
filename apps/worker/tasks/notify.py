@@ -56,7 +56,11 @@ from shared.django_apps.upload_breadcrumbs.models import Errors, Milestones
 from shared.helpers.redis import Redis, get_redis_connection
 from shared.reports.readonly import ReadOnlyReport
 from shared.torngit.base import TokenType, TorngitBaseAdapter
-from shared.torngit.exceptions import TorngitClientError, TorngitServerFailureError
+from shared.torngit.exceptions import (
+    TorngitClientError,
+    TorngitRefreshTokenFailedError,
+    TorngitServerFailureError,
+)
 from shared.typings.torngit import OwnerInfo, RepoInfo, TorngitInstanceData
 from shared.yaml import UserYaml
 from tasks.base import BaseCodecovTask
@@ -472,9 +476,19 @@ class NotifyTask(BaseCodecovTask, name=notify_task_name):
                 }
 
             if commit.repository.service == "gitlab":
-                gitlab_extra_shas_to_notify = self.get_gitlab_extra_shas_to_notify(
-                    commit, repository_service
-                )
+                try:
+                    gitlab_extra_shas_to_notify = self.get_gitlab_extra_shas_to_notify(
+                        commit, repository_service
+                    )
+                except TorngitRefreshTokenFailedError:
+                    log.warning(
+                        "Failed to refresh GitLab token while fetching extra SHAs to notify. Skipping.",
+                        extra={
+                            "commit": commit.commitid,
+                            "repoid": commit.repoid,
+                        },
+                    )
+                    gitlab_extra_shas_to_notify = set()
             else:
                 gitlab_extra_shas_to_notify = None
 
