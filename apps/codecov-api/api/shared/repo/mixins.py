@@ -91,6 +91,11 @@ class RepositoryViewSetMixin(
                 repo_owner_username=org_name,
                 repo_owner_service=service,
             )
+            # fetch_from_git_and_create_repo returns a plain Repository instance
+            # that bypasses get_queryset(), so the `recent_commit_totals` annotation
+            # added by .with_recent_coverage() is absent. Set it to None explicitly
+            # so that RepoSerializer can serialize it without raising AttributeError.
+            repo.recent_commit_totals = None
 
         self.check_object_permissions(self.request, repo)
         return repo
