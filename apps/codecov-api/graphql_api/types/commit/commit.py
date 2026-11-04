@@ -73,6 +73,11 @@ def resolve_parent(commit: Commit, info: GraphQLResolveInfo) -> Commit | None:
         )
 
 
+@commit_bindable.field("parentCommitid")
+def resolve_parent_commitid(commit: Commit, info: GraphQLResolveInfo) -> str | None:
+    return commit.parent_commit_id
+
+
 @commit_bindable.field("yaml")
 async def resolve_yaml(commit: Commit, info: GraphQLResolveInfo) -> dict:
     command = info.context["executor"].get_command("commit")
