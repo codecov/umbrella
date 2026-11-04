@@ -45,6 +45,14 @@ type CommitCoverageAnalytics {
 type CommitBundleAnalysis {
   bundleAnalysisCompareWithParent: BundleAnalysisComparisonResult
   bundleAnalysisReport: BundleAnalysisReportResult
+  measurements(
+    interval: MeasurementInterval
+    before: DateTime
+    after: DateTime
+    branch: String
+    orderingDirection: OrderingDirection
+    filters: BundleAnalysisMeasurementsSetFilters
+  ): [BundleAnalysisMeasurements!]
 }
 
 type CommitErrorsConnection {
