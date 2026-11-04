@@ -9,6 +9,7 @@ from sentry_sdk.integrations.httpx import HttpxIntegration
 from sentry_sdk.integrations.redis import RedisIntegration
 from sentry_sdk.scrubber import DEFAULT_DENYLIST, EventScrubber
 
+from codecov.sentry_filters import before_send
 from codecov.sentry_sampling import make_traces_sampler
 from shared.django_apps.db_settings import *
 from shared.helpers.redis import get_redis_url
@@ -461,6 +462,7 @@ if SENTRY_DSN is not None:
     )
     sentry_sdk.init(
         dsn=SENTRY_DSN,
+        before_send=before_send,
         event_scrubber=EventScrubber(denylist=SENTRY_DENY_LIST),
         _experiments={
             "enable_logs": True,
