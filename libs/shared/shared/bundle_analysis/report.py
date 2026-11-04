@@ -260,6 +260,59 @@ class BundleReport:
                 AssetReport(self.db_path, asset, self.info()) for asset in assets.all()
             )
 
+    def js_asset_hashed_name_map(self) -> dict[str, str]:
+        """
+        Returns a mapping of {hashed_name: asset_uuid} for all JavaScript assets
+        in this bundle, fetched in a single query.
+
+        Use this instead of iterating asset_reports() when you only need hashed names
+        and UUIDs, to avoid the overhead of creating a new SQLAlchemy engine per call.
+        """
+        with get_db_session(self.db_path) as session:
+            rows = (
+                session.query(Asset.name, Asset.uuid)
+                .join(Asset.session)
+                .join(Session.bundle)
+                .filter(
+                    Bundle.id == self.bundle.id,
+                    Asset.asset_type == AssetType.JAVASCRIPT,
+                )
+                .all()
+            )
+        return {hashed_name: uuid for hashed_name, uuid in rows}
+
+    def js_asset_module_map(self) -> dict[str, tuple[str, ...]]:
+        """
+        Returns a mapping of {asset_uuid: (module_name, ...)} for all JavaScript
+        assets in this bundle, fetched in a single JOIN query across
+        assets -> assets_chunks -> chunks -> chunks_modules -> modules.
+
+        Use this instead of calling asset.modules() inside a loop, which creates
+        a new SQLAlchemy engine for every asset (N+1 engine instantiations).
+        """
+        with get_db_session(self.db_path) as session:
+            rows = (
+                session.query(Asset.uuid, Module.name)
+                .join(Asset.session)
+                .join(Session.bundle)
+                .outerjoin(Asset.chunks)
+                .outerjoin(Chunk.modules)
+                .filter(
+                    Bundle.id == self.bundle.id,
+                    Asset.asset_type == AssetType.JAVASCRIPT,
+                )
+                .all()
+            )
+        result: dict[str, list[str]] = {}
+        for uuid, module_name in rows:
+            if uuid not in result:
+                result[uuid] = []
+            if module_name is not None:
+                result[uuid].append(module_name)
+        return {
+            uuid: tuple(sorted(frozenset(names))) for uuid, names in result.items()
+        }
+
     def total_size(
         self,
         asset_types: list[AssetType] | None = None,
@@ -478,18 +531,13 @@ class BundleAnalysisReport:
         because the curr asset has the same hashed name as the previous asset
         """
         ret = set()
-        prev_asset_hashed_names = {
-            a.hashed_name: a.uuid for a in prev_bundle_report.asset_reports()
-        }
-        for curr_asset in curr_bundle_report.asset_reports():
-            if curr_asset.asset_type == AssetType.JAVASCRIPT:
-                if curr_asset.hashed_name in prev_asset_hashed_names:
-                    ret.add(
-                        (
-                            prev_asset_hashed_names[curr_asset.hashed_name],
-                            curr_asset.uuid,
-                        )
-                    )
+        # Fetch all JS assets for both bundles in two bulk queries instead of
+        # iterating asset_reports() which creates a new SQLAlchemy engine per call.
+        prev_asset_hashed_names = prev_bundle_report.js_asset_hashed_name_map()
+        curr_asset_hashed_name_map = curr_bundle_report.js_asset_hashed_name_map()
+        for hashed_name, curr_uuid in curr_asset_hashed_name_map.items():
+            if hashed_name in prev_asset_hashed_names:
+                ret.add((prev_asset_hashed_names[hashed_name], curr_uuid))
         return ret
 
     def _associate_bundle_report_assets_by_module_names(
@@ -503,29 +551,23 @@ class BundleAnalysisReport:
         curr asset module names
         """
         ret = set()
-        prev_module_asset_mapping = {}
-        for prev_asset in prev_bundle_report.asset_reports():
-            if prev_asset.asset_type == AssetType.JAVASCRIPT:
-                prev_modules = tuple(
-                    sorted(frozenset([m.name for m in prev_asset.modules()]))
-                )
-                # NOTE: Assume two non-related assets CANNOT have the same set of modules
-                # though in reality there can be rare cases of this but we
-                # will deal with that later if it becomes a prevalent problem
-                prev_module_asset_mapping[prev_modules] = prev_asset.uuid
+        # Fetch all JS assets with their module names in two bulk JOIN queries instead
+        # of calling asset.modules() per asset, which created a new SQLAlchemy engine
+        # for every asset (N+1 engine instantiations causing 720s timeouts on large repos).
+        prev_asset_module_map = prev_bundle_report.js_asset_module_map()
+        curr_asset_module_map = curr_bundle_report.js_asset_module_map()
 
-        for curr_asset in curr_bundle_report.asset_reports():
-            if curr_asset.asset_type == AssetType.JAVASCRIPT:
-                curr_modules = tuple(
-                    sorted(frozenset([m.name for m in curr_asset.modules()]))
-                )
-                if curr_modules in prev_module_asset_mapping:
-                    ret.add(
-                        (
-                            prev_module_asset_mapping[curr_modules],
-                            curr_asset.uuid,
-                        )
-                    )
+        # Build reverse mapping: module-name tuple -> prev asset uuid
+        # NOTE: Assume two non-related assets CANNOT have the same set of modules
+        # though in reality there can be rare cases of this but we
+        # will deal with that later if it becomes a prevalent problem
+        prev_module_asset_mapping = {
+            modules: uuid for uuid, modules in prev_asset_module_map.items()
+        }
+
+        for curr_uuid, curr_modules in curr_asset_module_map.items():
+            if curr_modules in prev_module_asset_mapping:
+                ret.add((prev_module_asset_mapping[curr_modules], curr_uuid))
         return ret
 
     @sentry_sdk.trace
