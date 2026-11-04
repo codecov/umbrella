@@ -203,7 +203,7 @@ class GithubWebhookHandler(APIView):
             )
         return Response()
 
-    def _handle_delete(self, request, *args, **kwargs):
+    def delete(self, request, *args, **kwargs):
         ref_type = request.data.get("ref_type", "")
         repo = self._get_repo(request)
         if ref_type != "branch":
@@ -744,18 +744,12 @@ class GithubWebhookHandler(APIView):
         )
         self.validate_signature(request)
 
-        if self.event == GitHubWebhookEvents.DELETE:
-            handler = self._handle_delete
-        elif self.event:
-            handler = getattr(self, self.event, None)
-        else:
-            handler = None
-
-        if handler:
+        if handler := getattr(self, self.event, None):
             self._inc_recv()
             return handler(request, *args, **kwargs)
-        self._inc_err("unhandled_event")
-        return self.unhandled_webhook_event(request, *args, **kwargs)
+        else:
+            self._inc_err("unhandled_event")
+            return self.unhandled_webhook_event(request, *args, **kwargs)
 
 
 class GithubEnterpriseWebhookHandler(GithubWebhookHandler):
