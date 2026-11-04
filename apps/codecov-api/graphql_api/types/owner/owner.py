@@ -413,6 +413,18 @@ def resolve_owner_account(owner: Owner, info: GraphQLResolveInfo) -> dict | None
     return owner.account
 
 
+@owner_bindable.field("organizations")
+@sync_to_async
+def resolve_owner_organizations(owner: Owner, info: GraphQLResolveInfo, **kwargs):
+    queryset = owner.orgs.exclude(username=None)
+    return queryset_to_connection_sync(
+        queryset,
+        ordering=("ownerid",),
+        ordering_direction=OrderingDirection.DESC,
+        **kwargs,
+    )
+
+
 @owner_bindable.field("isUserOktaAuthenticated")
 @sync_to_async
 @require_part_of_org
