@@ -2,6 +2,7 @@ import logging
 from datetime import timedelta
 
 import sentry_sdk
+from celery.exceptions import SoftTimeLimitExceeded
 from django.db.models import Q, QuerySet
 from django.utils import timezone
 from redis.exceptions import LockError
@@ -155,6 +156,14 @@ def process_flakes_for_commit(repo_id: int, commit_id: str):
 
     testruns_by_upload = get_testruns_for_uploads(uploads)
 
+    # Collect all test_ids touched by this commit's testruns (passes + failures).
+    # We only write back flakes that were actually modified, not all repo flakes.
+    all_touched_test_ids: set[bytes] = set()
+    for upload in uploads:
+        for testrun in testruns_by_upload[upload.id]:
+            if testrun.outcome in ("pass", "failure", "flaky_fail", "error"):
+                all_touched_test_ids.add(bytes(testrun.test_id))
+
     # Track modified test_ids by upload_id
     modifications_by_upload: dict[int, set[bytes]] = {}
     for upload in uploads:
@@ -195,16 +204,25 @@ def process_flakes_for_commit(repo_id: int, commit_id: str):
         extra={"total_rows_updated": total_updated},
     )
 
+    # Only write back flakes that were touched by this commit's testruns.
+    # Writing all repo flakes every time caused unbounded transactions for large repos.
+    modified_flakes = [
+        flake
+        for test_id, flake in curr_flakes.items()
+        if test_id in all_touched_test_ids
+    ]
+
     log.info(
         "process_flakes_for_commit: bulk creating flakes",
-        extra={"flakes": [flake.test_id.hex() for flake in curr_flakes.values()]},
+        extra={"flakes": [flake.test_id.hex() for flake in modified_flakes]},
     )
 
     Flake.objects.bulk_create(
-        curr_flakes.values(),
+        modified_flakes,
         update_conflicts=True,
         unique_fields=["id"],
         update_fields=["end_date", "count", "recent_passes_count", "fail_count"],
+        batch_size=1000,
     )
 
 
@@ -220,6 +238,15 @@ def process_flakes_for_repo(repo_id: int):
                     with process_flakes_summary.labels("new").time():
                         process_flakes_for_commit(repo_id, commit_id.decode())
             return True
+    except SoftTimeLimitExceeded:
+        # Task is approaching its time limit; stop processing and let the next
+        # invocation pick up remaining commits from the Redis queue.
+        log.warning(
+            "Soft time limit reached while processing flakes for repo %s; "
+            "remaining commits left in queue for next run",
+            repo_id,
+        )
+        return True
     except LockError:
         log.warning("Failed to acquire lock for repo %s", repo_id)
         return False
