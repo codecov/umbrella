@@ -14,6 +14,9 @@ log = logging.getLogger(__name__)
 class FlushRepoTask(BaseCodecovTask, name=flush_repo_task_name):
     acks_late = True  # retry the task when the worker dies for whatever reason
     max_retries = None  # aka, no limit on retries
+    # Soft limit fires before the 720s hard SIGKILL, giving the retry mechanism
+    # a chance to re-queue and make incremental progress on large repositories.
+    soft_time_limit = 600
 
     def run_impl(self, _db_session, repoid: int) -> CleanupSummary:
         try:
