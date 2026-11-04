@@ -345,12 +345,17 @@ DEFAULT_BLOCKING_TIMEOUT_SECONDS = int(
 
 
 class BaseCeleryConfig:
-    broker_url = get_config("services", "celery_broker") or get_config(
-        "services", "redis_url"
-    )
-    result_backend = get_config("services", "celery_broker") or get_config(
-        "services", "redis_url"
-    )
+    # IMPORTANT: broker_url and result_backend should point to a *dedicated*
+    # Redis instance (configured via `services.celery_broker`) that is NOT
+    # shared with the application cache (`services.redis_url`).  When both
+    # workloads share the same Redis, cache growth can exhaust Redis memory and
+    # trigger OOM-prevention, which causes Celery workers to crash with
+    # "command not allowed under OOM prevention" on unacked_index writes.
+    # See: get_broker_redis_url() in shared.helpers.redis for details.
+    from shared.helpers.redis import get_broker_redis_url as _get_broker_redis_url
+
+    broker_url = _get_broker_redis_url()
+    result_backend = _get_broker_redis_url()
     worker_send_task_events = bool(
         get_config("setup", "tasks", "celery", "worker_send_task_events", default=False)
     )
