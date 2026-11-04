@@ -488,6 +488,25 @@ def resolve_commit_bundle_analysis_report(commit: Commit, info) -> BundleAnalysi
     return bundle_analysis_report
 
 
+@commit_bindable.field("bundleAnalysisReport")
+@sync_to_async
+@sentry_sdk.trace
+def resolve_commit_bundle_analysis_report_shortcut(
+    commit: Commit, info
+) -> BundleAnalysisReport:
+    """Deprecated shortcut: use bundleAnalysis.bundleAnalysisReport instead."""
+    bundle_analysis_report = load_bundle_analysis_report(commit)
+
+    if isinstance(bundle_analysis_report, BundleAnalysisReport):
+        info.context[
+            "request"
+        ].bundle_analysis_head_report_db_path = bundle_analysis_report.report.db_path
+
+    info.context["commit"] = commit
+
+    return bundle_analysis_report
+
+
 @commit_bindable.field("latestUploadError")
 async def resolve_latest_upload_error(commit, info):
     command = info.context["executor"].get_command("commit")
