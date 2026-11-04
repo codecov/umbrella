@@ -145,3 +145,8 @@ def resolve_bitbucket_server_url(_, info):
 
     if settings.BITBUCKET_SERVER_CLIENT_ID:
         return settings.BITBUCKET_SERVER_URL
+
+
+@config_bindable.field("apiUrl")
+def resolve_api_url(_, info):
+    return settings.CODECOV_API_URL
