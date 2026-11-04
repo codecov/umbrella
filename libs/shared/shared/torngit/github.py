@@ -35,6 +35,7 @@ from shared.torngit.exceptions import (
     TorngitClientGeneralError,
     TorngitMisconfiguredCredentials,
     TorngitObjectNotFoundError,
+    TorngitPublicBotCapExceededError,
     TorngitRateLimitError,
     TorngitRefreshTokenFailedError,
     TorngitRepoNotFoundError,
@@ -829,9 +830,16 @@ class Github(TorngitBaseAdapter):
                                 **log_dict,
                             ),
                         )
-                        return Response(
-                            status_code=204,
-                            headers={"X-Codecov-Public-Bot-Dropped": "true"},
+                        retry_after_seconds = None
+                        if reset_ts is not None:
+                            retry_after_seconds = max(
+                                0,
+                                int(reset_ts) - int(datetime.now(UTC).timestamp()),
+                            )
+                        raise TorngitPublicBotCapExceededError(
+                            message=f"Repo {self.slug} exceeded per-repo cap on shared public bot",
+                            reset=reset_ts,
+                            retry_after=retry_after_seconds,
                         )
                 except RedisError:
                     log.warning("Public bot rate limit check failed; allowing request")
@@ -2207,6 +2215,11 @@ class Github(TorngitBaseAdapter):
                 url_name="get_ancestors_tree"
             ).substitute(slug=self.slug)
             res = await self.api(client, "get", url, token=token, sha=commitid)
+        if not res:
+            raise TorngitObjectNotFoundError(
+                response_data=res,
+                message=f"Unable to fetch ancestors tree for commit {commitid}",
+            )
         start = res[0]["sha"]
         commit_mapping = {val["sha"]: [k["sha"] for k in val["parents"]] for val in res}
         return self.build_tree_from_commits(start, commit_mapping)
