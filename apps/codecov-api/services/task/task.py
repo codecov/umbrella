@@ -129,14 +129,16 @@ class TaskService:
         debug=False,
         rebuild=False,
     ):
-        return self.upload_signature(
+        sig = self.upload_signature(
             repoid,
             commitid,
             report_type=report_type,
             arguments=arguments,
             debug=debug,
             rebuild=rebuild,
-        ).apply_async(countdown=countdown)
+        )
+        with celery_app.connection_for_write() as conn:
+            return sig.apply_async(countdown=countdown, connection=conn)
 
     def upload_breadcrumb(
         self,
