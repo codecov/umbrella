@@ -33,9 +33,11 @@ def get_end_of_file(filename, xmlfile):
 
 
 def from_xml(xml: Element, report_builder_session: ReportBuilderSession) -> None:
-    if max_age := report_builder_session.yaml_field(
-        ("codecov", "max_report_age"), "12h ago"
-    ):
+    if (
+        max_age := report_builder_session.yaml_field(
+            ("codecov", "max_report_age"), "12h ago"
+        )
+    ) and str(max_age).lower() != "off":
         try:
             timestamp = next(xml.iter("coverage")).get("generated")
             original_timestamp = timestamp
