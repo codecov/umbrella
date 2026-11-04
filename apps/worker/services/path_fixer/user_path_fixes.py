@@ -1,15 +1,25 @@
 import re
 
-_star_to_glob = re.compile(r"(?<!\.)\*").sub
-
 
 def _fixpaths_regs(fix: str) -> str:
     # [DEPRECATED] because handled by validators, but some data is cached in db
+    # Split on wildcard tokens first, escape each literal segment with
+    # re.escape(), then rejoin with the appropriate regex equivalents.
+    # This prevents backslashes in literal path segments (e.g. \O in Windows
+    # paths like D:\a\Oblyro-Framework) from being treated as invalid regex
+    # escape sequences when the pattern is passed to re.compile().
+    #
     # a/**/b => a/.*/b
-    fix = fix.replace("**", r".*")
-    # a/*/b => a/[^\/\n]+/b
-    fix = _star_to_glob(r"[^\/\n]+", fix)
-    return fix.lstrip("/")
+    # a/*/b  => a/[^/
+]+/b
+    double_star_parts = fix.split("**")
+    escaped_double_star_parts = []
+    for part in double_star_parts:
+        single_star_parts = part.split("*")
+        escaped_double_star_parts.append(
+            r"[^/\n]+".join(re.escape(s) for s in single_star_parts)
+        )
+    return ".*".join(escaped_double_star_parts).lstrip("/")
 
 
 class UserPathFixes:
