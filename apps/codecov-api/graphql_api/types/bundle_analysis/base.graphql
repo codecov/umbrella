@@ -71,6 +71,10 @@ type BundleReportInfo {
 type BundleReport {
   name: String!
   moduleCount: Int!
+  "Total uncompressed size in bytes for this bundle"
+  sizeTotal: Int!
+  "Total estimated 3G load time in milliseconds for this bundle"
+  loadTimeTotal: Int!
   assets: [BundleAsset]!
   asset(name: String!): BundleAsset
   bundleData: BundleData!
