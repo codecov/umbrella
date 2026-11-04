@@ -4,6 +4,7 @@ type Query {
   me: Me
   owner(username: String!): Owner
   config: Config!
+  version: Version!
 }
 
 type PageInfo {
