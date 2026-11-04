@@ -34,6 +34,15 @@ type Me {
     before: String
   ): MyOrganizationConnection!
     @cost(complexity: 15, multipliers: ["first", "last"])
+  owners(
+    filters: OrganizationSetFilters
+    first: Int
+    after: String
+    last: Int
+    before: String
+  ): MyOrganizationConnection!
+    @deprecated(reason: "Use myOrganizations instead")
+    @cost(complexity: 15, multipliers: ["first", "last"])
   hasLinkedSentryLogin: Boolean!
   isSyncingWithGitProvider: Boolean!
   privateAccess: Boolean
