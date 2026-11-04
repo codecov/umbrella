@@ -175,7 +175,7 @@ def get_sorted_path_contents(
 
     if filters is None:
         filters = {}
-    search_value = filters.get("search_value")
+    search_value = filters.get("search_value") or filters.get("search")
     display_type = filters.get("display_type")
 
     flags_filter = filters.get("flags", [])
