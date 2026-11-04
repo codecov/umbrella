@@ -38,6 +38,12 @@ def resolve_coverage(data, info):
     ]
 
 
+@file_bindable.field("lineCoverage")
+def resolve_line_coverage(data, info):
+    # Deprecated alias for `coverage` — kept for backward compatibility with older clients
+    return resolve_coverage(data, info)
+
+
 @file_bindable.field("totals")
 def resolve_totals(data, info):
     file_report = data.get("file_report")
