@@ -829,9 +829,10 @@ class Github(TorngitBaseAdapter):
                                 **log_dict,
                             ),
                         )
-                        return Response(
-                            status_code=204,
-                            headers={"X-Codecov-Public-Bot-Dropped": "true"},
+                        raise TorngitRateLimitError(
+                            response_data=None,
+                            message="Repo exceeded per-repo cap on shared public bot",
+                            reset=reset_ts,
                         )
                 except RedisError:
                     log.warning("Public bot rate limit check failed; allowing request")
@@ -1831,6 +1832,13 @@ class Github(TorngitBaseAdapter):
                     slug=self.slug, path=path.replace(" ", "%20")
                 )
                 content = await self.api(client, "get", url, ref=ref, token=token)
+
+                if not isinstance(content, dict):
+                    raise TorngitClientGeneralError(
+                        status_code=204,
+                        response_data=content,
+                        message=f"Empty response fetching {path} at {ref}",
+                    )
 
                 # When file size is greater than 1MB, content would not populate,
                 # instead we have to retrieve it from the download_url
