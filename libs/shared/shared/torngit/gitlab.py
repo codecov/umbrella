@@ -15,6 +15,7 @@ from shared.torngit.exceptions import (
     TorngitCantRefreshTokenError,
     TorngitClientError,
     TorngitClientGeneralError,
+    TorngitCommitNotFoundError,
     TorngitObjectNotFoundError,
     TorngitRefreshTokenFailedError,
     TorngitServer5xxCodeError,
@@ -1335,8 +1336,20 @@ class Gitlab(TorngitBaseAdapter):
             )
         except TorngitClientError as ce:
             if ce.code == 404:
+                response_data = ce.response_data
+                # GitLab returns {"message": "404 Commit Not Found"} when the
+                # commit SHA itself is unresolvable (e.g. replication lag after
+                # a fresh push), which is a transient condition distinct from a
+                # file that is genuinely absent from the repository.
+                if isinstance(response_data, dict) and "Commit Not Found" in str(
+                    response_data.get("message", "")
+                ):
+                    raise TorngitCommitNotFoundError(
+                        response_data=response_data,
+                        message=f"Commit {ref} not found on provider",
+                    )
                 raise TorngitObjectNotFoundError(
-                    response_data=ce.response_data,
+                    response_data=response_data,
                     message=f"Path {path} not found at {ref}",
                 )
             raise
