@@ -25,6 +25,8 @@ INSTALLED_APPS = [
     "django.contrib.auth",
     "django.contrib.messages",
     "django.contrib.sessions",
+    # Celery result backend (stores chord results in PostgreSQL instead of Redis)
+    "django_celery_results",
     # Shared apps:
     "shared.django_apps.legacy_migrations",
     "shared.django_apps.pg_telemetry",
