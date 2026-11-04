@@ -16,6 +16,7 @@ from shared.torngit.exceptions import (
     TorngitClientError,
     TorngitClientGeneralError,
     TorngitObjectNotFoundError,
+    TorngitRateLimitError,
     TorngitRefreshTokenFailedError,
     TorngitServer5xxCodeError,
     TorngitServerUnreachableError,
@@ -26,6 +27,15 @@ from shared.typings.oauth_token_types import OauthConsumerToken, Token
 from shared.utils.urls import url_concat
 
 log = logging.getLogger(__name__)
+
+
+def _safe_parse_body(res: httpx.Response):
+    """Parse a response body as JSON, falling back to raw text if it isn't JSON."""
+    try:
+        return res.json()
+    except ValueError:
+        return res.text
+
 
 METRICS_PREFIX = "services.torngit.gitlab"
 
@@ -462,17 +472,34 @@ class Gitlab(TorngitBaseAdapter):
                     raise TorngitServer5xxCodeError("Gitlab is having 5xx issues")
                 elif (
                     res.status_code == 401
-                    and res.json().get("error") == "invalid_token"
+                    and isinstance(parsed_body := _safe_parse_body(res), dict)
+                    and parsed_body.get("error") == "invalid_token"
                 ):
                     # Refresh token and retry
                     log.debug("Token is invalid. Refreshing")
                     token = await self.refresh_token(client)
                     if callable(self._on_token_refresh):
                         await self._on_token_refresh(token)
+                elif res.status_code == 429:
+                    retry_after = res.headers.get("Retry-After")
+                    try:
+                        retry_after_seconds = (
+                            int(retry_after) if retry_after is not None else None
+                        )
+                    except ValueError:
+                        retry_after_seconds = None
+                    raise TorngitRateLimitError(
+                        response_data=res.text,
+                        message="Gitlab API rate limit error: 429",
+                        reset=res.headers.get("RateLimit-Reset"),
+                        retry_after=retry_after_seconds,
+                    )
                 elif res.status_code >= 400:
                     message = f"Gitlab API: {res.status_code}"
                     raise TorngitClientGeneralError(
-                        res.status_code, response_data=res.json(), message=message
+                        res.status_code,
+                        response_data=_safe_parse_body(res),
+                        message=message,
                     )
                 else:
                     # Success case
