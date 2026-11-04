@@ -12,6 +12,7 @@ from sqlalchemy.exc import (
     DataError,
     IntegrityError,
     InvalidRequestError,
+    OperationalError,
     SQLAlchemyError,
 )
 
@@ -485,7 +486,14 @@ class BaseCodecovTask(celery_app.Task):
                     return None
             except SQLAlchemyError as ex:
                 self._analyse_error(ex, args, kwargs)
-                db_session.rollback()
+                try:
+                    db_session.rollback()
+                except SQLAlchemyError:
+                    log.warning(
+                        "db_session.rollback() failed (connection likely dead); removing session",
+                        exc_info=True,
+                    )
+                    get_db_session.remove()
                 retry_count = getattr(self.request, "retries", 0)
                 countdown = TASK_RETRY_BACKOFF_BASE_SECONDS * (2**retry_count)
                 try:
@@ -524,12 +532,18 @@ class BaseCodecovTask(celery_app.Task):
             try:
                 db_session.commit()
                 db_session.close()
-            except InvalidRequestError:
+            except (InvalidRequestError, OperationalError):
                 log.warning(
                     "DB session cannot be operated on any longer. Closing it and removing it",
                     exc_info=True,
                 )
                 get_db_session.remove()
+        except OperationalError:
+            log.warning(
+                "DB connection is dead (server may have terminated). Removing session",
+                exc_info=True,
+            )
+            get_db_session.remove()
         except InvalidRequestError:
             log.warning(
                 "DB session cannot be operated on any longer. Closing it and removing it",
