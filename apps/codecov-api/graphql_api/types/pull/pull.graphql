@@ -8,6 +8,7 @@ type Pull {
   updatestamp: DateTime
   head: Commit
   comparedTo: Commit
+  pullBase: Commit @deprecated(reason: "Use comparedTo")
   compareWithBase: ComparisonResult
   bundleAnalysisCompareWithBase: BundleAnalysisComparisonResult
   commits(
