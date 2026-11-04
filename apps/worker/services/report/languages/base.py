@@ -1,14 +1,17 @@
+from datetime import datetime, timezone
 from typing import Any
+
+from timestring import Date
 
 from services.report.report_builder import ReportBuilderSession
 
 
 def normalize_timestamp(timestamp: str | None) -> str | None:
     """
-    Normalize a timestamp string for use with timestring.Date().
+    Normalize a timestamp string.
 
     Handles millisecond Unix timestamps (13+ digits) by converting them to
-    seconds, since timestring.Date() expects seconds-based timestamps.
+    seconds.
 
     Args:
         timestamp: A timestamp string, which may be:
@@ -23,10 +26,45 @@ def normalize_timestamp(timestamp: str | None) -> str | None:
         return None
 
     if timestamp.isdigit() and len(timestamp) >= 13:
-        # Convert milliseconds to seconds for timestring.Date()
+        # Convert milliseconds to seconds
         return str(int(timestamp) // 1000)
 
     return timestamp
+
+
+def is_report_expired(timestamp: str | None, max_age) -> bool:
+    """
+    Determine whether a report timestamp is older than max_age.
+
+    For pure numeric (Unix epoch seconds) timestamps, uses
+    datetime.fromtimestamp() to avoid timestring.Date() misinterpreting
+    large integers. For human-readable date strings, falls back to
+    timestring.Date() comparison.
+
+    Args:
+        timestamp: Raw timestamp string from the report (ms or s epoch, or
+                   date string). May be None.
+        max_age: A timestring-compatible age string (e.g. "12h ago") or a
+                 timestring.Date instance, as returned by yaml_field().
+
+    Returns:
+        True if the report is expired, False otherwise.
+    """
+    normalized = normalize_timestamp(timestamp)
+    if not normalized:
+        return False
+
+    if normalized.isdigit():
+        # Use datetime.fromtimestamp() for pure Unix epoch integers;
+        # timestring.Date() cannot reliably parse them.
+        report_dt = datetime.fromtimestamp(int(normalized), tz=timezone.utc)
+        cutoff_dt = Date(max_age).date
+        # Date.date may be naive; normalise to UTC for comparison
+        if cutoff_dt.tzinfo is None:
+            cutoff_dt = cutoff_dt.replace(tzinfo=timezone.utc)
+        return report_dt < cutoff_dt
+
+    return Date(normalized) < max_age
 
 
 class BaseLanguageProcessor:

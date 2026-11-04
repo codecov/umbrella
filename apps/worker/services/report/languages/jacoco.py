@@ -3,10 +3,9 @@ from collections import defaultdict
 
 import sentry_sdk
 from lxml.etree import Element
-from timestring import Date
 
 from helpers.exceptions import ReportExpiredException
-from services.report.languages.base import BaseLanguageProcessor, normalize_timestamp
+from services.report.languages.base import BaseLanguageProcessor, is_report_expired
 from services.report.report_builder import CoverageType, ReportBuilderSession
 from shared.utils.merge import LineType, branch_type
 
@@ -39,8 +38,7 @@ def from_xml(xml: Element, report_builder_session: ReportBuilderSession) -> None
         try:
             timestamp = next(xml.iter("sessioninfo")).get("start")
             original_timestamp = timestamp
-            timestamp = normalize_timestamp(timestamp)
-            if timestamp and Date(timestamp) < max_age:
+            if is_report_expired(timestamp, max_age):
                 # report expired over 12 hours ago
                 raise ReportExpiredException(
                     f"Jacoco report expired {original_timestamp}"
