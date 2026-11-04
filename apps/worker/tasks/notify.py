@@ -741,6 +741,13 @@ class NotifyTask(BaseCodecovTask, name=notify_task_name):
             )
             return notifications_service.notify(comparison)
         except Exception as e:
+            # Roll back any failed transaction before accessing commit attributes.
+            # Without this, a deadlock or other DB error leaves the SQLAlchemy
+            # session in a PendingRollback state, causing a secondary error when
+            # lazy-loading commit.commitid / commit.repoid below.
+            db_session = commit.get_db_session()
+            if db_session is not None:
+                db_session.rollback()
             self._call_upload_breadcrumb_task(
                 commit_sha=commit.commitid,
                 repo_id=commit.repoid,
