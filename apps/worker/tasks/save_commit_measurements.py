@@ -111,7 +111,7 @@ class SaveCommitMeasurementsTask(
                 "An error happened while saving commit measurements",
                 extra={"commitid": commitid, "task_args": args, "task_kwargs": kwargs},
             )
-            return {"successful": False, "error": "exception"}
+            raise
 
 
 RegisteredSaveCommitMeasurementsTask = celery_app.register_task(
