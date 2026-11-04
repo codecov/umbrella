@@ -3,6 +3,7 @@ type Owner {
   availablePlans: [PlanRepresentation!]
   avatarUrl: String!
   billing: Billing
+  defaultOrg: Owner
   defaultOrgUsername: String
   delinquent: Boolean
   externalId: String
