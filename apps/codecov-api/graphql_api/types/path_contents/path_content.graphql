@@ -16,6 +16,8 @@ type PathContentFile implements PathContent {
   partials: Int!
   lines: Int!
   percentCovered: Float!
+  content: String @deprecated(reason: "Use commit.coverageAnalytics.coverageFile.content instead")
+  coverage: [CoverageAnnotation] @deprecated(reason: "Use commit.coverageAnalytics.coverageFile.coverage instead")
 }
 
 type PathContentDir implements PathContent {
@@ -45,6 +47,7 @@ type PathContentConnection {
 
 union PathContentsResult =
     PathContents
+  | PathContentFile
   | MissingHeadReport
   | MissingCoverage
   | UnknownPath
