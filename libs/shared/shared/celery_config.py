@@ -364,6 +364,11 @@ class BaseCeleryConfig:
     broker_transport_options = {
         "visibility_timeout": TASK_VISIBILITY_TIMEOUT_SECONDS,
     }
+
+    # Retry producer connections on transient broker failures so that
+    # apply_async() calls from the web process recover automatically.
+    broker_connection_retry = True
+    broker_connection_max_retries = 3
     result_extended = True
     task_default_queue = get_config(
         "setup", "tasks", "celery", "default_queue", default="celery"
