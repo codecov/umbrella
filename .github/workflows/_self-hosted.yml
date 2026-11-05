@@ -62,7 +62,7 @@ jobs:
         with:
           path: |
             ./requirements.tar
-          key: ${{ runner.os }}-${{ runner.arch }}-${{ env.cache-name }}-${{ hashFiles('uv.lock') }}-${{ hashFiles('docker/Dockerfile.requirements', 'docker/apt-archive-keys.py', 'docker/build-sqlite.sh') }}-${{ hashFiles('libs/shared/**') }}
+          key: ${{ runner.os }}-${{ runner.arch }}-${{ env.cache-name }}-${{ hashFiles('uv.lock') }}-${{ hashFiles('docker/Dockerfile.requirements') }}-${{ hashFiles('libs/shared/**') }}
 
       - name: Cache Self hosted
         id: cache-self-hosted

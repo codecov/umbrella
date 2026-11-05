@@ -9,8 +9,6 @@ FROM $PYTHON_IMAGE as build
 COPY --from=uv /usr/local/bin/uv /usr/local/bin/uvx /usr/local/bin/
 
 # Install all system packages needed by either worker OR codecov-api
-COPY docker/apt-archive-keys.py /tmp/apt-archive-keys.py
-RUN python /tmp/apt-archive-keys.py && rm /tmp/apt-archive-keys.py
 RUN apt-get update
 RUN apt-get install -y \
     build-essential \
@@ -68,8 +66,6 @@ ARG APP_DIR
 # no Debian fix and are unused at runtime.
 # Drop system libexpat1 (CVE-2026-45186, no Bookworm fix): CPython's pyexpat
 # embeds its own expat and does not link the shared library.
-COPY docker/apt-archive-keys.py /tmp/apt-archive-keys.py
-RUN python /tmp/apt-archive-keys.py && rm /tmp/apt-archive-keys.py
 RUN apt-get update \
     && apt-get -y upgrade \
     && apt-get install -y --no-install-recommends \
@@ -82,10 +78,6 @@ RUN apt-get update \
     && apt-get purge -y libexpat1 \
     && apt-get autoremove -y \
     && rm -rf /var/lib/apt/lists/*
-
-# Bookworm publishes no sqlite3 >= 3.54.0, and sid's 3.54.1 needs libc6 >= 2.38.
-COPY docker/build-sqlite.sh /tmp/build-sqlite.sh
-RUN sh /tmp/build-sqlite.sh && rm /tmp/build-sqlite.sh
 
 COPY --from=build /wheels/ /wheels/
 

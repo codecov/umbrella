@@ -53,8 +53,6 @@ jobs:
               - 'docker/Makefile.docker'
               - 'docker/Makefile.ci-tests'
               - 'docker/Dockerfile.requirements'
-              - 'docker/apt-archive-keys.py'
-              - 'docker/build-sqlite.sh'
               - 'docker/Dockerfile.test-requirements'
               - 'docker/Dockerfile'
               - 'uv.lock'
