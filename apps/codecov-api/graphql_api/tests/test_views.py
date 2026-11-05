@@ -153,6 +153,67 @@ class AriadneViewTestCase(GraphQLTestHelper, TestCase):
         assert data["errors"] is not None
         assert data["errors"][0]["message"] == "INTERNAL SERVER ERROR"
 
+    @override_settings(DEBUG=False)
+    @patch("graphql_api.views.capture_exception")
+    @patch("logging.Logger.error")
+    @patch("logging.Logger.warning")
+    async def test_when_invalid_input_variable_is_not_reported_as_server_error(
+        self, mock_warning_logger, mock_error_logger, mock_capture
+    ):
+        schema = make_executable_schema(
+            """
+            input PathContentsFilters {
+                flags: [String!]
+            }
+            type Query {
+                stuff(filters: PathContentsFilters!): Boolean
+            }
+            """,
+            ObjectType("Query"),
+        )
+        before = REGISTRY.get_sample_value(
+            "api_gql_errors_total",
+            labels={"error_type": "validation_error", "path": "/graphql/gh"},
+        )
+        data = await self.do_query(
+            schema,
+            "query Q($filters: PathContentsFilters!) { stuff(filters: $filters) }",
+            variables={"filters": {"hasUnintendedChanges": False, "flags": []}},
+        )
+        assert data["errors"] is not None
+        mock_capture.assert_not_called()
+        mock_error_logger.assert_not_called()
+        validation_calls = [
+            c
+            for c in mock_warning_logger.call_args_list
+            if c.args and c.args[0] == "GraphQL request validation error"
+        ]
+        assert len(validation_calls) == 1
+        assert (
+            "hasUnintendedChanges"
+            in (validation_calls[0].kwargs["extra"]["error_message"])
+        )
+        after = REGISTRY.get_sample_value(
+            "api_gql_errors_total",
+            labels={"error_type": "validation_error", "path": "/graphql/gh"},
+        )
+        assert (after or 0) - (before or 0) == 1
+
+    @override_settings(DEBUG=False)
+    @patch("graphql_api.views.capture_exception")
+    @patch("logging.Logger.error")
+    async def test_when_random_exception_is_still_reported(
+        self, mock_error_logger, mock_capture
+    ):
+        exc = Exception("hello")
+        schema = generate_schema_that_raise_with(exc)
+        await self.do_query(schema)
+        assert any(
+            c.args and c.args[0] == "GraphQL internal server error"
+            for c in mock_error_logger.call_args_list
+        )
+        mock_capture.assert_called_once_with(exc)
+
     @override_settings(DEBUG=False, GRAPHQL_QUERY_COST_THRESHOLD=1000)
     @patch("logging.Logger.error")
     async def test_when_costly_query(self, mock_error_logger):
