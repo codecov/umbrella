@@ -39,9 +39,10 @@ make install DESTDIR=/tmp/sqlite-root
 rm -rf /tmp/debpkg
 mkdir -p "/tmp/debpkg/DEBIAN" "/tmp/debpkg${libdir}"
 cp -a /tmp/sqlite-root${libdir}/libsqlite3.so.* "/tmp/debpkg${libdir}/"
+# Bookworm's tracker marks source sqlite3 unfixed at every version, so a
+# package that claims that source stays flagged past the upstream fix.
 printf '%s\n' \
     'Package: libsqlite3-0' \
-    'Source: sqlite3' \
     'Version: 3.54.1-1' \
     "Architecture: $(dpkg --print-architecture)" \
     'Multi-Arch: same' \
