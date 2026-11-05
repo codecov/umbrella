@@ -38,7 +38,11 @@ def ta_processor(
     if upload_id is None:
         return False
 
-    upload = ReportSession.objects.using("default").get(id=upload_id)
+    upload = (
+        ReportSession.objects.using("default")
+        .prefetch_related("flags")
+        .get(id=upload_id)
+    )
     if upload.state == "processed":
         # don't need to process again because the intermediate result should already be in redis
         return False
@@ -228,6 +232,9 @@ def insert_testruns_timeseries(
     parsing_infos: list[test_results_parser.ParsingInfo],
 ):
     flaky_test_set = get_flaky_tests_set(repoid)
+    # Resolve flag names once per upload rather than once per parsing_info:
+    # `flag_names` issues a DB query on every access.
+    flags = upload.flag_names
 
     for parsing_info in parsing_infos:
         insert_testrun(
@@ -236,7 +243,7 @@ def insert_testruns_timeseries(
             commit_sha=commitid,
             branch=branch,
             upload_id=upload.id,
-            flags=upload.flag_names,
+            flags=flags,
             parsing_info=parsing_info,
             flaky_test_ids=flaky_test_set,
         )
