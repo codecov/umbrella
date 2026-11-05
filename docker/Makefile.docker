@@ -6,7 +6,7 @@ export CI_REQS_REPO ?= codecov/umbrella-reqs
 # `LC_ALL=C` is added to `sort` to ensure you get the same order across systems.
 # Otherwise, a Mac may sort according to en_US.UTF-8 while CI may sort according to C/POSIX.
 SHARED_SHA := $(shell git ls-files libs/shared | LC_ALL=C sort | xargs sha1sum | cut -d ' ' -f 1 | sha1sum | head -c 40)
-DOCKER_REQS_SHA := $(shell sha1sum docker/Dockerfile.requirements | head -c 40)
+DOCKER_REQS_SHA := $(shell cat docker/Dockerfile.requirements docker/apt-archive-keys.py docker/build-sqlite.sh | sha1sum | head -c 40)
 UV_LOCK_SHA := $(shell sha1sum ./uv.lock | head -c 40)
 export REQUIREMENTS_TAG := reqs-${UV_LOCK_SHA}-${DOCKER_REQS_SHA}-${SHARED_SHA}
 

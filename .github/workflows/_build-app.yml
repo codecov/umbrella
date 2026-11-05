@@ -56,7 +56,7 @@ jobs:
         with:
           path: |
             ./requirements.tar
-          key: ${{ runner.os }}-${{ runner.arch }}-${{ env.cache-name }}-${{ hashFiles('uv.lock') }}-${{ hashFiles('docker/Dockerfile.requirements') }}-${{ hashFiles('libs/shared/**') }}
+          key: ${{ runner.os }}-${{ runner.arch }}-${{ env.cache-name }}-${{ hashFiles('uv.lock') }}-${{ hashFiles('docker/Dockerfile.requirements', 'docker/apt-archive-keys.py', 'docker/build-sqlite.sh') }}-${{ hashFiles('libs/shared/**') }}
 
       - name: Cache App
         id: cache-app
@@ -123,7 +123,7 @@ jobs:
         with:
           path: |
             ./test-requirements.tar
-          key: ${{ runner.os }}-${{ runner.arch }}-${{ env.cache-name }}-${{ hashFiles('./uv.lock') }}-${{ hashFiles('docker/Dockerfile.requirements') }}-${{ hashFiles('docker/Dockerfile.test-requirements') }}-${{ hashFiles('libs/shared/**') }}
+          key: ${{ runner.os }}-${{ runner.arch }}-${{ env.cache-name }}-${{ hashFiles('./uv.lock') }}-${{ hashFiles('docker/Dockerfile.requirements', 'docker/apt-archive-keys.py', 'docker/build-sqlite.sh') }}-${{ hashFiles('docker/Dockerfile.test-requirements') }}-${{ hashFiles('libs/shared/**') }}
 
       - name: Load test requirements from cache
         if: ${{ steps.cache-test-requirements.outputs.cache-hit == 'true' }}
