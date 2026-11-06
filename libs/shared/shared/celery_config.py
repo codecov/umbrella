@@ -399,6 +399,14 @@ class BaseCeleryConfig:
     # http://docs.celeryproject.org/en/latest/configuration.html#celery-ignore-result
     task_ignore_result = True
 
+    # Expire chord/group result metadata after 1 hour (default was 1 day).
+    # Reducing this TTL limits the accumulation of celery-taskset-meta-* keys
+    # in Redis, lowering the risk of hitting maxmemory limits.
+    # https://docs.celeryq.dev/en/stable/userguide/configuration.html#result-expires
+    result_expires = int(
+        get_config("setup", "tasks", "celery", "result_expires", default=3600)
+    )  # 1 hour
+
     # http://celery.readthedocs.org/en/latest/userguide/tasks.html#disable-rate-limits-if-they-re-not-used
     worker_disable_rate_limits = True
 
