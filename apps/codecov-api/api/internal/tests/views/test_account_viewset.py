@@ -1611,13 +1611,8 @@ class AccountViewSetTests(APITestCase):
         assert response.status_code == code
         assert response.data["detail"] == message
 
-    @patch(
-        "api.internal.owner.serializers.BillingService.get_schedule", return_value=None
-    )
-    @patch(
-        "api.internal.owner.serializers.BillingService.get_subscription",
-        return_value=None,
-    )
+    @patch("services.billing.StripeService.get_schedule", return_value=None)
+    @patch("services.billing.StripeService.get_subscription", return_value=None)
     @patch("services.billing.StripeService.modify_subscription")
     def test_update_sentry_plan_monthly(
         self, modify_sub_mock, get_subscription_mock, get_schedule_mock
@@ -1638,13 +1633,8 @@ class AccountViewSetTests(APITestCase):
         assert response.status_code == status.HTTP_200_OK
         modify_sub_mock.assert_called_once()
 
-    @patch(
-        "api.internal.owner.serializers.BillingService.get_schedule", return_value=None
-    )
-    @patch(
-        "api.internal.owner.serializers.BillingService.get_subscription",
-        return_value=None,
-    )
+    @patch("services.billing.StripeService.get_schedule", return_value=None)
+    @patch("services.billing.StripeService.get_subscription", return_value=None)
     @patch("services.billing.StripeService.modify_subscription")
     def test_update_sentry_plan_monthly_with_users_org(
         self, modify_sub_mock, get_subscription_mock, get_schedule_mock
@@ -1667,13 +1657,8 @@ class AccountViewSetTests(APITestCase):
         assert response.status_code == status.HTTP_200_OK
         modify_sub_mock.assert_called_once()
 
-    @patch(
-        "api.internal.owner.serializers.BillingService.get_schedule", return_value=None
-    )
-    @patch(
-        "api.internal.owner.serializers.BillingService.get_subscription",
-        return_value=None,
-    )
+    @patch("services.billing.StripeService.get_schedule", return_value=None)
+    @patch("services.billing.StripeService.get_subscription", return_value=None)
     @patch("services.billing.StripeService.modify_subscription")
     def test_update_sentry_plan_annual(
         self, modify_sub_mock, get_subscription_mock, get_schedule_mock
@@ -1694,13 +1679,8 @@ class AccountViewSetTests(APITestCase):
         assert response.status_code == status.HTTP_200_OK
         modify_sub_mock.assert_called_once()
 
-    @patch(
-        "api.internal.owner.serializers.BillingService.get_schedule", return_value=None
-    )
-    @patch(
-        "api.internal.owner.serializers.BillingService.get_subscription",
-        return_value=None,
-    )
+    @patch("services.billing.StripeService.get_schedule", return_value=None)
+    @patch("services.billing.StripeService.get_subscription", return_value=None)
     @patch("services.billing.StripeService.modify_subscription")
     def test_update_sentry_plan_annual_with_users_org(
         self, modify_sub_mock, get_subscription_mock, get_schedule_mock
@@ -1723,13 +1703,8 @@ class AccountViewSetTests(APITestCase):
         assert response.status_code == status.HTTP_200_OK
         modify_sub_mock.assert_called_once()
 
-    @patch(
-        "api.internal.owner.serializers.BillingService.get_schedule", return_value=None
-    )
-    @patch(
-        "api.internal.owner.serializers.BillingService.get_subscription",
-        return_value=None,
-    )
+    @patch("services.billing.StripeService.get_schedule", return_value=None)
+    @patch("services.billing.StripeService.get_subscription", return_value=None)
     @patch("services.billing.StripeService.modify_subscription")
     def test_update_existing_sentry_org_by_non_sentry_user(
         self, modify_sub_mock, get_subscription_mock, get_schedule_mock
