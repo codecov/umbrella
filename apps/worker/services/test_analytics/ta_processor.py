@@ -185,7 +185,11 @@ def get_ta_processing_info(
     commitid: str,
     commit_yaml: dict[str, Any],
 ) -> TAProcInfo:
-    repository = Repository.objects.using("default").get(repoid=repoid)
+    # select_related keeps the author on the primary DB; a lazy FK load would
+    # be routed to the read replica by MultiDatabaseRouter.
+    repository = (
+        Repository.objects.using("default").select_related("author").get(repoid=repoid)
+    )
 
     commit = Commit.objects.using("default").get(
         repository=repository, commitid=commitid
