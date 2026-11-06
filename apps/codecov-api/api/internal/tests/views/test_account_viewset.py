@@ -1611,11 +1611,16 @@ class AccountViewSetTests(APITestCase):
         assert response.status_code == code
         assert response.data["detail"] == message
 
-    @patch("services.billing.stripe.Subscription.retrieve")
-    @patch("api.internal.owner.serializers.send_sentry_webhook")
+    @patch(
+        "api.internal.owner.serializers.BillingService.get_schedule", return_value=None
+    )
+    @patch(
+        "api.internal.owner.serializers.BillingService.get_subscription",
+        return_value=None,
+    )
     @patch("services.billing.StripeService.modify_subscription")
     def test_update_sentry_plan_monthly(
-        self, modify_sub_mock, send_sentry_webhook, retrieve_sub_mock
+        self, modify_sub_mock, get_subscription_mock, get_schedule_mock
     ):
         desired_plan = {"value": PlanName.SENTRY_MONTHLY.value, "quantity": 12}
         self.current_owner.stripe_customer_id = "flsoe"
@@ -1623,48 +1628,55 @@ class AccountViewSetTests(APITestCase):
         self.current_owner.sentry_user_id = "sentry-user-id"
         self.current_owner.save()
 
-        self._update(
+        response = self._update(
             kwargs={
                 "service": self.current_owner.service,
                 "owner_username": self.current_owner.username,
             },
             data={"plan": desired_plan},
         )
-        send_sentry_webhook.assert_called_once_with(
-            self.current_owner, self.current_owner
-        )
+        assert response.status_code == status.HTTP_200_OK
+        modify_sub_mock.assert_called_once()
 
-    @patch("api.internal.owner.serializers.send_sentry_webhook")
+    @patch(
+        "api.internal.owner.serializers.BillingService.get_schedule", return_value=None
+    )
+    @patch(
+        "api.internal.owner.serializers.BillingService.get_subscription",
+        return_value=None,
+    )
     @patch("services.billing.StripeService.modify_subscription")
     def test_update_sentry_plan_monthly_with_users_org(
-        self, modify_sub_mock, send_sentry_webhook
+        self, modify_sub_mock, get_subscription_mock, get_schedule_mock
     ):
         desired_plan = {"value": PlanName.SENTRY_MONTHLY.value, "quantity": 12}
         org = OwnerFactory(
             service=Service.GITHUB.value,
             service_id="923836740",
+            stripe_customer_id="flsoe",
+            stripe_subscription_id="djfos",
         )
-
-        self.current_owner.stripe_customer_id = "flsoe"
-        self.current_owner.stripe_subscription_id = "djfos"
         self.current_owner.sentry_user_id = "sentry-user-id"
         self.current_owner.organizations = [org.ownerid]
         self.current_owner.save()
 
-        self._update(
+        response = self._update(
             kwargs={"service": org.service, "owner_username": org.username},
             data={"plan": desired_plan},
         )
-        send_sentry_webhook.assert_called_once_with(self.current_owner, org)
+        assert response.status_code == status.HTTP_200_OK
+        modify_sub_mock.assert_called_once()
 
-    @patch("services.billing.stripe.Subscription.retrieve")
-    @patch("api.internal.owner.serializers.send_sentry_webhook")
+    @patch(
+        "api.internal.owner.serializers.BillingService.get_schedule", return_value=None
+    )
+    @patch(
+        "api.internal.owner.serializers.BillingService.get_subscription",
+        return_value=None,
+    )
     @patch("services.billing.StripeService.modify_subscription")
     def test_update_sentry_plan_annual(
-        self,
-        modify_sub_mock,
-        send_sentry_webhook,
-        retrieve_sub_mock,
+        self, modify_sub_mock, get_subscription_mock, get_schedule_mock
     ):
         desired_plan = {"value": PlanName.SENTRY_YEARLY.value, "quantity": 12}
         self.current_owner.stripe_customer_id = "flsoe"
@@ -1672,44 +1684,79 @@ class AccountViewSetTests(APITestCase):
         self.current_owner.sentry_user_id = "sentry-user-id"
         self.current_owner.save()
 
-        self._update(
+        response = self._update(
             kwargs={
                 "service": self.current_owner.service,
                 "owner_username": self.current_owner.username,
             },
             data={"plan": desired_plan},
         )
-        send_sentry_webhook.assert_called_once_with(
-            self.current_owner, self.current_owner
-        )
+        assert response.status_code == status.HTTP_200_OK
+        modify_sub_mock.assert_called_once()
 
-    @patch("api.internal.owner.serializers.send_sentry_webhook")
+    @patch(
+        "api.internal.owner.serializers.BillingService.get_schedule", return_value=None
+    )
+    @patch(
+        "api.internal.owner.serializers.BillingService.get_subscription",
+        return_value=None,
+    )
     @patch("services.billing.StripeService.modify_subscription")
     def test_update_sentry_plan_annual_with_users_org(
-        self, modify_sub_mock, send_sentry_webhook
+        self, modify_sub_mock, get_subscription_mock, get_schedule_mock
     ):
         desired_plan = {"value": PlanName.SENTRY_YEARLY.value, "quantity": 12}
         org = OwnerFactory(
             service=Service.GITHUB.value,
             service_id="923836740",
+            stripe_customer_id="flsoe",
+            stripe_subscription_id="djfos",
         )
-        self.current_owner.stripe_customer_id = "flsoe"
-        self.current_owner.stripe_subscription_id = "djfos"
         self.current_owner.sentry_user_id = "sentry-user-id"
         self.current_owner.organizations = [org.ownerid]
         self.current_owner.save()
 
-        self._update(
+        response = self._update(
             kwargs={"service": org.service, "owner_username": org.username},
             data={"plan": desired_plan},
         )
-        send_sentry_webhook.assert_called_once_with(self.current_owner, org)
+        assert response.status_code == status.HTTP_200_OK
+        modify_sub_mock.assert_called_once()
 
-    @patch("api.internal.owner.serializers.send_sentry_webhook")
+    @patch(
+        "api.internal.owner.serializers.BillingService.get_schedule", return_value=None
+    )
+    @patch(
+        "api.internal.owner.serializers.BillingService.get_subscription",
+        return_value=None,
+    )
     @patch("services.billing.StripeService.modify_subscription")
-    def test_update_sentry_plan_non_sentry_user(
-        self, modify_sub_mock, send_sentry_webhook
+    def test_update_existing_sentry_org_by_non_sentry_user(
+        self, modify_sub_mock, get_subscription_mock, get_schedule_mock
     ):
+        desired_plan = {"value": PlanName.SENTRY_MONTHLY.value, "quantity": 6}
+        org = OwnerFactory(
+            service=Service.GITHUB.value,
+            service_id="923836741",
+            plan=PlanName.SENTRY_MONTHLY.value,
+            plan_user_count=5,
+            stripe_customer_id="flsoe",
+            stripe_subscription_id="djfos",
+        )
+        self.current_owner.sentry_user_id = None
+        self.current_owner.organizations = [org.ownerid]
+        self.current_owner.save()
+
+        response = self._update(
+            kwargs={"service": org.service, "owner_username": org.username},
+            data={"plan": desired_plan},
+        )
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data["plan"]["value"] == desired_plan["value"]
+        modify_sub_mock.assert_called_once()
+
+    @patch("services.billing.StripeService.modify_subscription")
+    def test_update_sentry_plan_non_sentry_user(self, modify_sub_mock):
         desired_plan = {"value": PlanName.SENTRY_MONTHLY.value, "quantity": 5}
         org = OwnerFactory(
             service=Service.GITHUB.value,
