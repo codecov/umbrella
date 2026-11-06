@@ -141,6 +141,20 @@ TA_TIMESERIES_CONNECT_TIMEOUT = int(
     get_config("services", "ta_timeseries_database", "connect_timeout", default=5)
 )
 
+# Bound TCP connect time so an unreachable host fails fast instead of hanging
+# for the OS TCP timeout (minutes). connect_timeout is libpq-safe through PgBouncer.
+DATABASE_CONNECT_TIMEOUT = int(
+    get_config("services", "database", "connect_timeout", default=10)
+)
+DATABASE_READ_CONNECT_TIMEOUT = int(
+    get_config(
+        "services",
+        "database_read",
+        "connect_timeout",
+        default=DATABASE_CONNECT_TIMEOUT,
+    )
+)
+
 # this is the time in seconds django decides to keep the connection open after the request
 # the default is 0 seconds, meaning django closes the connection after every request
 # https://docs.djangoproject.com/en/3.1/ref/settings/#conn-max-age
@@ -159,6 +173,9 @@ DATABASES = {
         "PORT": DATABASE_PORT,
         "CONN_MAX_AGE": CONN_MAX_AGE,
         "CONN_HEALTH_CHECKS": CONN_HEALTH_CHECKS,
+        "OPTIONS": {
+            "connect_timeout": DATABASE_CONNECT_TIMEOUT,
+        },
     }
 }
 
@@ -172,6 +189,9 @@ if DATABASE_READ_REPLICA_ENABLED:
         "PORT": DATABASE_READ_PORT,
         "CONN_MAX_AGE": CONN_MAX_AGE,
         "CONN_HEALTH_CHECKS": CONN_HEALTH_CHECKS,
+        "OPTIONS": {
+            "connect_timeout": DATABASE_READ_CONNECT_TIMEOUT,
+        },
     }
 
 if TIMESERIES_ENABLED:
