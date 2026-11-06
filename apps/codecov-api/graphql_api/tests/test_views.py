@@ -147,11 +147,35 @@ class AriadneViewTestCase(GraphQLTestHelper, TestCase):
         )
 
     @override_settings(DEBUG=False)
-    async def test_when_bad_query_and_anonymous(self):
+    @patch("graphql_api.views.capture_exception")
+    @patch("logging.Logger.error")
+    async def test_when_bad_query_and_anonymous(
+        self, mock_error_logger, mock_capture_exception
+    ):
         schema = generate_schema_that_raise_with(Unauthorized())
         data = await self.do_query(schema, " { fieldThatDoesntExist }")
         assert data["errors"] is not None
         assert data["errors"][0]["message"] == "INTERNAL SERVER ERROR"
+        assert data["errors"][0]["type"] == "BadRequest"
+        # a client-side validation error is not an internal server error
+        mock_error_logger.assert_not_called()
+        mock_capture_exception.assert_not_called()
+
+    @override_settings(DEBUG=False)
+    @patch("graphql_api.views.capture_exception")
+    @patch("logging.Logger.error")
+    async def test_when_debug_is_false_and_random_exception_is_reported(
+        self, mock_error_logger, mock_capture_exception
+    ):
+        exception = Exception("hello")
+        schema = generate_schema_that_raise_with(exception)
+        data = await self.do_query(schema)
+        assert data["errors"][0]["message"] == "INTERNAL SERVER ERROR"
+        assert data["errors"][0]["type"] == "ServerError"
+        mock_error_logger.assert_called_once_with(
+            "GraphQL internal server error", exc_info=exception
+        )
+        mock_capture_exception.assert_called_once_with(exception)
 
     @override_settings(DEBUG=False, GRAPHQL_QUERY_COST_THRESHOLD=1000)
     @patch("logging.Logger.error")
