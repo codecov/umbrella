@@ -42,6 +42,39 @@ class TestGHMarketplaceSyncPlansTaskUnit:
         for repo in repos:
             assert repo.activated is False
 
+    def test_create_or_update_to_free_plan_skips_stripe_subscriber(
+        self, dbsession, mocker
+    ):
+        owner = OwnerFactory.create(
+            service="github",
+            plan=PlanName.SENTRY_YEARLY.value,
+            plan_user_count=30,
+            plan_activated_users=[1, 2],
+            stripe_customer_id="cus_123",
+            stripe_subscription_id="sub_123",
+        )
+        dbsession.add(owner)
+        repo = RepositoryFactory.create(
+            private=True, service_id="12071992", activated=True, author=owner
+        )
+        dbsession.add(repo)
+        dbsession.flush()
+
+        ghm_service = mocker.MagicMock(get_user=mocker.MagicMock())
+        SyncPlansTask().create_or_update_to_free_plan(
+            dbsession, ghm_service, owner.service_id
+        )
+
+        assert not ghm_service.get_user.called
+        assert owner.plan == PlanName.SENTRY_YEARLY.value
+        assert owner.plan_user_count == 30
+        assert owner.plan_activated_users == [1, 2]
+        assert owner.stripe_subscription_id == "sub_123"
+
+        dbsession.commit()
+        dbsession.refresh(repo)
+        assert repo.activated is True
+
     @freeze_time("2024-03-28T00:00:00")
     def test_create_or_update_to_free_plan_unknown_user(self, dbsession, mocker):
         service_id = "12345"

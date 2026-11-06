@@ -248,7 +248,19 @@ class SyncPlansTask(BaseCodecovTask, name=ghm_sync_plans_task_name):
             .first()
         )
 
-        if owner:
+        if owner and owner.stripe_subscription_id:
+            # Marketplace purchases clear the Stripe subscription, so this owner
+            # is billed through Stripe and a Marketplace event must not downgrade it.
+            log.warning(
+                "Skipping free plan sync for owner with a Stripe subscription",
+                extra={
+                    "service_id": service_id,
+                    "ownerid": owner.ownerid,
+                    "plan": owner.plan,
+                    "stripe_subscription_id": owner.stripe_subscription_id,
+                },
+            )
+        elif owner:
             # deactivate repos and remove all activated users for this owner
             owner.plan = DEFAULT_FREE_PLAN
             owner.plan_user_count = 1
