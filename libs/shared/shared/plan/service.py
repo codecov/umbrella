@@ -24,12 +24,6 @@ from shared.self_hosted.service import enterprise_has_seats_left, license_seats
 log = logging.getLogger(__name__)
 
 
-# This originally belongs to the sentry service in API but this is a temporary fn to avoid importing the whole service
-def is_sentry_user(owner: Owner) -> bool:
-    """Returns true if the given owner has been linked with a Sentry user."""
-    return owner.sentry_user_id is not None
-
-
 # TODO: Consider moving some of these methods to the billing directory as they overlap billing functionality
 class PlanService:
     def __init__(self, current_org: Owner):
@@ -170,7 +164,7 @@ class PlanService:
         # Build list of available tiers based on conditions
         available_tiers = [TierName.PRO.value]
 
-        if is_sentry_user(owner) or curr_plan.is_sentry_plan:
+        if curr_plan.is_sentry_plan:
             available_tiers.append(TierName.SENTRY.value)
 
         if (

@@ -471,9 +471,9 @@ class AvailablePlansBeforeTrial(TestCase):
     - users-free, no trial -> users-pr-inappm/y, DEFAULT_FREE_PLAN, users-free
     - users-teamm/y, no trial -> users-pr-inappm/y, DEFAULT_FREE_PLAN, users-teamm/y
     - users-pr-inappm/y, no trial -> users-pr-inappm/y,  DEFAULT_FREE_PLAN
-    - sentry customer, DEFAULT_FREE_PLAN, no trial -> users-pr-inappm/y, users-sentrym/y, DEFAULT_FREE_PLAN
-    - sentry customer, users-teamm/y, no trial -> users-pr-inappm/y, users-sentrym/y, DEFAULT_FREE_PLAN, users-teamm/y
-    - sentry customer, users-sentrym/y, no trial -> users-pr-inappm/y, users-sentrym/y, DEFAULT_FREE_PLAN
+    - linked sentry user, DEFAULT_FREE_PLAN, no trial -> users-pr-inappm/y, DEFAULT_FREE_PLAN
+    - linked sentry user, users-teamm/y, no trial -> users-pr-inappm/y, DEFAULT_FREE_PLAN, users-teamm/y
+    - org on users-sentrym/y, no trial -> users-pr-inappm/y, users-sentrym/y, DEFAULT_FREE_PLAN
     """
 
     @classmethod
@@ -568,11 +568,9 @@ class AvailablePlansBeforeTrial(TestCase):
             plan.name for plan in plan_service.available_plans(owner=self.owner)
         } == expected_result
 
-    @patch("shared.plan.service.is_sentry_user")
-    def test_available_plans_for_sentry_customer_developer_plan_non_trial(
-        self, is_sentry_user
-    ):
-        is_sentry_user.return_value = True
+    def test_available_plans_for_sentry_customer_developer_plan_non_trial(self):
+        self.owner.sentry_user_id = "sentry-user-id"
+        self.owner.save()
         self.current_org.plan = DEFAULT_FREE_PLAN
         self.current_org.save()
 
@@ -582,8 +580,6 @@ class AvailablePlansBeforeTrial(TestCase):
             DEFAULT_FREE_PLAN,
             PlanName.CODECOV_PRO_MONTHLY.value,
             PlanName.CODECOV_PRO_YEARLY.value,
-            PlanName.SENTRY_MONTHLY.value,
-            PlanName.SENTRY_YEARLY.value,
             PlanName.TEAM_MONTHLY.value,
             PlanName.TEAM_YEARLY.value,
         }
@@ -592,11 +588,9 @@ class AvailablePlansBeforeTrial(TestCase):
             plan.name for plan in plan_service.available_plans(owner=self.owner)
         } == expected_result
 
-    @patch("shared.plan.service.is_sentry_user")
-    def test_available_plans_for_sentry_customer_team_plan_non_trial(
-        self, is_sentry_user
-    ):
-        is_sentry_user.return_value = True
+    def test_available_plans_for_sentry_customer_team_plan_non_trial(self):
+        self.owner.sentry_user_id = "sentry-user-id"
+        self.owner.save()
         self.current_org.plan = PlanName.TEAM_MONTHLY.value
         self.current_org.save()
 
@@ -606,8 +600,6 @@ class AvailablePlansBeforeTrial(TestCase):
             DEFAULT_FREE_PLAN,
             PlanName.CODECOV_PRO_MONTHLY.value,
             PlanName.CODECOV_PRO_YEARLY.value,
-            PlanName.SENTRY_MONTHLY.value,
-            PlanName.SENTRY_YEARLY.value,
             PlanName.TEAM_MONTHLY.value,
             PlanName.TEAM_YEARLY.value,
         }
@@ -615,9 +607,7 @@ class AvailablePlansBeforeTrial(TestCase):
             plan.name for plan in plan_service.available_plans(owner=self.owner)
         } == expected_result
 
-    @patch("shared.plan.service.is_sentry_user")
-    def test_available_plans_for_sentry_plan_non_trial(self, is_sentry_user):
-        is_sentry_user.return_value = True
+    def test_available_plans_for_sentry_plan_non_trial(self):
         self.current_org.plan = PlanName.SENTRY_MONTHLY.value
         self.current_org.save()
 
@@ -637,9 +627,9 @@ class AvailablePlansBeforeTrial(TestCase):
             plan.name for plan in plan_service.available_plans(owner=self.owner)
         } == expected_result
 
-    @patch("shared.plan.service.is_sentry_user")
-    def test_available_plans_for_sentry_plan_not_sentry_user(self, is_sentry_user):
-        is_sentry_user.return_value = False
+    def test_available_plans_for_sentry_plan_not_sentry_user(self):
+        self.owner.sentry_user_id = None
+        self.owner.save()
         self.current_org.plan = PlanName.SENTRY_MONTHLY.value
         self.current_org.save()
 
@@ -666,9 +656,9 @@ class AvailablePlansExpiredTrialLessThanTenUsers(TestCase):
     - {DEFAULT_FREE_PLAN}, has trialed, less than 10 users -> users-pr-inappm/y, DEFAULT_FREE_PLAN, users-teamm/y
     - users-teamm/y, has trialed, less than 10 users -> users-pr-inappm/y, DEFAULT_FREE_PLAN, users-teamm/y
     - users-pr-inappm/y, has trialed, less than 10 users -> users-pr-inappm/y, DEFAULT_FREE_PLAN, users-teamm/y
-    - sentry customer, DEFAULT_FREE_PLAN, has trialed, less than 10 users -> users-pr-inappm/y, users-sentrym/y, DEFAULT_FREE_PLAN, users-teamm/y
-    - sentry customer, users-teamm/y, has trialed, less than 10 users -> users-pr-inappm/y, users-sentrym/y, DEFAULT_FREE_PLAN, users-teamm/y
-    - sentry customer, users-sentrym/y, has trialed, less than 10 users -> users-pr-inappm/y, users-sentrym/y, DEFAULT_FREE_PLAN, users-teamm/y
+    - linked sentry user, DEFAULT_FREE_PLAN, has trialed, less than 10 users -> users-pr-inappm/y, DEFAULT_FREE_PLAN, users-teamm/y
+    - linked sentry user, users-teamm/y, has trialed, less than 10 users -> users-pr-inappm/y, DEFAULT_FREE_PLAN, users-teamm/y
+    - org on users-sentrym/y, has trialed, less than 10 users -> users-pr-inappm/y, users-sentrym/y, DEFAULT_FREE_PLAN, users-teamm/y
     """
 
     @classmethod
@@ -742,11 +732,11 @@ class AvailablePlansExpiredTrialLessThanTenUsers(TestCase):
             plan.name for plan in plan_service.available_plans(owner=self.owner)
         } == expected_result
 
-    @patch("shared.plan.service.is_sentry_user")
     def test_available_plans_for_sentry_customer_developer_plan_expired_trial_less_than_10_users(
-        self, is_sentry_user
+        self,
     ):
-        is_sentry_user.return_value = True
+        self.owner.sentry_user_id = "sentry-user-id"
+        self.owner.save()
         self.current_org.plan = DEFAULT_FREE_PLAN
         self.current_org.save()
 
@@ -756,8 +746,6 @@ class AvailablePlansExpiredTrialLessThanTenUsers(TestCase):
             DEFAULT_FREE_PLAN,
             PlanName.CODECOV_PRO_MONTHLY.value,
             PlanName.CODECOV_PRO_YEARLY.value,
-            PlanName.SENTRY_MONTHLY.value,
-            PlanName.SENTRY_YEARLY.value,
             PlanName.TEAM_MONTHLY.value,
             PlanName.TEAM_YEARLY.value,
         }
@@ -766,11 +754,11 @@ class AvailablePlansExpiredTrialLessThanTenUsers(TestCase):
             plan.name for plan in plan_service.available_plans(owner=self.owner)
         } == expected_result
 
-    @patch("shared.plan.service.is_sentry_user")
     def test_available_plans_for_sentry_customer_team_plan_expired_trial_less_than_10_users(
-        self, is_sentry_user
+        self,
     ):
-        is_sentry_user.return_value = True
+        self.owner.sentry_user_id = "sentry-user-id"
+        self.owner.save()
         self.current_org.plan = PlanName.TEAM_MONTHLY.value
         self.current_org.save()
 
@@ -779,8 +767,6 @@ class AvailablePlansExpiredTrialLessThanTenUsers(TestCase):
             DEFAULT_FREE_PLAN,
             PlanName.CODECOV_PRO_MONTHLY.value,
             PlanName.CODECOV_PRO_YEARLY.value,
-            PlanName.SENTRY_MONTHLY.value,
-            PlanName.SENTRY_YEARLY.value,
             PlanName.TEAM_MONTHLY.value,
             PlanName.TEAM_YEARLY.value,
         }
@@ -789,11 +775,7 @@ class AvailablePlansExpiredTrialLessThanTenUsers(TestCase):
             plan.name for plan in plan_service.available_plans(owner=self.owner)
         } == expected_result
 
-    @patch("shared.plan.service.is_sentry_user")
-    def test_available_plans_for_sentry_plan_expired_trial_less_than_10_users(
-        self, is_sentry_user
-    ):
-        is_sentry_user.return_value = True
+    def test_available_plans_for_sentry_plan_expired_trial_less_than_10_users(self):
         self.current_org.plan = PlanName.SENTRY_MONTHLY.value
         self.current_org.save()
 
@@ -818,8 +800,8 @@ class AvailablePlansExpiredTrialLessThanTenUsers(TestCase):
 class AvailablePlansExpiredTrialMoreThanTenActivatedUsers(TestCase):
     """
     - users-pr-inappm/y, has trialed, more than 10 activated users -> users-pr-inappm/y, DEFAULT_FREE_PLAN
-    - sentry customer, DEFAULT_FREE_PLAN, has trialed, more than 10 activated users -> users-pr-inappm/y, users-sentrym/y, DEFAULT_FREE_PLAN
-    - sentry customer, users-sentrym/y, has trialed, more than 10 activated users -> users-pr-inappm/y, users-sentrym/y, DEFAULT_FREE_PLAN
+    - linked sentry user, DEFAULT_FREE_PLAN, has trialed, more than 10 activated users -> users-pr-inappm/y, DEFAULT_FREE_PLAN
+    - org on users-sentrym/y, has trialed, more than 10 activated users -> users-pr-inappm/y, users-sentrym/y, DEFAULT_FREE_PLAN
     """
 
     @classmethod
@@ -853,11 +835,11 @@ class AvailablePlansExpiredTrialMoreThanTenActivatedUsers(TestCase):
             plan.name for plan in plan_service.available_plans(owner=self.owner)
         } == expected_result
 
-    @patch("shared.plan.service.is_sentry_user")
     def test_available_plans_for_sentry_customer_developer_plan_expired_trial_more_than_10_users(
-        self, is_sentry_user
+        self,
     ):
-        is_sentry_user.return_value = True
+        self.owner.sentry_user_id = "sentry-user-id"
+        self.owner.save()
         self.current_org.plan = DEFAULT_FREE_PLAN
         self.current_org.save()
 
@@ -867,18 +849,12 @@ class AvailablePlansExpiredTrialMoreThanTenActivatedUsers(TestCase):
             DEFAULT_FREE_PLAN,
             PlanName.CODECOV_PRO_MONTHLY.value,
             PlanName.CODECOV_PRO_YEARLY.value,
-            PlanName.SENTRY_MONTHLY.value,
-            PlanName.SENTRY_YEARLY.value,
         }
         assert {
             plan.name for plan in plan_service.available_plans(owner=self.owner)
         } == expected_result
 
-    @patch("shared.plan.service.is_sentry_user")
-    def test_available_plans_for_sentry_plan_expired_trial_more_than_10_users(
-        self, is_sentry_user
-    ):
-        is_sentry_user.return_value = True
+    def test_available_plans_for_sentry_plan_expired_trial_more_than_10_users(self):
         self.current_org.plan = PlanName.SENTRY_MONTHLY.value
         self.current_org.save()
 
@@ -988,7 +964,7 @@ class AvailablePlansOngoingTrial(TestCase):
     Non Sentry User is trialing
         when <=10 activated seats -> users-pr-inappm/y, DEFAULT_FREE_PLAN, users-teamm/y
         when > 10 activated seats -> users-pr-inappm/y, DEFAULT_FREE_PLAN
-    Sentry User is trialing
+    Org on a Sentry plan is trialing
         when <=10 activated seats -> users-pr-inappm/y, users-sentrym/y, DEFAULT_FREE_PLAN, users-teamm/y
         when > 10 activated seats -> users-pr-inappm/y, users-sentrym/y, DEFAULT_FREE_PLAN
     """
@@ -1048,12 +1024,9 @@ class AvailablePlansOngoingTrial(TestCase):
             plan.name for plan in self.plan_service.available_plans(owner=self.owner)
         } == expected_result
 
-    @patch("shared.plan.service.is_sentry_user")
-    def test_sentry_user(self, is_sentry_user):
+    def test_sentry_user(self):
         self.current_org.plan = PlanName.SENTRY_MONTHLY.value
         self.current_org.save()
-
-        is_sentry_user.return_value = True
 
         # [Developer, Pro Monthly, Pro Yearly, Sentry Monthly, Sentry Yearly, Team Monthly, Team Yearly]
         expected_result = {

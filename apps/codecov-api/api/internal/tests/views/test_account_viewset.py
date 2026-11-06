@@ -1618,6 +1618,7 @@ class AccountViewSetTests(APITestCase):
         self, modify_sub_mock, get_subscription_mock, get_schedule_mock
     ):
         desired_plan = {"value": PlanName.SENTRY_MONTHLY.value, "quantity": 12}
+        self.current_owner.plan = PlanName.SENTRY_MONTHLY.value
         self.current_owner.stripe_customer_id = "flsoe"
         self.current_owner.stripe_subscription_id = "djfos"
         self.current_owner.sentry_user_id = "sentry-user-id"
@@ -1643,6 +1644,7 @@ class AccountViewSetTests(APITestCase):
         org = OwnerFactory(
             service=Service.GITHUB.value,
             service_id="923836740",
+            plan=PlanName.SENTRY_MONTHLY.value,
             stripe_customer_id="flsoe",
             stripe_subscription_id="djfos",
         )
@@ -1664,6 +1666,7 @@ class AccountViewSetTests(APITestCase):
         self, modify_sub_mock, get_subscription_mock, get_schedule_mock
     ):
         desired_plan = {"value": PlanName.SENTRY_YEARLY.value, "quantity": 12}
+        self.current_owner.plan = PlanName.SENTRY_YEARLY.value
         self.current_owner.stripe_customer_id = "flsoe"
         self.current_owner.stripe_subscription_id = "djfos"
         self.current_owner.sentry_user_id = "sentry-user-id"
@@ -1689,6 +1692,7 @@ class AccountViewSetTests(APITestCase):
         org = OwnerFactory(
             service=Service.GITHUB.value,
             service_id="923836740",
+            plan=PlanName.SENTRY_YEARLY.value,
             stripe_customer_id="flsoe",
             stripe_subscription_id="djfos",
         )
@@ -1757,6 +1761,32 @@ class AccountViewSetTests(APITestCase):
                 ]
             }
         }
+
+    @patch("services.billing.StripeService.modify_subscription")
+    def test_update_sentry_plan_linked_user_not_on_sentry_plan(self, modify_sub_mock):
+        desired_plan = {"value": PlanName.SENTRY_MONTHLY.value, "quantity": 5}
+        org = OwnerFactory(
+            service=Service.GITHUB.value,
+            service_id="923836742",
+        )
+        self.current_owner.sentry_user_id = "sentry-user-id"
+        self.current_owner.organizations = [org.ownerid]
+        self.current_owner.save()
+
+        res = self._update(
+            kwargs={"service": org.service, "owner_username": org.username},
+            data={"plan": desired_plan},
+        )
+
+        assert res.status_code == 400
+        assert res.json() == {
+            "plan": {
+                "value": [
+                    f"Invalid value for plan: users-sentrym; must be one of ['users-pr-inappm', 'users-pr-inappy', 'users-teamm', 'users-teamy', '{DEFAULT_FREE_PLAN}']"
+                ]
+            }
+        }
+        modify_sub_mock.assert_not_called()
 
     @patch("services.billing.stripe.Coupon.create")
     @patch("services.billing.stripe.Subscription.retrieve")
