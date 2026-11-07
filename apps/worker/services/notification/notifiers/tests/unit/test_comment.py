@@ -2690,6 +2690,70 @@ class TestNewHeaderSectionWriter:
         )
         assert snapshot("json") == res
 
+    def test_new_header_custom_patch_target_met(self, mocker):
+        # Custom patch target at/below patch coverage -> green check even with lines
+        # still missing (regression test for codecov/feedback issue 54).
+        comparison = mocker.MagicMock()
+        comparison.head.report.apply_diff.return_value = mocker.MagicMock(
+            misses=1, partials=0, coverage="66.66667"
+        )
+        comparison.test_results_error.return_value = None
+        comparison.all_tests_passed.return_value = False
+        writer = HeaderSectionWriter(
+            mocker.MagicMock(),
+            mocker.MagicMock(),
+            show_complexity=mocker.MagicMock(),
+            settings={"hide_project_coverage": True},
+            current_yaml={
+                "coverage": {"status": {"patch": {"default": {"target": "60%"}}}}
+            },
+        )
+        mocker.patch(
+            "services.notification.notifiers.mixins.message.sections.round_number",
+            return_value=Decimal("60"),
+        )
+        res = list(
+            writer.write_section(
+                comparison,
+                None,
+                None,
+                links={"pull": "urlurl", "base": "urlurl", "head": "headurl"},
+            )
+        )
+        assert res[0] == (
+            ":white_check_mark: Patch coverage is `66.66667%`, meeting the `60%` target "
+            "(`1 line` in your changes still missing coverage)."
+        )
+
+    def test_new_header_custom_patch_target_not_met(self, mocker):
+        comparison = mocker.MagicMock()
+        comparison.head.report.apply_diff.return_value = mocker.MagicMock(
+            misses=5, partials=0, coverage="50.0"
+        )
+        comparison.test_results_error.return_value = None
+        comparison.all_tests_passed.return_value = False
+        writer = HeaderSectionWriter(
+            mocker.MagicMock(),
+            mocker.MagicMock(),
+            show_complexity=mocker.MagicMock(),
+            settings={"hide_project_coverage": True},
+            current_yaml={
+                "coverage": {"status": {"patch": {"default": {"target": "60%"}}}}
+            },
+        )
+        res = list(
+            writer.write_section(
+                comparison,
+                None,
+                None,
+                links={"pull": "urlurl", "base": "urlurl", "head": "headurl"},
+            )
+        )
+        assert res[0] == (
+            ":x: Patch coverage is `50.0%` with `5 lines` in your changes missing "
+            "coverage. Please review."
+        )
+
 
 class TestAnnouncementsSectionWriter:
     def test_announcement_section_writer(self, mocker):
