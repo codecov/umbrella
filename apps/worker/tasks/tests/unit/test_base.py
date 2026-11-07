@@ -7,6 +7,7 @@ import pytest
 from celery import chain
 from celery.contrib.testing.mocks import TaskMessage
 from celery.exceptions import MaxRetriesExceededError, Retry, SoftTimeLimitExceeded
+from django.db import OperationalError as DjangoOperationalError
 from prometheus_client import REGISTRY
 from redis.exceptions import LockError
 from redis.lock import Lock
@@ -287,6 +288,52 @@ class TestBaseCodecovTask:
         assert mock_dbsession_rollback.call_args_list == [call()]
 
         assert mock_wrap_up.call_args_list == [call(dbsession)]
+
+    def test_run_django_operational_error_retries(self, mocker, dbsession, celery_app):
+        mock_dbsession_rollback = mocker.patch.object(dbsession, "rollback")
+        mock_wrap_up = mocker.patch("tasks.base.BaseCodecovTask.wrap_up_dbsession")
+        mocker.patch("tasks.base.get_db_session", return_value=dbsession)
+        mocker.patch("tasks.base.BaseCodecovTask.request", None)
+        mock_close = mocker.patch("tasks.base.close_old_connections")
+        mock_capture = mocker.patch("tasks.base.sentry_sdk.capture_exception")
+        mock_safe_retry = mocker.patch(
+            "tasks.base.BaseCodecovTask.safe_retry", return_value=False
+        )
+
+        error = DjangoOperationalError(
+            'could not translate host name "pgbouncer-ts-ta" to address'
+        )
+        task = SampleTaskWithArbitraryError(error)
+        registered_task = celery_app.register_task(task)
+        task = celery_app.tasks[registered_task.name]
+        result = task.apply()
+
+        assert result.result is None
+        mock_safe_retry.assert_called_once()
+        mock_capture.assert_any_call(error)
+        assert mock_close.call_count >= 2
+        assert mock_dbsession_rollback.call_args_list == [call()]
+        assert mock_wrap_up.call_args_list == [call(dbsession)]
+
+    def test_run_django_operational_error_max_retries(
+        self, mocker, dbsession, celery_app
+    ):
+        mocker.patch.object(dbsession, "rollback")
+        mocker.patch("tasks.base.BaseCodecovTask.wrap_up_dbsession")
+        mocker.patch("tasks.base.get_db_session", return_value=dbsession)
+        mocker.patch("tasks.base.BaseCodecovTask.request", None)
+        mocker.patch(
+            "tasks.base.BaseCodecovTask.safe_retry",
+            side_effect=MaxRetriesExceededError(),
+        )
+
+        task = SampleTaskWithArbitraryError(DjangoOperationalError("refused"))
+        registered_task = celery_app.register_task(task)
+        task = celery_app.tasks[registered_task.name]
+        result = task.apply()
+
+        assert result.successful()
+        assert result.result is None
 
     def test_get_repo_provider_service_working(self, mocker, mock_self_app):
         mock_repo_provider = mocker.MagicMock()
