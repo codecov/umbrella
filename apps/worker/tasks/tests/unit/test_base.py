@@ -7,6 +7,7 @@ import pytest
 from celery import chain
 from celery.contrib.testing.mocks import TaskMessage
 from celery.exceptions import MaxRetriesExceededError, Retry, SoftTimeLimitExceeded
+from django.db import OperationalError as DjangoOperationalError
 from prometheus_client import REGISTRY
 from redis.exceptions import LockError
 from redis.lock import Lock
@@ -182,6 +183,29 @@ class TestBaseCodecovTask:
         mocker.patch("tasks.base.BaseCodecovTask.request", None)
         with pytest.raises(Retry):
             SampleTaskWithArbitraryPostgresError(psycopg2.OperationalError()).run()
+
+    def test_sample_run_django_operationalerror_exception(self, mocker, dbsession):
+        mocked_get_db_session = mocker.patch("tasks.base.get_db_session")
+        mocked_get_db_session.return_value = dbsession
+        # Mock request to skip queue metrics
+        mocker.patch("tasks.base.BaseCodecovTask.request", None)
+        mocked_close_all = mocker.patch("tasks.base.connections.close_all")
+        with pytest.raises(Retry):
+            SampleTaskWithArbitraryError(
+                DjangoOperationalError(
+                    'could not translate host name "pgbouncer" to address'
+                )
+            ).run()
+        mocked_close_all.assert_called_once()
+
+    def test_sample_run_django_operationalerror_max_retries(self, mocker, dbsession):
+        mocked_get_db_session = mocker.patch("tasks.base.get_db_session")
+        mocked_get_db_session.return_value = dbsession
+        mocker.patch("tasks.base.BaseCodecovTask.request", None)
+        mocker.patch("tasks.base.connections.close_all")
+        mocker.patch.object(BaseCodecovTask, "safe_retry", return_value=False)
+        with pytest.raises(DjangoOperationalError):
+            SampleTaskWithArbitraryError(DjangoOperationalError("db down")).run()
 
     def test_sample_run_softimeout(self, mocker, dbsession):
         mocked_get_db_session = mocker.patch("tasks.base.get_db_session")
