@@ -52,8 +52,24 @@ def test_shelter_repo_sync(mocker):
     repo.private = True
     repo.save()
 
-    # publish_calls = publish.call_args_list
+    publish_calls = publish.call_args_list
     assert len(publish_calls) == 6
+
+    # Triggers call when activated is changed
+    repo.activated = True
+    repo.save()
+
+    publish_calls = publish.call_args_list
+    assert len(publish_calls) == 7
+    assert publish_calls[6] == call({"type": "repo", "sync": "one", "id": 91728376})
+
+    # Triggers call when active is changed
+    repo.active = True
+    repo.save()
+
+    publish_calls = publish.call_args_list
+    assert len(publish_calls) == 8
+    assert publish_calls[7] == call({"type": "repo", "sync": "one", "id": 91728376})
 
 
 @pytest.mark.django_db
