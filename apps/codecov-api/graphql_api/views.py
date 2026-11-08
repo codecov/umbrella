@@ -27,6 +27,7 @@ from sentry_sdk import capture_exception
 
 from codecov.commands.exceptions import BaseException
 from codecov.commands.executor import get_executor_from_request
+from codecov.sentry_filters import is_graphql_client_error
 from codecov_auth.helpers import get_client_ip_address
 from codecov_auth.middleware import jwt_middleware
 from services import ServiceException
@@ -363,11 +364,30 @@ class AsyncGraphqlView(GraphQLAsyncView):
             # (e.g., unauthorized, forbidden) that shouldn't be sent to Sentry
             formatted["message"] = str(original_error.detail)
             formatted["type"] = type(original_error).__name__
+        elif is_graphql_client_error(error):
+            # malformed query (syntax / schema validation error, e.g. querying a
+            # field that does not exist): a client error, not a server failure.
+            # The message stays masked for anonymous users to avoid leaking schema.
+            formatted["type"] = "BadRequest"
+            log.warning(
+                "GraphQL validation error",
+                extra={
+                    "error_message": error.message,
+                    "query_slice": self._get_query_slice(),
+                },
+            )
         else:
             # otherwise it's not supposed to happen, so we log it
             log.error("GraphQL internal server error", exc_info=original_error)
             capture_exception(original_error)
         return formatted
+
+    def _get_query_slice(self) -> str | None:
+        try:
+            body = json.loads(self.request.body.decode("utf-8"))
+            return str(body.get("query", ""))[:1000]
+        except Exception:
+            return None
 
     @sync_to_async
     def _get_user(self, request: WSGIRequest) -> None:
