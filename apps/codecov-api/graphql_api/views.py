@@ -353,7 +353,16 @@ class AsyncGraphqlView(GraphQLAsyncView):
         formatted["type"] = "ServerError"
         # if this is one of our own command exception, we can tell a bit more
         original_error = error.original_error
-        if isinstance(original_error, BaseException) or isinstance(
+        if is_bad_query and original_error is None:
+            # Schema validation failure caused by the client's query (e.g. an
+            # unknown field). The response stays masked for anonymous users so
+            # the schema isn't exposed, but this is a client error, not an
+            # internal server error, so it is not sent to Sentry.
+            log.info(
+                "GraphQL bad query from anonymous user",
+                extra={"error_message": error.message},
+            )
+        elif isinstance(original_error, BaseException) or isinstance(
             original_error, ServiceException
         ):
             formatted["message"] = original_error.message  # type: ignore
