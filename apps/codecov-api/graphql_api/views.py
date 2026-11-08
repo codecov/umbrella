@@ -21,7 +21,7 @@ from django.http import (
     HttpResponseNotAllowed,
     JsonResponse,
 )
-from graphql import DocumentNode
+from graphql import DocumentNode, GraphQLError
 from rest_framework.exceptions import APIException
 from sentry_sdk import capture_exception
 
@@ -42,6 +42,20 @@ from .validation import (
 )
 
 log = logging.getLogger(__name__)
+
+
+def is_client_query_error(error: Any) -> bool:
+    """
+    Whether a GraphQLError was produced while parsing/validating the client's
+    query (e.g. "Cannot query field ..."), rather than while executing it.
+    Such errors have no underlying exception and no execution path.
+    """
+    return (
+        isinstance(error, GraphQLError)
+        and error.original_error is None
+        and error.path is None
+    )
+
 
 GQL_HIT_COUNTER = Counter(
     "api_gql_counts_hits",
@@ -349,6 +363,18 @@ class AsyncGraphqlView(GraphQLAsyncView):
         if debug or (not is_anonymous and is_bad_query):
             return format_error(error, debug)
         formatted = error.formatted
+        if is_client_query_error(error):
+            # Parse/validation errors are caused by the query the client sent
+            # (e.g. querying a field that doesn't exist), not by a server
+            # failure. Keep the details hidden from anonymous users, but
+            # don't report them as internal server errors.
+            log.info(
+                "GraphQL query failed validation",
+                extra={"error_message": error.message},
+            )
+            formatted["message"] = "Invalid GraphQL query"
+            formatted["type"] = "ValidationError"
+            return formatted
         formatted["message"] = "INTERNAL SERVER ERROR"
         formatted["type"] = "ServerError"
         # if this is one of our own command exception, we can tell a bit more
