@@ -353,7 +353,16 @@ class AsyncGraphqlView(GraphQLAsyncView):
         formatted["type"] = "ServerError"
         # if this is one of our own command exception, we can tell a bit more
         original_error = error.original_error
-        if isinstance(original_error, BaseException) or isinstance(
+        if original_error is None and is_bad_query:
+            # The client sent a query that doesn't match our schema. This is
+            # rejected during validation before any resolver runs, so it's a
+            # client error, not a server fault. We keep the masked response for
+            # anonymous users (to avoid leaking the schema) but only warn.
+            log.warning(
+                "GraphQL query failed schema validation",
+                extra={"error_message": error.message},
+            )
+        elif isinstance(original_error, BaseException) or isinstance(
             original_error, ServiceException
         ):
             formatted["message"] = original_error.message  # type: ignore
