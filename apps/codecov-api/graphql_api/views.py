@@ -21,7 +21,7 @@ from django.http import (
     HttpResponseNotAllowed,
     JsonResponse,
 )
-from graphql import DocumentNode
+from graphql import DocumentNode, GraphQLError
 from rest_framework.exceptions import APIException
 from sentry_sdk import capture_exception
 
@@ -197,6 +197,15 @@ class RequestFinalizer:
         self._remove_temp_files()
 
 
+def _is_client_query_error(error: Any) -> bool:
+    """
+    A GraphQLError without an ``original_error`` was raised by GraphQL itself while
+    parsing or validating the query (unknown field, syntax error, ...), i.e. it was
+    caused by the client's query and not by our resolvers.
+    """
+    return isinstance(error, GraphQLError) and error.original_error is None
+
+
 class AsyncGraphqlView(GraphQLAsyncView):
     schema = schema
     extensions = [QueryMetricsExtension]
@@ -333,6 +342,9 @@ class AsyncGraphqlView(GraphQLAsyncView):
     def context_value(self, request: WSGIRequest, *_args: Any) -> dict[str, Any]:
         request_body = json.loads(request.body.decode("utf-8")) if request.body else {}
         self.request = request
+        request._gql_clean_query = (  # type: ignore[attr-defined]
+            self.get_clean_query(request_body) if request_body else ""
+        )
 
         return {
             "request": request,
@@ -349,6 +361,27 @@ class AsyncGraphqlView(GraphQLAsyncView):
         if debug or (not is_anonymous and is_bad_query):
             return format_error(error, debug)
         formatted = error.formatted
+        if _is_client_query_error(error):
+            # The client sent a query that failed parsing/validation against our
+            # schema (e.g. an unknown field). This is a client mistake, not a
+            # server error. Anonymous users get a generic message so we don't
+            # leak schema details (introspection is disabled).
+            log.warning(
+                "GraphQL query validation error",
+                extra={
+                    "error_message": error.message,
+                    "query": getattr(self.request, "_gql_clean_query", None),
+                    "user": getattr(user, "pk", None),
+                    "is_anonymous": is_anonymous,
+                },
+            )
+            inc_counter(
+                GQL_ERROR_TYPE_COUNTER,
+                labels={"error_type": "validation", "path": self.request.path},
+            )
+            formatted["message"] = "Invalid query" if is_anonymous else error.message
+            formatted["type"] = "ValidationError"
+            return formatted
         formatted["message"] = "INTERNAL SERVER ERROR"
         formatted["type"] = "ServerError"
         # if this is one of our own command exception, we can tell a bit more
