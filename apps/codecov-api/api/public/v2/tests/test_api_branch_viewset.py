@@ -87,3 +87,32 @@ class BranchViewsetTests(InternalAPITest):
         assert res.status_code == 200
         assert res.data["name"] == branch.name
         assert res.data["head_commit"]["report"]
+
+    def _list_url(self):
+        return reverse(
+            "api-v2-branches-list",
+            kwargs={
+                "service": self.org.service,
+                "owner_username": self.org.username,
+                "repo_name": self.repo.name,
+            },
+        )
+
+    def test_list_filter_author_ownerid(self):
+        author = OwnerFactory(service=self.org.service)
+        BranchFactory(repository=self.repo, name="authored", authors=[author.ownerid])
+        res = self.client.get(self._list_url(), {"author": str(author.ownerid)})
+        assert res.status_code == 200
+        assert [b["name"] for b in res.json()["results"]] == ["authored"]
+
+    def test_list_filter_author_username(self):
+        author = OwnerFactory(service=self.org.service, username="psf-author")
+        BranchFactory(repository=self.repo, name="authored", authors=[author.ownerid])
+        res = self.client.get(self._list_url(), {"author": "psf-author"})
+        assert res.status_code == 200
+        assert [b["name"] for b in res.json()["results"]] == ["authored"]
+
+    def test_list_filter_author_unknown_username(self):
+        res = self.client.get(self._list_url(), {"author": "does-not-exist"})
+        assert res.status_code == 200
+        assert res.json()["results"] == []
