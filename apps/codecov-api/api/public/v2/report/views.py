@@ -25,6 +25,16 @@ from shared.reports.resources import Report
 from shared.utils.match import match
 
 
+def _parse_int_query_param(request, name: str, default: int) -> int:
+    raw = request.query_params.get(name)
+    if raw is None:
+        return default
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        raise ValidationError({name: f"must be an integer, got {raw!r}"})
+
+
 class ReportMixin:
     def _commit_file_url(self, commit: Commit, path: str):
         service, owner, repo = (
@@ -219,7 +229,7 @@ class ReportViewSet(BaseReportViewSet):
         parameters=[
             OpenApiParameter(
                 "depth",
-                OpenApiTypes.STR,
+                OpenApiTypes.INT,
                 OpenApiParameter.QUERY,
                 description="depth of the traversal (default=1)",
             ),
@@ -255,7 +265,7 @@ class ReportViewSet(BaseReportViewSet):
             paths.single_directory(),
             many=True,
             context={
-                "max_depth": int(request.query_params.get("depth", 1)),
+                "max_depth": _parse_int_query_param(request, "depth", default=1),
             },
         )
         return Response(serializer.data)
@@ -303,7 +313,7 @@ class FileReportViewSet(
     def get_object(self):
         self.path = self.kwargs.get("path")
 
-        walk_back = int(self.request.query_params.get("walk_back", 0))
+        walk_back = _parse_int_query_param(self.request, "walk_back", default=0)
         if walk_back > 20:
             raise ValidationError("walk_back must be <= 20")
 
