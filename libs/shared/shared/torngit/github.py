@@ -1897,8 +1897,10 @@ class Github(TorngitBaseAdapter):
         for f in res["files"]:
             diff = self.diff_to_json(
                 "diff --git a/{} b/{}{}\n{}\n{}\n{}".format(
-                    f.get("previous_filename") or f.get("filename"),
-                    f.get("filename"),
+                    (f.get("previous_filename") or f.get("filename", "")).replace(
+                        "\n", ""
+                    ),
+                    f.get("filename", "").replace("\n", ""),
                     (
                         "\ndeleted file mode 100644"
                         if f["status"] == "removed"
