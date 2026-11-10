@@ -76,7 +76,7 @@ jobs:
       - name: Push Requirements
         if: ${{ steps.cache-requirements.outputs.cache-hit != 'true' && !github.event.pull_request.head.repo.fork && github.repository_owner == 'codecov' }}
         run: |
-          make push.requirements
+          make push.requirements TAG_LATEST=${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && '1' || '0' }}
 
       ######
       # Building/pushing the test requirements image if not cached
