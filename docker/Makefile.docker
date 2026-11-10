@@ -205,6 +205,10 @@ _push.test-app:
 
 push.requirements:
 	docker push ${AR_REQS_REPO}:${REQUIREMENTS_TAG}
+ifeq ($(TAG_LATEST),1)
+	docker tag ${AR_REQS_REPO}:${REQUIREMENTS_TAG} ${AR_REQS_REPO}:latest
+	docker push ${AR_REQS_REPO}:latest
+endif
 
 push.test-requirements:
 	docker push ${AR_REQS_REPO}:${TEST_REQS_TAG}
