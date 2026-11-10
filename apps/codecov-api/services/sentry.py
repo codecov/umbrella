@@ -1,4 +1,3 @@
-import json
 import logging
 
 import jwt
@@ -6,7 +5,6 @@ from django.conf import settings
 from django.db.utils import IntegrityError
 
 from codecov_auth.models import Owner
-from services.task import TaskService
 
 log = logging.getLogger(__name__)
 
@@ -100,39 +98,3 @@ def is_sentry_user(owner: Owner) -> bool:
     Returns true if the given owner has been linked with a Sentry user.
     """
     return owner.sentry_user_id is not None
-
-
-def send_user_webhook(user: Owner, org: Owner):
-    """
-    Sends data back to Sentry about the Sentry <-> Codecov user link.
-    """
-    assert is_sentry_user(user)
-
-    webhook_url = settings.SENTRY_USER_WEBHOOK_URL
-    if webhook_url is None:
-        log.warning("No Sentry webhook URL is configured")
-        return
-
-    state = {
-        "user_id": user.sentry_user_id,
-        "org_id": (user.sentry_user_data or {}).get("org_id"),
-        "codecov_owner_id": user.pk,
-        "codecov_organization_id": org.pk,
-        "service": org.service,
-        "service_id": org.service_id,
-    }
-
-    secret = settings.SENTRY_JWT_SHARED_SECRET
-    encoded_state = jwt.encode(state, secret, algorithm="HS256")
-
-    payload = json.dumps({"state": encoded_state})
-
-    TaskService().http_request(
-        url=webhook_url,
-        method="POST",
-        headers={
-            "Content-Type": "application/json",
-            "User-Agent": "Codecov",
-        },
-        data=payload,
-    )

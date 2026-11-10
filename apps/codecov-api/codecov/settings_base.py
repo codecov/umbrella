@@ -418,9 +418,6 @@ HIDE_ALL_CODECOV_TOKENS = get_config("setup", "hide_all_codecov_tokens", default
 SENTRY_JWT_SHARED_SECRET = get_config(
     "sentry", "jwt_shared_secret", default=None
 ) or get_config("setup", "sentry", "jwt_shared_secret", default=None)
-SENTRY_USER_WEBHOOK_URL = get_config(
-    "sentry", "webhook_url", default=None
-) or get_config("setup", "sentry", "webhook_url", default=None)
 SENTRY_OIDC_SHARED_SECRET = get_config("sentry", "oidc_shared_secret") or get_config(
     "setup", "sentry", "oidc_shared_secret"
 )
