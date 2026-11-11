@@ -575,9 +575,12 @@ class TestDecorationServiceTestCase:
             (True, "email", "29139614+renovate[bot]@users.noreply.github.com"),
             (True, "email", "157164994+sentry-autofix[bot]@users.noreply.github.com"),
             (True, "email", "198982749+Copilot@users.noreply.github.com"),
+            (True, "email", "claude[bot]@users.noreply.github.com"),
+            (True, "email", "209825114+claude[bot]@users.noreply.github.com"),
             (True, "service_id", "29139614"),
             (True, "service_id", "157164994"),
             (True, "service_id", "198982749"),
+            (True, "service_id", "209825114"),
             (False, None, None),
         ],
     )
