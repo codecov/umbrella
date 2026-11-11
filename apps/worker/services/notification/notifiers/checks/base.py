@@ -427,11 +427,7 @@ class ChecksNotifier(StatusNotifier):
                 org_name=self.repository.author.name,
             )
 
-        # We need to first create the check run, get that id and update the status
-        check_id = async_to_sync(repository_service.create_check_run)(
-            check_name=title, head_sha=head.commitid
-        )
-
+        outputs = [output]
         if len(output.get("annotations", [])) > self.ANNOTATIONS_PER_REQUEST:
             annotation_pages = list(
                 self.paginate_annotations(output.get("annotations"))
@@ -443,21 +439,27 @@ class ChecksNotifier(StatusNotifier):
                     "number_annotations": len(output.get("annotations")),
                 },
             )
-            for annotation_page in annotation_pages:
-                async_to_sync(repository_service.update_check_run)(
-                    check_id,
-                    state,
-                    output={
-                        "title": output.get("title"),
-                        "summary": output.get("summary"),
-                        "annotations": annotation_page,
-                    },
-                    url=payload.get("url"),
-                )
+            outputs = [
+                {
+                    "title": output.get("title"),
+                    "summary": output.get("summary"),
+                    "annotations": annotation_page,
+                }
+                for annotation_page in annotation_pages
+            ]
 
-        else:
+        # Create the check run already completed, so a failed update can't leave it in progress
+        check_id = async_to_sync(repository_service.create_check_run)(
+            check_name=title,
+            head_sha=head.commitid,
+            status="completed",
+            conclusion=state,
+            output=outputs[0],
+            url=payload.get("url"),
+        )
+        for page_output in outputs[1:]:
             async_to_sync(repository_service.update_check_run)(
-                check_id, state, output=output, url=payload.get("url")
+                check_id, state, output=page_output, url=payload.get("url")
             )
 
         return NotificationResult(

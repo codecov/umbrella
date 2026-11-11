@@ -2226,19 +2226,27 @@ class Github(TorngitBaseAdapter):
     # Checks Docs: https://developer.github.com/v3/checks/
 
     async def create_check_run(
-        self, check_name, head_sha, status="in_progress", token=None
+        self,
+        check_name,
+        head_sha,
+        status="in_progress",
+        conclusion=None,
+        output=None,
+        url=None,
+        token=None,
     ):
+        body = {"name": check_name, "head_sha": head_sha, "status": status}
+        if conclusion:
+            body["conclusion"] = conclusion
+        if output:
+            body["output"] = output
+        if url:
+            body["details_url"] = url
         async with self.get_client() as client:
-            url = self.count_and_get_url_template(
+            api_url = self.count_and_get_url_template(
                 url_name="create_check_run"
             ).substitute(slug=self.slug)
-            res = await self.api(
-                client,
-                "post",
-                url,
-                body={"name": check_name, "head_sha": head_sha, "status": status},
-                token=token,
-            )
+            res = await self.api(client, "post", api_url, body=body, token=token)
             return res["id"]
 
     async def get_check_runs(
