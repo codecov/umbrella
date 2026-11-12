@@ -1,3 +1,4 @@
+import asyncio
 import base64
 import hashlib
 import logging
@@ -49,6 +50,11 @@ from shared.typings.torngit import GithubInstallationInfo
 from shared.utils.urls import url_concat
 
 log = logging.getLogger(__name__)
+
+# A check-run update sent immediately after create can 404 until GitHub makes
+# the check visible. A successful update takes ~0.7s (p95 ~1s) while the 404
+# returns in ~0.4s, so each retry waits one normal call.
+CHECK_RUN_UPDATE_404_RETRY_DELAYS = (1, 1)
 
 METRICS_PREFIX = "services.torngit.github"
 
@@ -2347,12 +2353,29 @@ class Github(TorngitBaseAdapter):
         body = {"conclusion": conclusion, "status": status, "output": output}
         if url:
             body["details_url"] = url
+        attempts = len(CHECK_RUN_UPDATE_404_RETRY_DELAYS) + 1
         async with self.get_client() as client:
             api_url = self.count_and_get_url_template(
                 url_name="update_check_run"
             ).substitute(slug=self.slug, check_run_id=check_run_id)
-            res = await self.api(client, "patch", api_url, body=body, token=token)
-            return res
+            for attempt in range(attempts):
+                try:
+                    return await self.api(
+                        client, "patch", api_url, body=body, token=token
+                    )
+                except TorngitClientGeneralError as exc:
+                    if exc.code != 404 or attempt == attempts - 1:
+                        raise
+                    delay = CHECK_RUN_UPDATE_404_RETRY_DELAYS[attempt]
+                    log.info(
+                        "Check run not yet visible, retrying update",
+                        extra={
+                            "check_run_id": check_run_id,
+                            "attempt": attempt + 1,
+                            "delay": delay,
+                        },
+                    )
+                    await asyncio.sleep(delay)
 
     # Get information for a GitHub Actions build/workflow run
     # -------------
