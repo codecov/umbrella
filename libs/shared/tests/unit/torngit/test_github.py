@@ -1,7 +1,7 @@
 import asyncio
 import datetime
 import pickle
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 from urllib.parse import parse_qs, parse_qsl, urlparse
 
 import httpx
@@ -21,7 +21,7 @@ from shared.torngit.exceptions import (
     TorngitServerUnreachableError,
     TorngitUnauthorizedError,
 )
-from shared.torngit.github import Github
+from shared.torngit.github import CHECK_RUN_UPDATE_404_RETRY_DELAYS, Github
 from shared.torngit.github import log as gh_log
 from shared.typings.torngit import GithubInstallationInfo
 
@@ -1127,6 +1127,45 @@ class TestUnitGithub:
             labels={"endpoint": "update_check_run"},
         )
         assert after - before == 1
+
+    @pytest.mark.asyncio
+    async def test_update_check_run_retries_when_check_not_visible(
+        self, valid_handler, mocker
+    ):
+        sleep = mocker.patch(
+            "shared.torngit.github.asyncio.sleep", new_callable=AsyncMock
+        )
+        check_url = "https://api.github.com/repos/ThiagoCodecov/example-python/check-runs/1256232357"
+        with respx.mock:
+            mocked_response = respx.patch(url=check_url).mock(
+                side_effect=[
+                    httpx.Response(status_code=404, json={"message": "Not Found"}),
+                    httpx.Response(status_code=200, json={}),
+                ]
+            )
+            await valid_handler.update_check_run(1256232357, "success")
+        assert mocked_response.call_count == 2
+        sleep.assert_awaited_once_with(CHECK_RUN_UPDATE_404_RETRY_DELAYS[0])
+
+    @pytest.mark.asyncio
+    async def test_update_check_run_404_gives_up_after_retries(
+        self, valid_handler, mocker
+    ):
+        sleep = mocker.patch(
+            "shared.torngit.github.asyncio.sleep", new_callable=AsyncMock
+        )
+        check_url = "https://api.github.com/repos/ThiagoCodecov/example-python/check-runs/1256232357"
+        with respx.mock:
+            mocked_response = respx.patch(url=check_url).mock(
+                return_value=httpx.Response(
+                    status_code=404, json={"message": "Not Found"}
+                )
+            )
+            with pytest.raises(TorngitClientGeneralError) as exc:
+                await valid_handler.update_check_run(1256232357, "success")
+        assert exc.value.code == 404
+        assert mocked_response.call_count == len(CHECK_RUN_UPDATE_404_RETRY_DELAYS) + 1
+        assert sleep.await_count == len(CHECK_RUN_UPDATE_404_RETRY_DELAYS)
 
     @pytest.mark.asyncio
     async def test_update_check_run_url_fallback(self, mocker):
