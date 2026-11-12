@@ -30,6 +30,11 @@ from services.processing.intermediate import (
 )
 from services.processing.merging import merge_reports, update_uploads
 from services.processing.state import ProcessingState
+from services.processing.timeseries_save_gate import (
+    TIMESERIES_SAVE_COUNTDOWN_SECONDS,
+    release_timeseries_save_gate,
+    try_acquire_timeseries_save_gate,
+)
 from services.processing.types import ProcessingResult
 from services.report import ReportService
 from services.repository import get_repo_provider_service
@@ -537,6 +542,33 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                 max_retries=UPLOAD_FINISHER_MAX_RETRIES, countdown=retry.countdown
             )
 
+    def _enqueue_timeseries_save(
+        self, repoid: int, commitid: str, dataset_names: list[str]
+    ) -> None:
+        """Enqueue the timeseries save task unless one is already pending.
+
+        See `services.processing.timeseries_save_gate` for why this is deduped.
+        """
+        if not try_acquire_timeseries_save_gate(repoid, commitid):
+            log.info(
+                "Skipping timeseries save enqueue, already queued",
+                extra={"repoid": repoid, "commitid": commitid},
+            )
+            return
+
+        try:
+            self.app.tasks[timeseries_save_commit_measurements_task_name].apply_async(
+                kwargs={
+                    "commitid": commitid,
+                    "repoid": repoid,
+                    "dataset_names": dataset_names,
+                },
+                countdown=TIMESERIES_SAVE_COUNTDOWN_SECONDS,
+            )
+        except Exception:
+            release_timeseries_save_gate(repoid, commitid)
+            raise
+
     def _handle_finisher_lock(
         self,
         db_session,
@@ -577,15 +609,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                         for dataset in repository_datasets_query(repository)
                     ]
                     if dataset_names:
-                        self.app.tasks[
-                            timeseries_save_commit_measurements_task_name
-                        ].apply_async(
-                            kwargs={
-                                "commitid": commitid,
-                                "repoid": repoid,
-                                "dataset_names": dataset_names,
-                            }
-                        )
+                        self._enqueue_timeseries_save(repoid, commitid, dataset_names)
 
                 # Mark the repository as updated so it will appear earlier in the list
                 # of recently-active repositories

@@ -747,10 +747,93 @@ class TestUploadFinisherTask:
             mock_self_app.tasks[notify_task_name].apply_async.assert_not_called()
         mock_self_app.tasks[upload_breadcrumb_task_name].apply_async.assert_not_called()
 
+    def _run_finisher_with_coverage_dataset(self, mocker, dbsession):
+        mocker.patch(
+            "tasks.upload_finisher.perform_report_merging",
+            return_value=Report(),
+        )
+        mocker.patch("tasks.upload_finisher.is_timeseries_enabled", return_value=True)
+
+        commit = CommitFactory.create()
+        dbsession.add(commit)
+        dbsession.flush()
+
+        mocker.patch(
+            "tasks.upload_finisher.repository_datasets_query",
+            return_value=[
+                DatasetFactory.create(
+                    repository_id=commit.repository.repoid,
+                    name=MeasurementName.coverage.value,
+                ),
+            ],
+        )
+
+        UploadFinisherTask().run_impl(
+            dbsession,
+            [{"upload_id": 0, "arguments": {}, "successful": True}],
+            repoid=commit.repoid,
+            commitid=commit.commitid,
+            commit_yaml={},
+        )
+        return commit
+
+    @pytest.mark.django_db
+    def test_upload_finisher_dedupes_save_commit_measurements_enqueue(
+        self,
+        mocker,
+        dbsession,
+        mock_storage,
+        mock_repo_provider,
+        mock_self_app,
+    ):
+        # An earlier finisher already queued the save task: no new enqueue
+        mocker.patch(
+            "tasks.upload_finisher.try_acquire_timeseries_save_gate",
+            return_value=False,
+        )
+
+        self._run_finisher_with_coverage_dataset(mocker, dbsession)
+
+        mock_self_app.tasks[
+            timeseries_save_commit_measurements_task_name
+        ].apply_async.assert_not_called()
+
+    @pytest.mark.django_db
+    def test_upload_finisher_releases_gate_when_save_enqueue_fails(
+        self,
+        mocker,
+        dbsession,
+        mock_storage,
+        mock_repo_provider,
+        mock_self_app,
+    ):
+        mocker.patch(
+            "tasks.upload_finisher.try_acquire_timeseries_save_gate",
+            return_value=True,
+        )
+        release = mocker.patch("tasks.upload_finisher.release_timeseries_save_gate")
+        mock_self_app.tasks[
+            timeseries_save_commit_measurements_task_name
+        ].apply_async.side_effect = Exception("broker down")
+
+        with pytest.raises(Exception, match="broker down"):
+            self._run_finisher_with_coverage_dataset(mocker, dbsession)
+
+        release.assert_called_once()
+
     @pytest.mark.django_db
     def test_upload_finisher_task_calls_save_commit_measurements_task(
-        self, mocker, dbsession, mock_storage, mock_repo_provider, mock_self_app
+        self,
+        mocker,
+        dbsession,
+        mock_storage,
+        mock_repo_provider,
+        mock_self_app,
     ):
+        mocker.patch(
+            "tasks.upload_finisher.try_acquire_timeseries_save_gate",
+            return_value=True,
+        )
         mocker.patch(
             "tasks.upload_finisher.perform_report_merging",
             return_value=Report(),
@@ -800,7 +883,8 @@ class TestUploadFinisherTask:
                     MeasurementName.flag_coverage.value,
                     MeasurementName.component_coverage.value,
                 ],
-            }
+            },
+            countdown=60,
         )
         mock_self_app.tasks[upload_breadcrumb_task_name].apply_async.assert_has_calls(
             [
