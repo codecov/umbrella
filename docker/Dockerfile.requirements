@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1.4
-ARG UV_IMAGE=ghcr.io/astral-sh/uv:0.9.30-bookworm-slim@sha256:22334efe746f1b69217d455049b484d7b8cacfb2d5f42555580b62415a98e0a3
+ARG UV_IMAGE=ghcr.io/astral-sh/uv:0.13.7-debian-slim@sha256:f6da342fe598dc462a7e6f61e7b3bf7fc84e381467efbdf29ccc1d32f2fc68a4
 ARG PYTHON_IMAGE=python:3.13.17-slim-bookworm@sha256:e32be0e55814a08977501ca863271d9bd02443710db8f2afaf8372e2c4508530
 
 FROM $UV_IMAGE AS uv
@@ -88,3 +88,10 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     --mount=type=bind,source=libs/shared,target=libs/shared \
     uv pip install --no-deps --no-index --find-links=/wheels /wheels/* --system \
     && uv pip install --system 'pip>=26.2.2'
+
+# grpcio < 1.80.1 and stripe < 17 bundle CA files that trust the compromised
+# eMudhra roots (INC-2000); point them at the patched certifi bundle instead.
+RUN python -c "import certifi, grpc, shutil, stripe, pathlib; \
+    [shutil.copyfile(certifi.where(), f) for f in ( \
+    pathlib.Path(grpc.__file__).parent / '_cython/_credentials/roots.pem', \
+    pathlib.Path(stripe.__file__).parent / 'data/ca-certificates.crt')]"
