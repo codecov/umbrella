@@ -170,3 +170,31 @@ class TestCloverProcessor:
         clover.from_xml(
             etree.fromstring(xml % recent_ms_timestamp), report_builder_session
         )
+
+    def test_empty_branch_counts(self):
+        report_builder_session = create_report_builder_session()
+        clover.from_xml(
+            etree.fromstring(
+                f"""<?xml version="1.0" encoding="UTF-8"?>
+<coverage generated="{int(time())}">
+  <project>
+    <file name="App.tsx">
+      <line num="1" type="cond" truecount="0" falsecount=""/>
+      <line num="2" type="cond" truecount="1" falsecount=""/>
+      <line num="3" type="cond" truecount="1"/>
+    </file>
+  </project>
+</coverage>"""
+            ),
+            report_builder_session,
+        )
+        report = report_builder_session.output_report()
+        processed_report = convert_report_to_better_readable(report)
+
+        assert processed_report["archive"] == {
+            "App.tsx": [
+                (1, "0/2", "b", [[0, "0/2"]], None, None),
+                (2, "1/2", "b", [[0, "1/2"]], None, None),
+                (3, "1/2", "b", [[0, "1/2"]], None, None),
+            ]
+        }
