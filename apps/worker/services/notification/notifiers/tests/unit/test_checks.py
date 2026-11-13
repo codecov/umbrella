@@ -356,12 +356,6 @@ class TestChecksWithFallback:
         assert res.notification_successful == False
         assert res.explanation == "server_side_error_provider"
 
-        mock_repo_provider.create_check_run.return_value = 1234
-        mock_repo_provider.update_check_run = Mock(side_effect=TorngitError())
-        res = fallback_notifier.notify(sample_comparison)
-        assert res.notification_successful == False
-        assert res.explanation == "server_side_error_provider"
-
     def test_checks_no_pull(self, sample_comparison_without_pull, mocker):
         comparison = sample_comparison_without_pull
         checks_notifier = PatchChecksNotifier(
@@ -965,6 +959,15 @@ class TestPatchChecksNotifier:
         result = notifier.send_notification(sample_comparison, payload)
         assert result.notification_successful == True
         assert result.explanation is None
+        mock_repo_provider.create_check_run.assert_called_once_with(
+            check_name="codecov/patch/title",
+            head_sha=comparison.head.commit.commitid,
+            status="completed",
+            conclusion="success",
+            output=payload["output"],
+            url=payload["url"],
+        )
+        mock_repo_provider.update_check_run.assert_not_called()
         assert snapshot("json") == result.data_sent
 
     def test_send_notification_annotations_paginations(
@@ -989,30 +992,31 @@ class TestPatchChecksNotifier:
             current_yaml=UserYaml({}),
             repository_service=mock_repo_provider,
         )
-        expected_calls = [
-            {
-                "output": {
-                    "title": "Codecov Report",
-                    "summary": "Summary",
-                    "annotations": list(range(1, 51, 1)),
-                },
-                "url": None,
-            },
-            {
-                "output": {
-                    "title": "Codecov Report",
-                    "summary": "Summary",
-                    "annotations": list(range(51, 61, 1)),
-                },
-                "url": None,
-            },
-        ]
         result = notifier.send_notification(sample_comparison, payload)
         assert result.notification_successful == True
         assert result.explanation is None
-        calls = [call[1] for call in mock_repo_provider.update_check_run.call_args_list]
-        assert expected_calls == calls
-        assert mock_repo_provider.update_check_run.call_count == 2
+        mock_repo_provider.create_check_run.assert_called_once_with(
+            check_name="codecov/patch/title",
+            head_sha=comparison.head.commit.commitid,
+            status="completed",
+            conclusion="success",
+            output={
+                "title": "Codecov Report",
+                "summary": "Summary",
+                "annotations": list(range(1, 51, 1)),
+            },
+            url=None,
+        )
+        mock_repo_provider.update_check_run.assert_called_once_with(
+            2234563,
+            "success",
+            output={
+                "title": "Codecov Report",
+                "summary": "Summary",
+                "annotations": list(range(51, 61, 1)),
+            },
+            url=None,
+        )
         assert snapshot("json") == result.data_sent
 
     def test_notify(
