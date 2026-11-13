@@ -230,6 +230,9 @@ async def update_commit_from_provider_info(
             author_info["email"],
             author_info["name"],
         )
+        # Commit owner changes now so row locks on `owners` are released
+        # before the slower provider calls below, reducing deadlock risk.
+        db_session.commit()
 
     commit.parent_commit_id = await fetch_appropriate_parent_for_commit(
         repository_service, commit, git_commit
