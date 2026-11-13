@@ -48,6 +48,12 @@ class GithubWebhookHandler(APIView):
     http_method_names = ["post"]
     redis = get_redis_connection()
 
+    # GitHub only delivers webhooks via POST. Restricting to POST prevents DRF
+    # from dispatching HTTP verbs (e.g. DELETE) directly to same-named event
+    # handlers (e.g. `delete`), which would bypass `post()` -- skipping
+    # signature validation and leaving `self.event` unset.
+    http_method_names = ["post"]
+
     service_name = "github"
 
     @property
