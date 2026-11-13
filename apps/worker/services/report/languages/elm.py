@@ -35,7 +35,7 @@ def from_json(json: dict, report_builder_session: ReportBuilderSession) -> None:
                 ),
             )
             if el > sl:
-                for ln in range(sl, el):
+                for ln in range(sl + 1, el):
                     _file.append(
                         ln,
                         report_builder_session.create_coverage_line(
@@ -43,7 +43,7 @@ def from_json(json: dict, report_builder_session: ReportBuilderSession) -> None:
                         ),
                     )
                 _file.append(
-                    sl,
+                    el,
                     report_builder_session.create_coverage_line(
                         cov, complexity=complexity, partials=[[None, ec, cov]]
                     ),
