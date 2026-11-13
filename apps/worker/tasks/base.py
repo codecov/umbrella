@@ -8,6 +8,7 @@ from celery._state import get_current_task
 from celery.exceptions import MaxRetriesExceededError, SoftTimeLimitExceeded
 from celery.worker.request import Request
 from django.db import InterfaceError, close_old_connections
+from django.db import OperationalError as DjangoOperationalError
 from sqlalchemy.exc import (
     DataError,
     IntegrityError,
@@ -466,6 +467,28 @@ class BaseCodecovTask(celery_app.Task):
                 sentry_sdk.capture_exception(
                     ex,
                 )
+            except DjangoOperationalError as ex:
+                # Transient connection failures to a Django-managed database
+                # (e.g. pgbouncer restarting or temporarily unresolvable).
+                # Report it, drop the broken connections and retry later.
+                log.exception(
+                    "Django database operational error, retrying task",
+                    extra={"task_args": args, "task_kwargs": kwargs},
+                )
+                sentry_sdk.capture_exception(ex)
+                close_old_connections()
+                db_session.rollback()
+                retry_count = getattr(self.request, "retries", 0)
+                countdown = TASK_RETRY_BACKOFF_BASE_SECONDS * (2**retry_count)
+                try:
+                    if not self.safe_retry(countdown=countdown):
+                        return None
+                except MaxRetriesExceededError:
+                    if UploadFlow.has_begun():
+                        UploadFlow.log(UploadFlow.UNCAUGHT_RETRY_EXCEPTION)
+                    if TestResultsFlow.has_begun():
+                        TestResultsFlow.log(TestResultsFlow.UNCAUGHT_RETRY_EXCEPTION)
+                    return None
             except (DataError, IntegrityError):
                 log.exception(
                     "Errors related to the constraints of database happened",
