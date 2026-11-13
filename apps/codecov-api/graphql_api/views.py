@@ -353,7 +353,18 @@ class AsyncGraphqlView(GraphQLAsyncView):
         formatted["type"] = "ServerError"
         # if this is one of our own command exception, we can tell a bit more
         original_error = error.original_error
-        if isinstance(original_error, BaseException) or isinstance(
+        if original_error is None and is_bad_query:
+            # Schema validation failure caused by a malformed client query
+            # (e.g. a field that does not exist). No resolver ran, so this is
+            # a client error rather than a server error.
+            log.warning(
+                "GraphQL query referenced an unknown field",
+                extra={
+                    "error_message": error.formatted["message"],
+                    "is_anonymous": is_anonymous,
+                },
+            )
+        elif isinstance(original_error, BaseException) or isinstance(
             original_error, ServiceException
         ):
             formatted["message"] = original_error.message  # type: ignore
