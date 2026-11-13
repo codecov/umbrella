@@ -1,5 +1,6 @@
 input RegenerateRepositoryTokenInput {
-  owner: String!
+  owner: String
+  ownerUsername: String
   repoName: String!
   tokenType: RepositoryTokenType!
 }
