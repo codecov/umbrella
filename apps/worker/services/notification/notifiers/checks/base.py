@@ -16,7 +16,7 @@ from services.urls import (
     get_pull_url,
 )
 from services.yaml.reader import get_paths_from_flags
-from shared.torngit.exceptions import TorngitClientError, TorngitError
+from shared.torngit.exceptions import TorngitClientError, TorngitError, TorngitRateLimitError
 
 log = logging.getLogger(__name__)
 
@@ -167,7 +167,18 @@ class ChecksNotifier(StatusNotifier):
             )
         # Check for existing statuses for this commit. If so, retain
         # statuses and don't do a check as well
-        statuses = comparison.get_existing_statuses()
+        try:
+            statuses = comparison.get_existing_statuses()
+        except TorngitRateLimitError:
+            log.warning(
+                "GitHub rate limit hit while fetching existing statuses; proceeding without pre-existing status check",
+                extra={
+                    "notifier": self.name,
+                    "repoid": comparison.head.commit.repoid,
+                    "commit": comparison.head.commit,
+                },
+            )
+            statuses = None
         status_title = self.get_status_external_name()
         if statuses and statuses.get(status_title):
             log.debug(
