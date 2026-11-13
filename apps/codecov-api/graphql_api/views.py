@@ -74,6 +74,35 @@ GQL_ERROR_TYPE_COUNTER = Counter(
     ["error_type", "path"],
 )
 
+GQL_VALIDATION_ERROR_COUNTER = Counter(
+    "api_gql_counts_validation_errors",
+    "Number of GQL requests rejected by schema validation (malformed client queries)",
+    ["path"],
+)
+
+# GraphQL schema validation messages produced by graphql-core for malformed
+# client queries. These are client errors, not server faults.
+GQL_VALIDATION_ERROR_PREFIXES = (
+    "Cannot query field",
+    "Unknown type",
+    "Unknown argument",
+    "Unknown fragment",
+    "Unknown directive",
+)
+
+
+def is_graphql_validation_error(error: Any) -> bool:
+    """
+    A GraphQL validation error is raised by graphql-core while validating the
+    query document against the schema, before any resolver runs. It has no
+    underlying `original_error` and its message matches a known validation rule.
+    """
+    if getattr(error, "original_error", None) is not None:
+        return False
+    message = getattr(error, "message", None) or ""
+    return message.startswith(GQL_VALIDATION_ERROR_PREFIXES)
+
+
 # covers named and 3 unnamed operations (see graphql_api/types/query/query.py)
 GQL_TYPE_AND_NAME_PATTERN = r"^(query|mutation|subscription)(?:\(\$input:|) (\w+)(?:\(| \(|{| {|!)|^(?:{) (me|owner|config)(?:\(| |{)"
 
@@ -348,6 +377,21 @@ class AsyncGraphqlView(GraphQLAsyncView):
         is_bad_query = "Cannot query field" in error.formatted["message"]
         if debug or (not is_anonymous and is_bad_query):
             return format_error(error, debug)
+        if is_graphql_validation_error(error):
+            # The client sent a query that does not match our schema (e.g. an
+            # unknown type or field). This is a client error, not an internal
+            # server error, so surface the validation message and don't report it.
+            formatted = format_error(error, debug)
+            formatted["type"] = "ValidationError"
+            log.warning(
+                "GraphQL query failed schema validation",
+                extra={"validation_error": error.message},
+            )
+            inc_counter(
+                GQL_VALIDATION_ERROR_COUNTER,
+                labels={"path": getattr(self.request, "path", "unknown")},
+            )
+            return formatted
         formatted = error.formatted
         formatted["message"] = "INTERNAL SERVER ERROR"
         formatted["type"] = "ServerError"
