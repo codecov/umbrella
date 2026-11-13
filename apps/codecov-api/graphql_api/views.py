@@ -348,6 +348,12 @@ class AsyncGraphqlView(GraphQLAsyncView):
         is_bad_query = "Cannot query field" in error.formatted["message"]
         if debug or (not is_anonymous and is_bad_query):
             return format_error(error, debug)
+        if is_bad_query:
+            # anonymous user sent an invalid query — this is a client error, not a server error
+            formatted = error.formatted
+            formatted["message"] = "BAD REQUEST"
+            formatted["type"] = "ValidationError"
+            return formatted
         formatted = error.formatted
         formatted["message"] = "INTERNAL SERVER ERROR"
         formatted["type"] = "ServerError"
