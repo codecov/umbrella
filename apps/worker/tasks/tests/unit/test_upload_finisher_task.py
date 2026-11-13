@@ -816,8 +816,9 @@ class TestUploadFinisherTask:
             timeseries_save_commit_measurements_task_name
         ].apply_async.side_effect = Exception("broker down")
 
-        with pytest.raises(Exception, match="broker down"):
-            self._run_finisher_with_coverage_dataset(mocker, dbsession)
+        # run_impl catches unexpected errors and returns an error result, so the
+        # exception does not propagate; the gate must still be released
+        self._run_finisher_with_coverage_dataset(mocker, dbsession)
 
         release.assert_called_once()
 
