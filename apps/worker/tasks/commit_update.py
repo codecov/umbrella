@@ -14,7 +14,11 @@ from shared.django_apps.upload_breadcrumbs.models import (
     Errors,
     Milestones,
 )
-from shared.torngit.exceptions import TorngitClientError, TorngitRepoNotFoundError
+from shared.torngit.exceptions import (
+    TorngitClientError,
+    TorngitRepoNotFoundError,
+    TorngitServerFailureError,
+)
 from tasks.base import BaseCodecovTask
 
 log = logging.getLogger(__name__)
@@ -38,6 +42,7 @@ class CommitUpdateTask(BaseCodecovTask, name=commit_update_task_name):
         repository_service = None
         was_updated = False
         error = None
+        error_text = None
         try:
             installation_name_to_use = get_installation_name_for_owner_for_task(
                 self.name, repository.author
@@ -142,6 +147,16 @@ class CommitUpdateTask(BaseCodecovTask, name=commit_update_task_name):
                 exc_info=True,
             )
             error = Errors.GIT_CLIENT_ERROR
+        except TorngitServerFailureError as exc:
+            log.warning(
+                "Unable to reach git provider due to server issues (5xx or timeout)",
+                extra={"repoid": repoid, "commit": commitid},
+                exc_info=True,
+            )
+            # Raises celery Retry if retries remain; returns False when exhausted
+            self.safe_retry(exc=exc)
+            error = Errors.UNKNOWN
+            error_text = f"Git provider unreachable after retries: {exc!r}"
         if was_updated:
             log.info(
                 "Commit updated successfully",
@@ -153,6 +168,7 @@ class CommitUpdateTask(BaseCodecovTask, name=commit_update_task_name):
             repo_id=repoid,
             milestone=Milestones.COMMIT_PROCESSED,
             error=error,
+            error_text=error_text,
         )
         return {"was_updated": was_updated}
 
