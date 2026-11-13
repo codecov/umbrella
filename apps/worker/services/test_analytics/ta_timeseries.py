@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime, timedelta
 from typing import TypedDict
 
@@ -13,6 +14,67 @@ from shared.django_apps.ta_timeseries.models import (
     calc_test_id,
 )
 from shared.django_apps.test_analytics.models import Flake
+
+log = logging.getLogger(__name__)
+
+# Postgres rejects any single allocation >= 1GB, and psycopg2 inlines all
+# parameters into a single query string, so we must bound both the size of
+# individual failure messages and the total payload of each INSERT.
+MAX_FAILURE_MESSAGE_LEN = 64 * 1024
+MAX_INSERT_BATCH_BYTES = 64 * 1024 * 1024
+MAX_INSERT_BATCH_ROWS = 500
+_TRUNCATION_MARKER = "\n...[truncated {} chars]...\n"
+
+
+def truncate_failure_message(message: str | None) -> str | None:
+    if message is None or len(message) <= MAX_FAILURE_MESSAGE_LEN:
+        return message
+    removed = len(message) - MAX_FAILURE_MESSAGE_LEN
+    marker = _TRUNCATION_MARKER.format(removed)
+    keep = MAX_FAILURE_MESSAGE_LEN - len(marker)
+    head = keep // 2
+    tail = keep - head
+    return message[:head] + marker + message[len(message) - tail :]
+
+
+def _estimate_testrun_size(testrun: Testrun) -> int:
+    size = 256  # fixed-width columns + overhead
+    for value in (
+        testrun.name,
+        testrun.classname,
+        testrun.testsuite,
+        testrun.computed_name,
+        testrun.failure_message,
+        testrun.filename,
+        testrun.framework,
+        testrun.branch,
+        testrun.commit_sha,
+    ):
+        if value:
+            size += len(value)
+    if testrun.properties:
+        size += len(str(testrun.properties))
+    if testrun.flags:
+        size += sum(len(f) for f in testrun.flags)
+    return size
+
+
+def _bulk_create_in_size_bounded_batches(testruns: list[Testrun]) -> None:
+    batch: list[Testrun] = []
+    batch_bytes = 0
+    for testrun in testruns:
+        row_bytes = _estimate_testrun_size(testrun)
+        if batch and (
+            batch_bytes + row_bytes > MAX_INSERT_BATCH_BYTES
+            or len(batch) >= MAX_INSERT_BATCH_ROWS
+        ):
+            Testrun.objects.bulk_create(batch)
+            batch = []
+            batch_bytes = 0
+        batch.append(testrun)
+        batch_bytes += row_bytes
+    if batch:
+        Testrun.objects.bulk_create(batch)
 
 
 def get_flaky_tests_set(repo_id: int) -> set[bytes]:
@@ -54,6 +116,19 @@ def insert_testrun(
         if outcome == "failure" and flaky_test_ids and test_id in flaky_test_ids:
             outcome = "flaky_fail"
 
+        failure_message = testrun["failure_message"]
+        truncated_failure_message = truncate_failure_message(failure_message)
+        if truncated_failure_message is not failure_message:
+            log.warning(
+                "Truncated oversized test failure message",
+                extra={
+                    "repo_id": repo_id,
+                    "upload_id": upload_id,
+                    "computed_name": testrun["computed_name"],
+                    "original_length": len(failure_message),
+                },
+            )
+
         testruns_to_create.append(
             Testrun(
                 timestamp=timestamp,
@@ -65,7 +140,7 @@ def insert_testrun(
                 or f"{testrun['classname']}::{testrun['name']}",
                 outcome=outcome,
                 duration_seconds=testrun["duration"],
-                failure_message=testrun["failure_message"],
+                failure_message=truncated_failure_message,
                 framework=parsing_info["framework"],
                 filename=testrun["filename"],
                 properties=testrun.get("properties"),
@@ -76,7 +151,7 @@ def insert_testrun(
                 upload_id=upload_id,
             )
         )
-    Testrun.objects.bulk_create(testruns_to_create)
+    _bulk_create_in_size_bounded_batches(testruns_to_create)
 
 
 class FailedTestInstance(TypedDict):
