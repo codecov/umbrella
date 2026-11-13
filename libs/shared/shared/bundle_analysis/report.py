@@ -29,6 +29,7 @@ from shared.bundle_analysis.models import (
     MetadataKey,
     Module,
     Session,
+    assets_chunks,
     get_db_session,
 )
 from shared.bundle_analysis.parser import Parser
@@ -64,6 +65,8 @@ class AssetReport:
         self.db_path = db_path
         self.asset = asset
         self.bundle_info = bundle_info
+        self._modules_cache: list[Module] | None = None
+        self._dynamic_imports_cache: list["AssetReport"] | None = None
 
     @property
     def id(self) -> int:
@@ -94,6 +97,9 @@ class AssetReport:
         return self.asset.asset_type
 
     def modules(self, pr_changed_files: list[str] | None = None) -> list[ModuleReport]:
+        if self._modules_cache is not None and pr_changed_files is None:
+            return [ModuleReport(self.db_path, module) for module in self._modules_cache]
+
         with get_db_session(self.db_path) as session:
             query = (
                 session.query(Module)
@@ -150,6 +156,9 @@ class AssetReport:
         This is retrieving by querying all unique Assets in the DynamicImport
         model for each Chunk of the current Asset.
         """
+        if self._dynamic_imports_cache is not None:
+            return self._dynamic_imports_cache
+
         with get_db_session(self.db_path) as session:
             # Reattach self.asset to the current session to avoid DetachedInstanceError
             asset = session.merge(self.asset)
@@ -329,8 +338,25 @@ class BundleReport:
         Returns a mapping of routes and all Assets (as AssetReports) that belongs to it
         Note that this ignores dynamically imported Assets (ie only the direct asset)
         """
+        # Bulk-load all modules for all assets in this bundle in a single query
+        # to avoid an N+1 (one query per asset) when calling asset_report.routes().
+        modules_by_asset_id: dict[int, list[Module]] = defaultdict(list)
+        with get_db_session(self.db_path) as session:
+            rows = (
+                session.query(Asset.id, Module)
+                .join(Module.chunks)
+                .join(Chunk.assets)
+                .join(Asset.session)
+                .join(Session.bundle)
+                .filter(Bundle.id == self.bundle.id)
+                .all()
+            )
+            for asset_id, module in rows:
+                modules_by_asset_id[asset_id].append(module)
+
         route_map = defaultdict(list)
         for asset_report in self.asset_reports():
+            asset_report._modules_cache = modules_by_asset_id.get(asset_report.id, [])
             routes = asset_report.routes()
             if routes is not None:
                 for route in routes:
@@ -345,6 +371,29 @@ class BundleReport:
         BundleRouteReport object as this will be used for comparison and additional
         data manipulation.
         """
+        # Bulk-load all dynamic-import relationships for the entire bundle in a single
+        # query to avoid an N+1 (one session per asset) during graph traversal.
+        # assets_chunks maps source asset_id -> chunk_id; DynamicImport maps chunk_id -> imported asset_id.
+        bundle_info = self.info()
+        dynamic_imports_by_asset_id: dict[int, list[AssetReport]] = defaultdict(list)
+        with get_db_session(self.db_path) as session:
+            rows = (
+                session.query(assets_chunks.c.asset_id, Asset)
+                .select_from(assets_chunks)
+                .join(DynamicImport, DynamicImport.chunk_id == assets_chunks.c.chunk_id)
+                .join(Asset, Asset.id == DynamicImport.asset_id)
+                .join(Chunk, Chunk.id == assets_chunks.c.chunk_id)
+                .join(Session, Session.id == Chunk.session_id)
+                .join(Bundle, Bundle.id == Session.bundle_id)
+                .filter(Bundle.id == self.bundle.id)
+                .distinct()
+                .all()
+            )
+            for source_asset_id, imported_asset in rows:
+                dynamic_imports_by_asset_id[source_asset_id].append(
+                    AssetReport(self.db_path, imported_asset, bundle_info)
+                )
+
         return_data = defaultdict(list)  # typing: Dict[str, List[AssetReport]]
         for route, asset_reports in self.routes().items():
             # Implements a graph traversal algorithm to get all nodes (Asset) linked by edges
@@ -359,6 +408,10 @@ class BundleReport:
                 if current_asset.id not in visited_asset_ids:
                     visited_asset_ids.add(current_asset.id)
                     unique_assets.append(current_asset)
+                    # Use the pre-loaded cache instead of querying per asset
+                    current_asset._dynamic_imports_cache = dynamic_imports_by_asset_id.get(
+                        current_asset.id, []
+                    )
                     to_be_processed_asset += current_asset.dynamically_imported_assets()
 
             # Add all the assets found to the route we were processing
