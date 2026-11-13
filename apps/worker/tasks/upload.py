@@ -9,7 +9,7 @@ from typing import Any, TypedDict
 import orjson
 import sentry_sdk
 from asgiref.sync import async_to_sync
-from celery import chain, chord
+from celery import chain, chord, group
 from celery.exceptions import SoftTimeLimitExceeded
 from django.conf import settings
 from redis import Redis
@@ -839,14 +839,16 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
             [int(upload["upload_id"]) for upload in argument_list]
         )
 
-        parallel_processing_tasks = [
-            upload_processor_task.s(
-                repoid=commit.repoid,
-                commitid=commit.commitid,
-                commit_yaml=commit_yaml,
-                arguments=arguments,
-            )
-            for arguments in argument_list
+        # Limit the number of UploadProcessor tasks that run concurrently to
+        # prevent DB connection pool exhaustion when a large repo uploads many
+        # files at once.  Each batch runs in parallel; batches are sequenced so
+        # that the next batch only starts after the previous one finishes.
+        max_concurrency = get_config(
+            "setup", "upload_processor_max_concurrency", default=20
+        )
+        batches = [
+            argument_list[i : i + max_concurrency]
+            for i in range(0, len(argument_list), max_concurrency)
         ]
 
         finisher_kwargs = {
@@ -857,8 +859,46 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
         finisher_kwargs = UploadFlow.save_to_kwargs(finisher_kwargs)
         finish_parallel_sig = upload_finisher_task.signature(kwargs=finisher_kwargs)
 
-        parallel_tasks = chord(parallel_processing_tasks, finish_parallel_sig)
-        return parallel_tasks.apply_async()
+        if len(batches) == 1:
+            # Fast path: single batch — keep original chord behaviour so the
+            # finisher receives the full list of ProcessingResult dicts.
+            parallel_processing_tasks = [
+                upload_processor_task.s(
+                    repoid=commit.repoid,
+                    commitid=commit.commitid,
+                    commit_yaml=commit_yaml,
+                    arguments=arguments,
+                )
+                for arguments in batches[0]
+            ]
+            parallel_tasks = chord(parallel_processing_tasks, finish_parallel_sig)
+            return parallel_tasks.apply_async()
+
+        # Multi-batch path: build a chain of groups so at most `max_concurrency`
+        # tasks hit the DB at the same time.
+        #
+        # Use immutable signatures (.si) throughout so that:
+        #   - each processor task ignores the previous group's result list, and
+        #   - the finisher receives processing_results=None and falls back to its
+        #     _reconstruct_processing_results() logic, which reads all processed
+        #     uploads from Redis — covering every batch, not just the last one.
+        task_groups = [
+            group(
+                upload_processor_task.si(
+                    repoid=commit.repoid,
+                    commitid=commit.commitid,
+                    commit_yaml=commit_yaml,
+                    arguments=arguments,
+                )
+                for arguments in batch
+            )
+            for batch in batches
+        ]
+        # Build an immutable finisher signature so it ignores the last group's
+        # result list and reconstructs processing_results from Redis instead.
+        finish_parallel_sig_immutable = upload_finisher_task.si(**finisher_kwargs)
+        pipeline = chain(*task_groups, finish_parallel_sig_immutable)
+        return pipeline.apply_async()
 
     def _schedule_bundle_analysis_processing_task(
         self,
