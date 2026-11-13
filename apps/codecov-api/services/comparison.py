@@ -305,7 +305,9 @@ class CreateChangeSummaryVisitor(FileComparisonVisitor):
         if base_line is None or head_line is None:
             return
 
-        if line_type(base_line[0]) == line_type(head_line[0]):
+        base_type = line_type(base_line[0])
+        head_type = line_type(head_line[0])
+        if base_type is None or head_type is None or base_type == head_type:
             return
 
         self._update_summary(base_line, head_line)
