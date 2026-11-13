@@ -363,6 +363,11 @@ class AsyncGraphqlView(GraphQLAsyncView):
             # (e.g., unauthorized, forbidden) that shouldn't be sent to Sentry
             formatted["message"] = str(original_error.detail)
             formatted["type"] = type(original_error).__name__
+        elif original_error is None:
+            # GraphQL parse/validation errors (e.g. unknown argument or field)
+            # carry no original exception: they are client mistakes, not
+            # server errors, so they must not be logged or sent to Sentry
+            pass
         else:
             # otherwise it's not supposed to happen, so we log it
             log.error("GraphQL internal server error", exc_info=original_error)
