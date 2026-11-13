@@ -33,6 +33,7 @@ from services.seats import (
 from shared.bundle_analysis import (
     BundleAnalysisComparison,
 )
+from shared.torngit.exceptions import TorngitServerFailureError
 from shared.yaml import UserYaml
 
 log = logging.getLogger(__name__)
@@ -80,13 +81,29 @@ class BundleAnalysisPRCommentContextBuilder(NotificationContextBuilder):
         """
         if self.is_field_loaded("pull"):
             return self
-        pull: (
-            EnrichedPull | None
-        ) = await fetch_and_update_pull_request_information_from_commit(
-            self._notification_context.repository_service,
-            self._notification_context.commit,
-            self.current_yaml,
-        )
+        commit = self._notification_context.commit
+        try:
+            pull: (
+                EnrichedPull | None
+            ) = await fetch_and_update_pull_request_information_from_commit(
+                self._notification_context.repository_service,
+                commit,
+                self.current_yaml,
+            )
+        except TorngitServerFailureError as exp:
+            # The git provider timed out, was unreachable, or returned a 5xx.
+            # Skip the PR comment instead of failing the whole notify task,
+            # so other notifications (e.g. commit status) can still be sent.
+            log.warning(
+                "Git provider failed while loading pull for bundle analysis comment",
+                exc_info=True,
+                extra={
+                    "repoid": commit.repoid,
+                    "commitid": commit.commitid,
+                    "error_type": type(exp).__name__,
+                },
+            )
+            raise NotificationContextBuildError("load_enriched_pull") from exp
         if pull is None:
             raise NotificationContextBuildError("load_enriched_pull")
         self._notification_context.pull = pull
