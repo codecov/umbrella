@@ -1,5 +1,6 @@
 import logging
 import os
+import shutil
 import sys
 
 import click
@@ -38,6 +39,61 @@ initialization_text = """
 @worker_process_shutdown.connect
 def mark_process_dead(pid, exitcode, **kwargs):
     multiprocess.mark_process_dead(pid)
+    _remove_dead_process_metric_files(pid)
+
+
+# `multiprocess.mark_process_dead` only removes live gauge files. Counter,
+# histogram and summary files are created per-pid and are otherwise never
+# cleaned up until the container restarts, so with Celery recycling child
+# processes they accumulate until PROMETHEUS_MULTIPROC_DIR runs out of space
+# (OSError: [Errno 28] No space left on device), which then breaks metric writes
+# in every task. Removing a dead pid's files resets those series; PromQL
+# rate()/increase() handle counter resets.
+_PER_PID_METRIC_FILE_PREFIXES = ("counter", "histogram", "summary")
+
+
+def _remove_dead_process_metric_files(pid) -> None:
+    multiproc_dir = os.environ.get("PROMETHEUS_MULTIPROC_DIR")
+    if not multiproc_dir:
+        return
+    for prefix in _PER_PID_METRIC_FILE_PREFIXES:
+        path = os.path.join(multiproc_dir, f"{prefix}_{pid}.db")
+        try:
+            os.remove(path)
+        except FileNotFoundError:
+            pass
+        except OSError:
+            log.warning(
+                "Failed to remove Prometheus metric file for dead process",
+                extra={"pid": pid, "path": path},
+                exc_info=True,
+            )
+
+
+# Warn when the Prometheus multiprocess dir is close to full so it can be
+# addressed before metric writes start failing.
+_PROMETHEUS_DIR_LOW_SPACE_BYTES = 100 * 1024 * 1024
+
+
+def _check_prometheus_dir_free_space(multiproc_dir: str) -> None:
+    try:
+        usage = shutil.disk_usage(multiproc_dir)
+    except OSError:
+        log.warning(
+            "Unable to check free space of Prometheus multiprocess dir",
+            extra={"path": multiproc_dir},
+            exc_info=True,
+        )
+        return
+    if usage.free < _PROMETHEUS_DIR_LOW_SPACE_BYTES:
+        log.warning(
+            "Prometheus multiprocess dir is low on free space",
+            extra={
+                "path": multiproc_dir,
+                "free_bytes": usage.free,
+                "total_bytes": usage.total,
+            },
+        )
 
 
 @click.group()
@@ -63,6 +119,7 @@ def setup_worker():
         log.info(
             f"Setting up Prometheus multiprocess collection in {os.environ['PROMETHEUS_MULTIPROC_DIR']}"
         )
+        _check_prometheus_dir_free_space(os.environ["PROMETHEUS_MULTIPROC_DIR"])
         registry = CollectorRegistry()
         multiprocess.MultiProcessCollector(registry)
 
