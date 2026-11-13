@@ -53,6 +53,19 @@ class TorngitRateLimitError(TorngitClientError):
         self.retry_after = retry_after
 
 
+class TorngitPublicBotCapExceededError(TorngitRateLimitError):
+    """
+    Raised when a request was not sent to the provider because the repo
+    exceeded its per-repo cap on a shared public bot.
+    """
+
+    def __init__(self, message, reset=None, retry_after=None):
+        super().__init__(
+            response_data=None, message=message, reset=reset, retry_after=retry_after
+        )
+        self._code = 429
+
+
 class TorngitUnauthorizedError(TorngitClientError):
     def __init__(self, response_data, message):
         super().__init__(response_data, message)
