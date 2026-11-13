@@ -14,15 +14,18 @@ from test_results_parser import parse_raw_upload
 from rollouts import ALLOW_VITEST_EVALS
 from services.processing.types import UploadArguments
 from services.test_analytics.ta_metrics import write_tests_summary
-from services.test_analytics.ta_timeseries import get_flaky_tests_set, insert_testrun
+from services.test_analytics.ta_timeseries import build_testruns, get_flaky_tests_set
 from services.yaml import UserYaml, read_yaml_field
 from shared.api_archive.archive import ArchiveService
 from shared.config import get_config
 from shared.django_apps.core.models import Commit, Repository
 from shared.django_apps.reports.models import ReportSession, UploadError
+from shared.django_apps.ta_timeseries.models import Testrun
 from shared.storage.exceptions import FileNotInStorageError
 
 log = logging.getLogger(__name__)
+
+TESTRUN_BATCH_SIZE = 1000
 
 
 def ta_processor(
@@ -228,15 +231,23 @@ def insert_testruns_timeseries(
     parsing_infos: list[test_results_parser.ParsingInfo],
 ):
     flaky_test_set = get_flaky_tests_set(repoid)
+    # Fetch flags once; `flag_names` issues a query on every access.
+    flags = upload.flag_names
 
+    testruns_to_create: list[Testrun] = []
     for parsing_info in parsing_infos:
-        insert_testrun(
-            timestamp=upload.created_at,
-            repo_id=repoid,
-            commit_sha=commitid,
-            branch=branch,
-            upload_id=upload.id,
-            flags=upload.flag_names,
-            parsing_info=parsing_info,
-            flaky_test_ids=flaky_test_set,
+        testruns_to_create.extend(
+            build_testruns(
+                timestamp=upload.created_at,
+                repo_id=repoid,
+                commit_sha=commitid,
+                branch=branch,
+                upload_id=upload.id,
+                flags=flags,
+                parsing_info=parsing_info,
+                flaky_test_ids=flaky_test_set,
+            )
         )
+
+    if testruns_to_create:
+        Testrun.objects.bulk_create(testruns_to_create, batch_size=TESTRUN_BATCH_SIZE)
