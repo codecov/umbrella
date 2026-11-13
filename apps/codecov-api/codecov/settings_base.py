@@ -3,9 +3,11 @@ import os
 import sentry_sdk
 from corsheaders.defaults import default_headers
 from csp.constants import NONE, SELF
+from sentry_sdk.integrations.ariadne import AriadneIntegration
 from sentry_sdk.integrations.celery import CeleryIntegration
 from sentry_sdk.integrations.django import DjangoIntegration
 from sentry_sdk.integrations.httpx import HttpxIntegration
+from sentry_sdk.integrations.logging import ignore_logger
 from sentry_sdk.integrations.redis import RedisIntegration
 from sentry_sdk.scrubber import DEFAULT_DENYLIST, EventScrubber
 
@@ -468,6 +470,11 @@ if SENTRY_DSN is not None:
             RedisIntegration(cache_prefixes=["cache:"]),
             HttpxIntegration(),
         ],
+        # The auto-enabled Ariadne integration reports every GraphQL error as
+        # unhandled, including client-side query validation errors (e.g. a
+        # query for a field that does not exist). Real resolver exceptions are
+        # already captured explicitly in AsyncGraphqlView.error_formatter.
+        disabled_integrations=[AriadneIntegration()],
         environment=SENTRY_ENV,
         traces_sampler=make_traces_sampler(
             default_rate=SENTRY_SAMPLE_RATE,
@@ -479,6 +486,10 @@ if SENTRY_DSN is not None:
             get_config("services", "sentry", "profile_sample_rate", default="0.01")
         ),
     )
+    # Ariadne logs every GraphQL error (including client validation errors) on
+    # its own logger; the Ariadne integration used to silence it. Resolver
+    # exceptions are still reported via AsyncGraphqlView.error_formatter.
+    ignore_logger("ariadne")
     if os.getenv("CLUSTER_ENV"):
         sentry_sdk.set_tag("cluster", os.getenv("CLUSTER_ENV"))
 elif IS_DEV:
