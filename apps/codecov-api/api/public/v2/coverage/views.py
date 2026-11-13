@@ -1,8 +1,10 @@
 from datetime import datetime
 
+from django import forms
+from django.core.exceptions import ValidationError as DjangoValidationError
 from drf_spectacular.utils import extend_schema
 from rest_framework import mixins, viewsets
-from rest_framework.exceptions import APIException
+from rest_framework.exceptions import APIException, ValidationError
 
 from api.public.v2.schema import repo_parameters
 from api.shared.mixins import RepoPropertyMixin
@@ -50,15 +52,29 @@ class CoverageViewSet(
     queryset = MeasurementSummary1Day.objects.none()
 
     def get_queryset(self):
+        interval = self.get_measurement_interval()
+        start_date = self.get_date_param("start_date")
+        end_date = self.get_date_param("end_date")
         return repository_coverage_measurements_with_fallback(
             self.repo,
-            self.get_measurement_interval(),
-            start_date=self.request.query_params.get(
-                "start_date", datetime(2000, 1, 1)
-            ),
-            end_date=self.request.query_params.get("end_date", datetime.now()),
+            interval,
+            start_date=start_date if start_date is not None else datetime(2000, 1, 1),
+            end_date=end_date if end_date is not None else datetime.now(),
             branch=self.request.query_params.get("branch"),
         )
+
+    def get_date_param(self, name: str) -> datetime | None:
+        """
+        Parse a datetime query param, raising a 400 if it is malformed rather
+        than passing the raw string through to the ORM.
+        """
+        value = self.request.query_params.get(name)
+        if value is None:
+            return None
+        try:
+            return forms.DateTimeField(required=False).clean(value)
+        except DjangoValidationError as e:
+            raise ValidationError({name: e.messages})
 
     def get_measurement_interval(self) -> Interval:
         interval_name = self.request.query_params.get("interval")
@@ -102,10 +118,10 @@ class FlagCoverageViewSet(CoverageViewSet):
             measurable_id=str(flag.pk),
         )
 
-        start_date = self.request.query_params.get("start_date")
+        start_date = self.get_date_param("start_date")
         if start_date is not None:
             queryset = queryset.filter(timestamp_bin__gte=start_date)
-        end_date = self.request.query_params.get("end_date")
+        end_date = self.get_date_param("end_date")
         if end_date is not None:
             queryset = queryset.filter(timestamp_bin__lte=end_date)
 

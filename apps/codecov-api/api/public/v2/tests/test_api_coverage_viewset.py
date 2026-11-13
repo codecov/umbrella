@@ -203,6 +203,42 @@ class CoverageViewSetTestCase(TransactionTestCase):
         )
         assert response.status_code == 422
 
+    @patch("timeseries.models.Dataset.is_backfilled")
+    def test_repo_coverage_invalid_start_date(
+        self, get_repo_permissions, is_backfilled
+    ):
+        get_repo_permissions.return_value = (True, True)
+        is_backfilled.return_value = True
+        DatasetFactory(
+            name=MeasurementName.COVERAGE.value,
+            repository_id=self.repo.pk,
+        )
+
+        response = self.client.get(
+            f"/api/v2/github/codecov/repos/{self.repo.name}/coverage?interval=1d&start_date=harmless742"
+        )
+        assert response.status_code == 400
+        assert "start_date" in response.json()
+
+    def test_repo_coverage_invalid_end_date(self, get_repo_permissions):
+        get_repo_permissions.return_value = (True, True)
+
+        response = self.client.get(
+            f"/api/v2/github/codecov/repos/{self.repo.name}/coverage?interval=1d&end_date=notadate"
+        )
+        assert response.status_code == 400
+        assert "end_date" in response.json()
+
+    def test_flag_coverage_invalid_start_date(self, get_repo_permissions):
+        get_repo_permissions.return_value = (True, True)
+        flag = RepositoryFlagFactory(repository=self.repo, flag_name="flag1")
+
+        response = self.client.get(
+            f"/api/v2/github/codecov/repos/{self.repo.name}/flags/{flag.flag_name}/coverage?interval=1d&start_date=harmless742"
+        )
+        assert response.status_code == 400
+        assert "start_date" in response.json()
+
     def test_flag_coverage(self, get_repo_permissions):
         get_repo_permissions.return_value = (True, True)
 
