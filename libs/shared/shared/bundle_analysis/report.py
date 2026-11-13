@@ -8,7 +8,7 @@ from collections.abc import Iterator
 from typing import Any
 
 import sentry_sdk
-from sqlalchemy import asc, desc, text
+from sqlalchemy import asc, case, desc, text
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session as DbSession
 from sqlalchemy.orm import aliased
@@ -561,10 +561,15 @@ class BundleAnalysisReport:
 
         with get_db_session(self.db_path) as session:
             # Update the Assets table for the bundle correct uuid
-            for pair in associated_assets_found:
-                prev_uuid, curr_uuid = pair
-                session.query(Asset).filter(Asset.uuid == curr_uuid).update(
-                    {Asset.uuid: prev_uuid}
+            if associated_assets_found:
+                pairs = list(associated_assets_found)
+                curr_uuids = [curr_uuid for _, curr_uuid in pairs]
+                case_expr = case(
+                    *[(Asset.uuid == curr_uuid, prev_uuid) for prev_uuid, curr_uuid in pairs]
+                )
+                session.query(Asset).filter(Asset.uuid.in_(curr_uuids)).update(
+                    {Asset.uuid: case_expr},
+                    synchronize_session=False,
                 )
             session.commit()
 
