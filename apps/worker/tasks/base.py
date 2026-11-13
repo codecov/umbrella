@@ -7,7 +7,8 @@ import sentry_sdk
 from celery._state import get_current_task
 from celery.exceptions import MaxRetriesExceededError, SoftTimeLimitExceeded
 from celery.worker.request import Request
-from django.db import InterfaceError, close_old_connections
+from django.db import InterfaceError, close_old_connections, connections
+from django.db import OperationalError as DjangoOperationalError
 from sqlalchemy.exc import (
     DataError,
     IntegrityError,
@@ -466,6 +467,31 @@ class BaseCodecovTask(celery_app.Task):
                 sentry_sdk.capture_exception(
                     ex,
                 )
+            except DjangoOperationalError as ex:
+                # Transient database unavailability (e.g. DNS resolution of the
+                # DB host failing) surfaced through the Django ORM. These are
+                # not caught by the SQLAlchemyError handler, so retry here.
+                log.warning(
+                    "Django database seems to be unavailable",
+                    extra={"task_args": args, "task_kwargs": kwargs},
+                    exc_info=True,
+                )
+                # Drop broken Django connections so the retry reconnects cleanly
+                connections.close_all()
+                db_session.rollback()
+                retry_count = getattr(self.request, "retries", 0)
+                countdown = TASK_RETRY_BACKOFF_BASE_SECONDS * (2**retry_count)
+                try:
+                    retried = self.safe_retry(countdown=countdown, exc=ex)
+                except MaxRetriesExceededError:
+                    retried = False
+                if not retried:
+                    if UploadFlow.has_begun():
+                        UploadFlow.log(UploadFlow.UNCAUGHT_RETRY_EXCEPTION)
+                    if TestResultsFlow.has_begun():
+                        TestResultsFlow.log(TestResultsFlow.UNCAUGHT_RETRY_EXCEPTION)
+                    # Keep reporting persistent outages to Sentry
+                    raise
             except (DataError, IntegrityError):
                 log.exception(
                     "Errors related to the constraints of database happened",
