@@ -358,6 +358,18 @@ class AsyncGraphqlView(GraphQLAsyncView):
         ):
             formatted["message"] = original_error.message  # type: ignore
             formatted["type"] = type(original_error).__name__
+        elif original_error is None:
+            # No underlying exception means the client sent a query that failed
+            # parsing/validation against the schema (e.g. a field that doesn't
+            # exist). That's a client mistake, not a server failure, so we log a
+            # warning with the details instead of reporting it to Sentry.
+            log.warning(
+                "GraphQL query validation error",
+                extra={
+                    "error_message": error.message,
+                    "is_anonymous": is_anonymous,
+                },
+            )
         elif isinstance(original_error, APIException):
             # APIException from torngit_safe decorator - expected client errors
             # (e.g., unauthorized, forbidden) that shouldn't be sent to Sentry
