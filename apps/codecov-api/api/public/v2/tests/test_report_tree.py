@@ -104,6 +104,15 @@ class ReportTreeTests(APITestCase):
         build_report_from_commit.assert_called_once_with(self.commit)
 
     @patch("shared.reports.api_report_service.build_report_from_commit")
+    def test_tree_invalid_depth(self, build_report_from_commit):
+        build_report_from_commit.return_value = sample_report()
+
+        for depth in ["2'", "abc", ""]:
+            res = self._tree(depth=depth)
+            assert res.status_code == 400, depth
+            assert "depth" in res.json()
+
+    @patch("shared.reports.api_report_service.build_report_from_commit")
     def test_tree_depth(self, build_report_from_commit):
         build_report_from_commit.return_value = sample_report()
 
