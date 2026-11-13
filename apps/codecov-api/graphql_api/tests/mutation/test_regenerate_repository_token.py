@@ -35,7 +35,7 @@ class RegeneratRepositoryTokenTests(GraphQLTestHelper, TestCase):
             variables={
                 "input": {
                     "repoName": "gazebo",
-                    "owner": "codecov",
+                    "ownerUsername": "codecov",
                     "tokenType": "PROFILING",
                 }
             },
@@ -53,7 +53,7 @@ class RegeneratRepositoryTokenTests(GraphQLTestHelper, TestCase):
             variables={
                 "input": {
                     "repoName": "gazebo",
-                    "owner": "codecov",
+                    "ownerUsername": "codecov",
                     "tokenType": "PROFILING",
                 }
             },
@@ -74,7 +74,7 @@ class RegeneratRepositoryTokenTests(GraphQLTestHelper, TestCase):
             variables={
                 "input": {
                     "repoName": "private-repo",
-                    "owner": "codecov",
+                    "ownerUsername": "codecov",
                     "tokenType": "PROFILING",
                 }
             },
@@ -96,7 +96,7 @@ class RegeneratRepositoryTokenTests(GraphQLTestHelper, TestCase):
             owner=user,
             variables={
                 "input": {
-                    "owner": "codecov",
+                    "ownerUsername": "codecov",
                     "repoName": "gazebo",
                     "tokenType": "STATIC_ANALYSIS",
                 }
@@ -116,7 +116,7 @@ class RegeneratRepositoryTokenTests(GraphQLTestHelper, TestCase):
             owner=user,
             variables={
                 "input": {
-                    "owner": "codecov",
+                    "ownerUsername": "codecov",
                     "repoName": "gazebo",
                     "tokenType": "UPLOAD",
                 }
