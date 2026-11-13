@@ -27,6 +27,7 @@ from sentry_sdk import capture_exception
 
 from codecov.commands.exceptions import BaseException
 from codecov.commands.executor import get_executor_from_request
+from codecov.sentry_filters import is_client_document_error
 from codecov_auth.helpers import get_client_ip_address
 from codecov_auth.middleware import jwt_middleware
 from services import ServiceException
@@ -353,7 +354,20 @@ class AsyncGraphqlView(GraphQLAsyncView):
         formatted["type"] = "ServerError"
         # if this is one of our own command exception, we can tell a bit more
         original_error = error.original_error
-        if isinstance(original_error, BaseException) or isinstance(
+        if is_client_document_error(error):
+            # Validation / syntax errors caused by the client's query document
+            # (e.g. querying a field that doesn't exist). These are client
+            # errors, not server failures, so don't report them as such.
+            formatted["message"] = "Invalid query"
+            formatted["type"] = "ValidationError"
+            log.warning(
+                "GraphQL query failed validation",
+                extra={
+                    "error_message": error.message,
+                    "locations": formatted.get("locations"),
+                },
+            )
+        elif isinstance(original_error, BaseException) or isinstance(
             original_error, ServiceException
         ):
             formatted["message"] = original_error.message  # type: ignore
