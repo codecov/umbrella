@@ -58,6 +58,27 @@ def generate_schema_with_required_variables():
     return make_executable_schema(types, query_bindable)
 
 
+def generate_schema_with_input_filters():
+    types = gql(
+        """
+        input Filters {
+            flags: [String!]
+        }
+
+        type Query {
+            search(filters: Filters!): Boolean
+        }
+        """
+    )
+    query_bindable = ObjectType("Query")
+
+    @query_bindable.field("search")
+    def resolve_search(*_, filters):
+        return True
+
+    return make_executable_schema(types, query_bindable)
+
+
 class AriadneViewTestCase(GraphQLTestHelper, TestCase):
     async def do_query(self, schema, query="{ failing }", variables=None):
         view = AsyncGraphqlView.as_view(schema=schema)
@@ -119,13 +140,17 @@ class AriadneViewTestCase(GraphQLTestHelper, TestCase):
         )
 
     @override_settings(DEBUG=False)
-    async def test_when_debug_is_false_and_random_exception(self):
+    @patch("graphql_api.views.capture_exception")
+    async def test_when_debug_is_false_and_random_exception(
+        self, mocked_capture_exception
+    ):
         schema = generate_schema_that_raise_with(Exception("hello"))
         data = await self.do_query(schema)
         assert data["errors"] is not None
         assert data["errors"][0]["message"] == "INTERNAL SERVER ERROR"
         assert data["errors"][0]["type"] == "ServerError"
         assert data["errors"][0].get("extensions") is None
+        mocked_capture_exception.assert_called_once()
 
     @override_settings(DEBUG=False)
     async def test_when_debug_is_false_and_exception_we_know(self):
@@ -147,11 +172,42 @@ class AriadneViewTestCase(GraphQLTestHelper, TestCase):
         )
 
     @override_settings(DEBUG=False)
-    async def test_when_bad_query_and_anonymous(self):
+    @patch("graphql_api.views.capture_exception")
+    async def test_when_bad_query_and_anonymous(self, mocked_capture_exception):
         schema = generate_schema_that_raise_with(Unauthorized())
         data = await self.do_query(schema, " { fieldThatDoesntExist }")
         assert data["errors"] is not None
-        assert data["errors"][0]["message"] == "INTERNAL SERVER ERROR"
+        assert data["errors"][0]["message"] == "Invalid GraphQL request"
+        assert data["errors"][0]["type"] == "BadRequest"
+        mocked_capture_exception.assert_not_called()
+
+    @override_settings(DEBUG=False)
+    @patch("logging.Logger.warning")
+    @patch("graphql_api.views.capture_exception")
+    async def test_when_invalid_input_variable_and_anonymous(
+        self, mocked_capture_exception, mocked_warning
+    ):
+        schema = generate_schema_with_input_filters()
+        query = """
+        query ($filters: Filters!) {
+            search(filters: $filters)
+        }
+        """
+        data = await self.do_query(
+            schema,
+            query=query,
+            variables={"filters": {"flags": [], "hasUnintendedChanges": False}},
+        )
+        assert data["errors"] is not None
+        assert data["errors"][0]["message"] == "Invalid GraphQL request"
+        assert data["errors"][0]["type"] == "BadRequest"
+        mocked_capture_exception.assert_not_called()
+        mocked_warning.assert_called_once()
+        assert mocked_warning.call_args.args[0] == "GraphQL request validation error"
+        assert (
+            "hasUnintendedChanges"
+            in mocked_warning.call_args.kwargs["extra"]["message"]
+        )
 
     @override_settings(DEBUG=False, GRAPHQL_QUERY_COST_THRESHOLD=1000)
     @patch("logging.Logger.error")
