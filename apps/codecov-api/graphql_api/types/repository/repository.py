@@ -338,6 +338,14 @@ def resolve_is_github_rate_limited(
         return None
 
 
+@repository_bindable.field("uploadTokenRequiredForPublicRepos")
+async def resolve_upload_token_required_for_public_repos(
+    repository: Repository, info: GraphQLResolveInfo
+) -> bool | None:
+    owner = await OwnerLoader.loader(info).load(repository.author_id)
+    return owner.upload_token_required_for_public_repos
+
+
 @repository_bindable.field("coverageAnalytics")
 def resolve_coverage_analytics(
     repository: Repository, info: GraphQLResolveInfo

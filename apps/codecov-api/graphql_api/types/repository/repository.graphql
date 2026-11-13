@@ -52,6 +52,7 @@ type Repository {
   coverageEnabled: Boolean
   testAnalyticsEnabled: Boolean
   isGithubRateLimited: Boolean
+  uploadTokenRequiredForPublicRepos: Boolean
 
   "CoverageAnalytics are fields related to Codecov's Coverage product offering"
   coverageAnalytics: CoverageAnalytics
