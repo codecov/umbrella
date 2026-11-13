@@ -1,6 +1,7 @@
 from typing import TypedDict
 
 import pytest
+from django.db import OperationalError
 from django.utils import timezone
 
 from services.test_analytics.ta_process_flakes import KEY_NAME, process_flakes_for_repo
@@ -340,3 +341,52 @@ def test_testrun_outcome_updates_only_failures_and_errors(setup_test_data):
         "test3": "pass",  # Not updated
         "test4": "skip",  # Not updated
     }
+
+
+class _FakeLock:
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        return False
+
+
+class _FakeRedis:
+    def __init__(self, items: list[bytes]):
+        self.items = list(items)
+
+    def lock(self, *args, **kwargs):
+        return _FakeLock()
+
+    def lpop(self, key, count):
+        popped, self.items = self.items[:count], self.items[count:]
+        return popped or None
+
+    def lpush(self, key, *values):
+        for value in values:
+            self.items.insert(0, value)
+
+
+def test_process_flakes_requeues_unprocessed_commits_on_failure(mocker):
+    fake_redis = _FakeRedis([b"c1", b"c2", b"c3"])
+    mocker.patch(
+        "services.test_analytics.ta_process_flakes.get_redis_connection",
+        return_value=fake_redis,
+    )
+    processed = []
+
+    def _process(repo_id, commit_id):
+        if commit_id == "c2":
+            raise OperationalError('could not translate host name "pgbouncer"')
+        processed.append(commit_id)
+
+    mocker.patch(
+        "services.test_analytics.ta_process_flakes.process_flakes_for_commit",
+        side_effect=_process,
+    )
+
+    with pytest.raises(OperationalError):
+        process_flakes_for_repo(1)
+
+    assert processed == ["c1"]
+    assert fake_redis.items == [b"c2", b"c3"]

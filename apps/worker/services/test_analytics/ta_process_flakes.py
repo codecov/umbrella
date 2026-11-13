@@ -216,9 +216,24 @@ def process_flakes_for_repo(repo_id: int):
     try:
         with redis_client.lock(lock_name, timeout=300, blocking_timeout=3):
             while commit_ids := redis_client.lpop(key_name, 10):
-                for commit_id in commit_ids:
-                    with process_flakes_summary.labels("new").time():
-                        process_flakes_for_commit(repo_id, commit_id.decode())
+                for index, commit_id in enumerate(commit_ids):
+                    try:
+                        with process_flakes_summary.labels("new").time():
+                            process_flakes_for_commit(repo_id, commit_id.decode())
+                    except Exception:
+                        # The commits were already popped from the queue, so put the
+                        # failed commit and the rest of this batch back at the head of
+                        # the queue (preserving order) so a retry can process them.
+                        unprocessed = commit_ids[index:]
+                        redis_client.lpush(key_name, *reversed(unprocessed))
+                        log.warning(
+                            "Requeued unprocessed commits after flake processing failure",
+                            extra={
+                                "repo_id": repo_id,
+                                "commit_ids": [c.decode() for c in unprocessed],
+                            },
+                        )
+                        raise
             return True
     except LockError:
         log.warning("Failed to acquire lock for repo %s", repo_id)
