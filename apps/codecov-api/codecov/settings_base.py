@@ -446,6 +446,24 @@ SENTRY_ORG_URL = get_config(
     "services", "sentry", "org_domain", default="https://sentry.io"
 )
 
+def _sentry_before_send(event, hint):
+    # Sentry's auto-enabled Ariadne integration captures every GraphQLError in a
+    # response, including schema validation errors (e.g. "Cannot query field")
+    # caused purely by malformed client queries. Those have no original_error and
+    # are harmless client mistakes, not server failures, so drop them. Errors
+    # raised from resolvers keep an original_error and are still reported.
+    exc_info = hint.get("exc_info") if hint else None
+    if exc_info:
+        exc = exc_info[1]
+        try:
+            from graphql import GraphQLError
+        except ImportError:
+            return event
+        if isinstance(exc, GraphQLError) and exc.original_error is None:
+            return None
+    return event
+
+
 if SENTRY_DSN is not None:
     SENTRY_SAMPLE_RATE = float(
         get_config("services", "sentry", "sample_rate", default="1.0")
@@ -459,6 +477,7 @@ if SENTRY_DSN is not None:
     sentry_sdk.init(
         dsn=SENTRY_DSN,
         event_scrubber=EventScrubber(denylist=SENTRY_DENY_LIST),
+        before_send=_sentry_before_send,
         _experiments={
             "enable_logs": True,
         },
