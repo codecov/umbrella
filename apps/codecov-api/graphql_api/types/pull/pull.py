@@ -28,6 +28,7 @@ from services.comparison import ComparisonReport, PullRequestComparison
 pull_bindable = ObjectType("Pull")
 
 pull_bindable.set_alias("pullId", "pullid")
+pull_bindable.set_alias("pullid", "pullid")
 
 
 @pull_bindable.field("state")
