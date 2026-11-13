@@ -16,6 +16,7 @@ from services.repository import (
     get_repo_provider_service,
     possibly_update_commit_from_provider_info,
 )
+from shared.github import GitHubTokenFetchError
 from shared.celery_config import (
     DEFAULT_LOCK_TIMEOUT_SECONDS,
     PREPROCESS_UPLOAD_MAX_RETRIES,
@@ -177,6 +178,12 @@ class PreProcessUpload(BaseCodecovTask, name=pre_process_upload_task_name):
                 "Unable to reach git provider because repo doesn't have a valid bot",
                 extra={"repoid": commit.repoid, "commit": commit.commitid},
             )
+        except GitHubTokenFetchError:
+            log.warning(
+                "Timed out fetching GitHub token; retrying task",
+                extra={"repoid": commit.repoid, "commit": commit.commitid},
+            )
+            raise self.retry(countdown=30, max_retries=3)
 
         return repository_service
 
