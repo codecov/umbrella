@@ -456,9 +456,27 @@ if SENTRY_DSN is not None:
     SENTRY_WEBHOOK_GITHUB_SAMPLE_RATE = float(
         get_config("services", "sentry", "webhook_github_sample_rate", default="0.001")
     )
+
+    def _drop_graphql_bad_query_errors(event, hint):
+        # GraphQL query validation errors ("Cannot query field ...") are caused by
+        # malformed client queries and are rejected before execution, so they are
+        # harmless client errors. The auto-enabled Ariadne integration would
+        # otherwise report each of them as an unhandled server error.
+        exc_info = hint.get("exc_info") if hint else None
+        if exc_info:
+            exc = exc_info[1]
+            if (
+                type(exc).__name__ == "GraphQLError"
+                and getattr(exc, "original_error", None) is None
+                and str(getattr(exc, "message", exc)).startswith("Cannot query field")
+            ):
+                return None
+        return event
+
     sentry_sdk.init(
         dsn=SENTRY_DSN,
         event_scrubber=EventScrubber(denylist=SENTRY_DENY_LIST),
+        before_send=_drop_graphql_bad_query_errors,
         _experiments={
             "enable_logs": True,
         },
