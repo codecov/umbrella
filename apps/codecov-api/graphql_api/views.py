@@ -43,6 +43,13 @@ from .validation import (
 
 log = logging.getLogger(__name__)
 
+# the only way to check for a malformed query (e.g. a field not in the schema)
+BAD_QUERY_MESSAGE = "Cannot query field"
+
+
+def is_bad_query_message(message: Any) -> bool:
+    return isinstance(message, str) and BAD_QUERY_MESSAGE in message
+
 GQL_HIT_COUNTER = Counter(
     "api_gql_counts_hits",
     "Number of times API GQL endpoint request starts",
@@ -305,6 +312,26 @@ class AsyncGraphqlView(GraphQLAsyncView):
                     GQL_ERROR_TYPE_COUNTER,
                     labels={"error_type": "all", "path": req_path},
                 )
+                errors = data.get("errors") or []
+                bad_query_messages = [
+                    err.get("message")
+                    for err in errors
+                    if isinstance(err, dict) and is_bad_query_message(err.get("message"))
+                ]
+                if bad_query_messages:
+                    log.warning(
+                        "GraphQL invalid query",
+                        extra={
+                            "errors": bad_query_messages,
+                            "request_body": req_body,
+                            "request_path": req_path,
+                            "user": request.user,
+                        },
+                    )
+                    inc_counter(
+                        GQL_ERROR_TYPE_COUNTER,
+                        labels={"error_type": "invalid_query", "path": req_path},
+                    )
                 try:
                     if data["errors"][0]["extensions"]["cost"]:
                         costs = data["errors"][0]["extensions"]["cost"]
@@ -344,8 +371,7 @@ class AsyncGraphqlView(GraphQLAsyncView):
     def error_formatter(self, error: Any, debug: bool = False) -> dict[str, Any]:
         user = self.request.user
         is_anonymous = user.is_anonymous if user else True
-        # the only way to check for a malformed query
-        is_bad_query = "Cannot query field" in error.formatted["message"]
+        is_bad_query = is_bad_query_message(error.formatted.get("message"))
         if debug or (not is_anonymous and is_bad_query):
             return format_error(error, debug)
         formatted = error.formatted
