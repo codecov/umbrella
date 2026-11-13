@@ -3,6 +3,7 @@ import os
 import sentry_sdk
 from corsheaders.defaults import default_headers
 from csp.constants import NONE, SELF
+from sentry_sdk.integrations.ariadne import AriadneIntegration
 from sentry_sdk.integrations.celery import CeleryIntegration
 from sentry_sdk.integrations.django import DjangoIntegration
 from sentry_sdk.integrations.httpx import HttpxIntegration
@@ -468,6 +469,11 @@ if SENTRY_DSN is not None:
             RedisIntegration(cache_prefixes=["cache:"]),
             HttpxIntegration(),
         ],
+        # The auto-enabled Ariadne integration reports every GraphQL error,
+        # including client-side validation errors (e.g. querying a field that
+        # does not exist). Unexpected resolver errors are still reported by
+        # `graphql_api.views.AsyncGraphqlView.error_formatter`.
+        disabled_integrations=[AriadneIntegration()],
         environment=SENTRY_ENV,
         traces_sampler=make_traces_sampler(
             default_rate=SENTRY_SAMPLE_RATE,
@@ -485,6 +491,7 @@ elif IS_DEV:
     sentry_sdk.init(
         spotlight=IS_DEV,
         event_scrubber=EventScrubber(denylist=SENTRY_DENY_LIST),
+        disabled_integrations=[AriadneIntegration()],
     )
 
 SHELTER_PUBSUB_PROJECT_ID = get_config("setup", "shelter", "pubsub_project_id")
