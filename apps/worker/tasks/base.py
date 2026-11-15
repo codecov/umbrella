@@ -5,6 +5,7 @@ from datetime import datetime
 
 import sentry_sdk
 from celery._state import get_current_task
+from redis.exceptions import ResponseError
 from celery.exceptions import MaxRetriesExceededError, SoftTimeLimitExceeded
 from celery.worker.request import Request
 from django.db import InterfaceError, close_old_connections
@@ -693,27 +694,39 @@ class BaseCodecovTask(celery_app.Task):
                 **extra_log_context,
             },
         )
-        with lock:
-            lock_acquired_time = time.time()
-            log.info(
-                "Acquired lock",
-                extra={
-                    "lock_name": lock_name,
-                    **extra_log_context,
-                },
-            )
-            try:
-                yield
-            finally:
-                lock_duration = time.time() - lock_acquired_time
+        try:
+            with lock:
+                lock_acquired_time = time.time()
                 log.info(
-                    "Releasing lock",
+                    "Acquired lock",
                     extra={
                         "lock_name": lock_name,
-                        "lock_duration_seconds": lock_duration,
                         **extra_log_context,
                     },
                 )
+                try:
+                    yield
+                finally:
+                    lock_duration = time.time() - lock_acquired_time
+                    log.info(
+                        "Releasing lock",
+                        extra={
+                            "lock_name": lock_name,
+                            "lock_duration_seconds": lock_duration,
+                            **extra_log_context,
+                        },
+                    )
+        except ResponseError as e:
+            if "READONLY" in str(e):
+                log.warning(
+                    "Failed to release lock due to Redis READONLY error (replica failover); lock will expire via TTL",
+                    extra={
+                        "lock_name": lock_name,
+                        **extra_log_context,
+                    },
+                )
+            else:
+                raise
 
     def _call_upload_breadcrumb_task(
         self,
