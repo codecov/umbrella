@@ -83,3 +83,23 @@ def resolve_bundle_data(
 @bundle_analysis_report_bindable.field("isCached")
 def resolve_is_cached(bundle_report: BundleReport, info: GraphQLResolveInfo) -> bool:
     return bundle_report.is_cached
+
+
+def _compute_load_time_total(bundles_analysis_report: BundleAnalysisReport) -> float:
+    """Returns the 3G load time in seconds (deprecated; use bundleData.loadTime.threeG)."""
+    bundle_data = BundleData(bundles_analysis_report.size_total)
+    return bundle_data.load_time.three_g / 1000.0
+
+
+@bundle_analysis_report_bindable.field("loadTimeTotal")
+def resolve_load_time_total(
+    bundles_analysis_report: BundleAnalysisReport, info: GraphQLResolveInfo
+) -> float:
+    return _compute_load_time_total(bundles_analysis_report)
+
+
+@bundle_analysis_report_bindable.field("total_load_time")
+def resolve_total_load_time(
+    bundles_analysis_report: BundleAnalysisReport, info: GraphQLResolveInfo
+) -> float:
+    return _compute_load_time_total(bundles_analysis_report)
