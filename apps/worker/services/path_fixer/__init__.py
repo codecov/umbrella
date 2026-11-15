@@ -76,6 +76,7 @@ class PathFixer:
         toc: list[str],
         should_disable_default_pathfixes=False,
     ) -> None:
+        self._clean_path_cache: dict[str, str | None] = {}
         self.toc = toc or []
 
         self.yaml_fixes = yaml_fixes or []
@@ -93,6 +94,9 @@ class PathFixer:
     def clean_path(self, path: str | None) -> str | None:
         if not path:
             return None
+        if path in self._clean_path_cache:
+            return self._clean_path_cache[path]
+        original_path = path
         path = os.path.relpath(path.replace("\\", "/").lstrip("./").lstrip("../"))
         if self.yaml_fixes:
             # applies pre
@@ -100,6 +104,7 @@ class PathFixer:
         if self.tree:
             path = self.tree.resolve_path(path, ancestors=1)
             if not path:
+                self._clean_path_cache[original_path] = None
                 return None
         elif not self.toc:
             path = remove_known_bad_paths("", path)
@@ -108,7 +113,9 @@ class PathFixer:
             path = self.custom_fixes(path, True)
         if not self.path_matcher(path):
             # don't include the file if yaml specified paths to include/ignore and it's not in the list to include
+            self._clean_path_cache[original_path] = None
             return None
+        self._clean_path_cache[original_path] = path
         return path
 
     def __call__(self, path: str, bases_to_try=None) -> str | None:
