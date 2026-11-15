@@ -101,7 +101,7 @@ def repo_commits(
     if pull_id:
         queryset = queryset.filter(pullid=pull_id)
 
-    search = filters.get("search")
+    search = filters.get("search_value")
     if search:
         # search against long sha, short sha and commit message substring
         queryset = queryset.annotate(short_sha=Substr(Lower("commitid"), 1, 7)).filter(
