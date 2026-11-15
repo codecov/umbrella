@@ -3,6 +3,7 @@ import logging
 from dataclasses import asdict, dataclass, field, replace
 
 import sentry_sdk
+from sqlalchemy import text as sa_text
 
 from database.models.core import Owner, Repository
 from shared.config import get_config
@@ -68,6 +69,17 @@ class LogContext:
             #     DB PK for a commit, so we don't do this.
             # - repo_id is enough to get repo and owner
             # - owner_id is just enough to get owner
+
+            # Apply a short statement timeout so a slow or blocked DB query
+            # (e.g. due to lock contention) does not stall the calling task.
+            # The timeout is intentionally small: this query is purely for
+            # logging enrichment and is not worth delaying task execution for.
+            # SET LOCAL applies only within the current transaction and is
+            # silently ignored by non-PostgreSQL backends.
+            try:
+                dbsession.execute(sa_text("SET LOCAL statement_timeout = '5000'"))
+            except Exception:
+                pass  # Non-critical; proceed without timeout if SET LOCAL fails
 
             if self.repo_id:
                 query = (
