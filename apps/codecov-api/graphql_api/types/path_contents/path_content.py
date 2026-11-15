@@ -12,6 +12,26 @@ path_content_bindable = InterfaceType("PathContent")
 path_content_file_bindable = ObjectType("PathContentFile")
 
 
+@path_content_file_bindable.field("content")
+def resolve_file_content_deprecated(item: File, info) -> None:
+    """
+    Deprecated: Use commit.coverageAnalytics.coverageFile.content instead.
+    Returns None for backwards compatibility with old clients using the
+    legacy pathContents query shape.
+    """
+    return None
+
+
+@path_content_file_bindable.field("coverage")
+def resolve_file_coverage_deprecated(item: File, info) -> None:
+    """
+    Deprecated: Use commit.coverageAnalytics.coverageFile.coverage instead.
+    Returns None for backwards compatibility with old clients using the
+    legacy pathContents query shape.
+    """
+    return None
+
+
 @path_content_bindable.type_resolver
 def resolve_path_content_type(obj, *_):
     if isinstance(obj, File):
@@ -69,6 +89,8 @@ def resolve_path_contents_result_type(res, *_):
         return "UnknownPath"
     elif isinstance(res, UnknownFlags):
         return "UnknownFlags"
+    elif isinstance(res, File):
+        return "PathContentFile"
     if isinstance(res, type({"results": list[File | Dir]})):
         return "PathContents"
 
