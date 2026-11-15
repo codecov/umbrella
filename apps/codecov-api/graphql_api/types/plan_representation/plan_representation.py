@@ -76,6 +76,11 @@ def resolve_is_sentry(plan_data: Plan, info) -> bool:
     return plan_data.is_sentry_plan
 
 
+@plan_representation_bindable.field("tierName")
+def resolve_tier_name(plan_data: Plan, info) -> str:
+    return plan_data.tier.tier_name
+
+
 @plan_representation_bindable.field("isTrialPlan")
 def resolve_is_trial(plan_data: Plan, info) -> bool:
     return plan_data.is_trial_plan
