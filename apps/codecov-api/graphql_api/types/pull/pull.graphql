@@ -1,6 +1,7 @@
 type Pull {
   behindBy: Int
   behindByCommit: String
+  baseCommit: String
   title: String
   state: PullRequestState!
   pullId: Int!

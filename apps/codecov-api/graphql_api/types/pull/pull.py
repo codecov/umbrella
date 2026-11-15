@@ -48,6 +48,11 @@ def resolve_head(pull: Pull, info: GraphQLResolveInfo) -> Commit | None:
     return CommitLoader.loader(info, pull.repository_id).load(pull.head)
 
 
+@pull_bindable.field("baseCommit")
+def resolve_base_commit(pull: Pull, info: GraphQLResolveInfo) -> str | None:
+    return pull.compared_to
+
+
 @pull_bindable.field("comparedTo")
 def resolve_base(pull: Pull, info: GraphQLResolveInfo) -> Commit | None:
     if pull.compared_to is None:
