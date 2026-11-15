@@ -59,7 +59,7 @@ def pre_process_yaml(inputted_yaml_dict):
     Args:
         inputted_yaml_dict (dict): The yaml dict inputted by the user
     """
-    coverage = inputted_yaml_dict.get("coverage", {})
+    coverage = inputted_yaml_dict.get("coverage") or {}
     if "flags" in coverage:
         inputted_yaml_dict["flags"] = coverage.pop("flags")
     if "parsers" in coverage:
