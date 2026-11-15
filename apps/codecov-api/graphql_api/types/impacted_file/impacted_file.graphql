@@ -14,8 +14,13 @@ type ImpactedFile {
   segments(filters: SegmentsFilters): SegmentsResult!
 }
 
+type ImpactedFileEdge {
+  node: ImpactedFile
+}
+
 type ImpactedFiles {
   results: [ImpactedFile]
+  edges: [ImpactedFileEdge]
 }
 
 union ImpactedFilesResult =
