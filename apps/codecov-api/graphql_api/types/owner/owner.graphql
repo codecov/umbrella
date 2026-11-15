@@ -13,6 +13,7 @@ type Owner {
   hasPublicRepos: Boolean
   invoice(invoiceId: String!): Invoice
   invoices: [Invoice] @cost(complexity: 100)
+  hasAdmins: Boolean @deprecated(reason: "Use config.hasAdmins instead")
   isAdmin: Boolean
   isCurrentUserActivated: Boolean
   isCurrentUserPartOfOrg: Boolean!
