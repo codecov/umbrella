@@ -11,7 +11,7 @@ class UpdateDefaultOrganizationInteractor(BaseInteractor):
         self,
         default_org: Owner | None,
     ) -> Owner | None:
-        if not self.current_user.is_authenticated:
+        if not self.current_user or not self.current_user.is_authenticated:
             raise Unauthenticated()
 
         if default_org is None:
