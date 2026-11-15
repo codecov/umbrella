@@ -5,8 +5,8 @@ from api.shared.commit.serializers import (
     CommitTotalsSerializer,
     PatchCoverageSerializer,
 )
+from compare.models import CommitComparison
 from core.models import Pull, PullStates
-from services.comparison import CommitComparisonService, ComparisonReport
 
 
 class PullSerializer(serializers.ModelSerializer):
@@ -40,17 +40,15 @@ class PullSerializer(serializers.ModelSerializer):
         fields = read_only_fields
 
     def get_patch(self, obj: Pull) -> dict[str, float] | None:
-        commit_comparison = CommitComparisonService.get_commit_comparison_for_pull(obj)
-        if not commit_comparison or not commit_comparison.is_processed:
+        state = getattr(obj, "commit_comparison_state", None)
+        if state != CommitComparison.CommitComparisonStates.PROCESSED:
             return None
-        cr = ComparisonReport(commit_comparison)
-        hits = misses = partials = 0
-        for f in cr.impacted_files:
-            pc = f.patch_coverage
-            if pc:
-                hits += pc.hits
-                misses += pc.misses
-                partials += pc.partials
+        patch_totals = getattr(obj, "commit_comparison_patch_totals", None)
+        if patch_totals is None:
+            return None
+        hits = patch_totals.get("hits", 0) or 0
+        misses = patch_totals.get("misses", 0) or 0
+        partials = patch_totals.get("partials", 0) or 0
         total_branches = hits + misses + partials
         coverage = 0.0
         if total_branches != 0:
