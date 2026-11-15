@@ -5,7 +5,7 @@ import orjson
 import sentry_sdk
 from asgiref.sync import async_to_sync
 from celery import group
-from sqlalchemy.orm import joinedload
+from sqlalchemy.orm import joinedload, load_only
 
 from app import celery_app
 from database.enums import CompareCommitError, CompareCommitState
@@ -50,10 +50,38 @@ class ComputeComparisonTask(BaseCodecovTask, name=compute_comparison_task_name):
         comparison: CompareCommit = (
             db_session.query(CompareCommit)
             .options(
-                joinedload(CompareCommit.compare_commit)
-                .joinedload(Commit.repository)
-                .joinedload(Repository.author),
-                joinedload(CompareCommit.base_commit).joinedload(Commit.repository),
+                joinedload(CompareCommit.compare_commit).options(
+                    load_only(
+                        Commit.id_,
+                        Commit.commitid,
+                        Commit.repoid,
+                        Commit.branch,
+                        Commit.merged,
+                        Commit.deleted,
+                        Commit.state,
+                        Commit.timestamp,
+                        Commit.totals,
+                        Commit._report_json,
+                        Commit._report_json_storage_path,
+                    ),
+                    joinedload(Commit.repository).joinedload(Repository.author),
+                ),
+                joinedload(CompareCommit.base_commit).options(
+                    load_only(
+                        Commit.id_,
+                        Commit.commitid,
+                        Commit.repoid,
+                        Commit.branch,
+                        Commit.merged,
+                        Commit.deleted,
+                        Commit.state,
+                        Commit.timestamp,
+                        Commit.totals,
+                        Commit._report_json,
+                        Commit._report_json_storage_path,
+                    ),
+                    joinedload(Commit.repository),
+                ),
             )
             .get(comparison_id)
         )
