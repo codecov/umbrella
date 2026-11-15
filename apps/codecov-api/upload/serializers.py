@@ -56,8 +56,14 @@ class UploadSerializer(serializers.ModelSerializer):
         return archive_service.create_presigned_put(obj.storage_path)
 
     def get_url(self, obj: ReportSession) -> str:
-        repository = obj.report.commit.repository
-        commit = obj.report.commit
+        commit = self.context.get("commit")
+        repository = self.context.get("repository")
+        if commit is None or repository is None:
+            try:
+                commit = obj.report.commit
+                repository = commit.repository
+            except Exception:
+                return ""
         return f"{settings.CODECOV_DASHBOARD_URL}/{repository.author.service}/{repository.author.username}/{repository.name}/commit/{commit.commitid}"
 
     def _create_existing_flags_map(self, repoid: int) -> dict:

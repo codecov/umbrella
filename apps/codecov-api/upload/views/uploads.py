@@ -306,6 +306,12 @@ class UploadViews(GetterMixin, CreateAPIView):
             },
         )
 
+        # Store commit and repository in serializer context so get_url() can use the
+        # already-fetched objects instead of making fresh DB FK lookups that may
+        # fail if the commit is concurrently deleted (see Sentry issue API-ESG).
+        serializer.context["commit"] = commit
+        serializer.context["repository"] = repository
+
         create_upload(
             cast(UploadSerializer, serializer),
             repository,
