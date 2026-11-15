@@ -27,6 +27,7 @@ from .start_trial import gql_start_trial
 from .store_event_metrics import gql_store_event_metrics
 from .sync_repos import gql_sync_repos
 from .sync_with_git_provider import gql_sync_with_git_provider
+from .transplant_report import gql_transplant_report
 from .update_bundle_cache_config import gql_update_bundle_cache_config
 from .update_default_organization import gql_update_default_organization
 from .update_profile import gql_update_profile
@@ -65,3 +66,4 @@ mutation = mutation + gql_save_okta_config
 mutation = mutation + gql_set_upload_token_required
 mutation = mutation + gql_update_bundle_cache_config
 mutation = mutation + gql_delete_owner
+mutation = mutation + gql_transplant_report
