@@ -174,6 +174,13 @@ def resolve_patch_totals(
     return {**totals, "coverage": coverage}
 
 
+@comparison_bindable.field("patchCoverage")
+def resolve_patch_coverage(
+    comparison: ComparisonReport, info: GraphQLResolveInfo
+) -> dict | None:
+    return resolve_patch_totals(comparison, info)
+
+
 @comparison_bindable.field("flagComparisons")
 @sync_to_async
 @sentry_sdk.trace
