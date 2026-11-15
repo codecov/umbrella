@@ -30,6 +30,11 @@ pull_bindable = ObjectType("Pull")
 pull_bindable.set_alias("pullId", "pullid")
 
 
+@pull_bindable.field("message")
+def resolve_message(pull: Pull, info: GraphQLResolveInfo) -> str | None:
+    return pull.title
+
+
 @pull_bindable.field("state")
 def resolve_state(pull: Pull, info: GraphQLResolveInfo) -> PullRequestState:
     return PullRequestState(pull.state)
