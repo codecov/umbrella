@@ -83,6 +83,7 @@ from .test_results_aggregates import (
 from .upload import upload, upload_bindable, upload_error_bindable
 from .user import user, user_bindable
 from .user_token import user_token, user_token_bindable
+from .version import version, version_bindable
 
 inputs = ariadne_load_local_graphql(__file__, "./inputs")
 enums = ariadne_load_local_graphql(__file__, "./enums")
@@ -134,6 +135,7 @@ types = [
     test_results,
     flake_aggregates,
     test_results_aggregates,
+    version,
 ]
 
 bindables = [

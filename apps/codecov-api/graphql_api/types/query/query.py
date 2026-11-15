@@ -10,6 +10,7 @@ from codecov.commands.exceptions import UnauthorizedGuestAccess
 from codecov_auth.models import Owner
 from graphql_api.actions.owner import get_owner
 from graphql_api.helpers.ariadne import ariadne_load_local_graphql
+from graphql_api.types.version.version import _parse_version
 
 query = ariadne_load_local_graphql(__file__, "query.graphql")
 query_bindable = ObjectType("Query")
@@ -77,3 +78,9 @@ def resolve_config(_: Any, info: GraphQLResolveInfo) -> object:
 
     # we have to return something here just to allow access to the child resolvers
     return object()
+
+
+@query_bindable.field("version")
+def resolve_version(_: Any, info: GraphQLResolveInfo) -> dict:
+    configure_sentry_scope(query_name(info))
+    return _parse_version()
