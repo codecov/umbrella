@@ -38,7 +38,14 @@ from graphql_api.types.enums import OrderingDirection, PathContentDisplayType
 from graphql_api.types.errors import MissingCoverage, UnknownPath
 from graphql_api.types.errors.errors import UnknownFlags
 from reports.models import CommitReport
-from services.bundle_analysis import BundleAnalysisComparison, BundleAnalysisReport
+from services.bundle_analysis import (
+    BundleAnalysisComparison,
+    BundleAnalysisMeasurementData,
+    BundleAnalysisMeasurementsAssetType,
+    BundleAnalysisMeasurementsService,
+    BundleAnalysisReport,
+    BundleReport,
+)
 from services.comparison import Comparison, ComparisonReport
 from services.components import Component
 from services.path import Dir, File, ReportPaths
@@ -486,6 +493,57 @@ def resolve_commit_bundle_analysis_report(commit: Commit, info) -> BundleAnalysi
     info.context["commit"] = commit
 
     return bundle_analysis_report
+
+
+@commit_bundle_analysis_bindable.field("measurements")
+@sync_to_async
+@sentry_sdk.trace
+def resolve_commit_bundle_analysis_measurements(
+    commit: Commit,
+    info: GraphQLResolveInfo,
+    interval=None,
+    before=None,
+    after=None,
+    branch=None,
+    ordering_direction=None,
+    filters=None,
+) -> list[BundleAnalysisMeasurementData]:
+    """
+    Returns bundle analysis measurements for all bundles in this commit's
+    bundle analysis report. Requires interval and before to be provided;
+    returns an empty list if either is missing.
+    """
+    if interval is None or before is None:
+        return []
+
+    bundle_analysis_report = load_bundle_analysis_report(commit)
+    if not isinstance(bundle_analysis_report, BundleAnalysisReport):
+        return []
+
+    info.context["commit"] = commit
+    bundle_analysis_measurements = BundleAnalysisMeasurementsService(
+        repository=commit.repository,
+        interval=interval,
+        before=before,
+        after=after,
+        branch=branch,
+    )
+
+    asset_types = list(filters.get("asset_types", [])) if filters else []
+    measurements = []
+    measurables = (
+        [BundleAnalysisMeasurementsAssetType[t] for t in asset_types]
+        if asset_types
+        else list(BundleAnalysisMeasurementsAssetType)
+    )
+
+    for bundle_report in bundle_analysis_report.bundles():
+        for asset_type in measurables:
+            measurements.extend(
+                bundle_analysis_measurements.compute_report(bundle_report, asset_type=asset_type)
+            )
+
+    return measurements
 
 
 @commit_bindable.field("latestUploadError")
