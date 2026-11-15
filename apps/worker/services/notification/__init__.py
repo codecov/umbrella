@@ -355,9 +355,21 @@ class NotificationService:
             if res is None or res.notification_attempted:
                 # only running if there is no result (indicating some exception)
                 # or there was an actual attempt
-                create_or_update_commit_notification_from_notification_result(
-                    comparison, notifier, res
-                )
+                try:
+                    create_or_update_commit_notification_from_notification_result(
+                        comparison, notifier, res
+                    )
+                except (CeleryError, SoftTimeLimitExceeded):
+                    log.warning(
+                        "Soft time limit exceeded during commit notification bookkeeping",
+                        extra={
+                            "commit": comparison.head.commit.commitid
+                            if comparison.head and comparison.head.commit
+                            else None,
+                            "notifier": notifier.name,
+                        },
+                    )
+                    raise
 
 
 def split_notifiers(
