@@ -303,7 +303,10 @@ class FileReportViewSet(
     def get_object(self):
         self.path = self.kwargs.get("path")
 
-        walk_back = int(self.request.query_params.get("walk_back", 0))
+        try:
+            walk_back = int(self.request.query_params.get("walk_back", 0))
+        except ValueError:
+            raise ValidationError("walk_back must be an integer")
         if walk_back > 20:
             raise ValidationError("walk_back must be <= 20")
 
