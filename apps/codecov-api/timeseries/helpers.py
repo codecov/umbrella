@@ -414,7 +414,8 @@ def owner_coverage_measurements_with_fallback(
             [
                 Dataset(name=MeasurementName.COVERAGE.value, repository_id=repo_id)
                 for repo_id in missing_dataset_repo_ids
-            ]
+            ],
+            ignore_conflicts=True,
         )
         trigger_backfill(created_datasets)
 
