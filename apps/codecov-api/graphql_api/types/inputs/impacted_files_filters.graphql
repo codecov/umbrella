@@ -1,5 +1,6 @@
 input ImpactedFilesFilters {
   ordering: ImpactedFilesOrdering
+  orderingDirection: OrderingDirection @deprecated(reason: "Use ordering.direction instead")
   hasUnintendedChanges: Boolean
   flags: [String!]
   components: [String!]

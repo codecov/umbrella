@@ -44,6 +44,15 @@ def resolve_impacted_files(
     command: CompareCommands = info.context["executor"].get_command("compare")
     comparison: Comparison = info.context.get("comparison", None)
 
+    # Normalize deprecated top-level `orderingDirection` into `ordering.direction`
+    # for backward compatibility with older clients.
+    if filters and "orderingDirection" in filters:
+        ordering_direction = filters.pop("orderingDirection")
+        if ordering_direction is not None:
+            ordering = filters.setdefault("ordering", {})
+            if "direction" not in ordering:
+                ordering["direction"] = ordering_direction
+
     if filters and comparison:
         flags = filters.get("flags", [])
         if flags and set(flags).isdisjoint(
