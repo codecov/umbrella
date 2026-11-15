@@ -819,7 +819,7 @@ class Comparison:
         commit_ids = [commit["commitid"] for commit in self.git_commits]
         commits_queryset = Commit.objects.filter(
             commitid__in=commit_ids, repository=self.base_commit.repository
-        )
+        ).select_related("author")
         commits_queryset.exclude(deleted=True)
         return commits_queryset
 
