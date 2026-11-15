@@ -226,6 +226,13 @@ class BaseCodecovTask(celery_app.Task):
 
     @sentry_sdk.trace
     def apply_async(self, args=None, kwargs=None, **options):
+        # Close any stale Django ORM connections before querying the DB for
+        # plan/routing info.  apply_async can be called mid-task (e.g. when
+        # dispatching a downstream task), so the connection may have been left
+        # open and subsequently closed by the server (pgBouncer timeout, DB
+        # restart, etc.).  close_old_connections() lets Django open a fresh
+        # connection instead of reusing the broken one.
+        close_old_connections()
         db_session = get_db_session()
         user_plan = _get_user_plan_from_task(db_session, self.name, kwargs)
         ownerid = _get_ownerid_from_task(db_session, self.name, kwargs)
