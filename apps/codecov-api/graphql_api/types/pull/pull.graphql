@@ -17,4 +17,5 @@ type Pull {
     before: String
   ): CommitConnection @cost(complexity: 10, multipliers: ["first", "last"])
   firstPull: Boolean!
+  flagComparisons: [FlagComparison]
 }
