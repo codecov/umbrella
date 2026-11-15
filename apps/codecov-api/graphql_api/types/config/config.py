@@ -5,6 +5,7 @@ from graphql.type.definition import GraphQLResolveInfo
 
 import services.self_hosted as self_hosted
 from graphql_api.types.enums.enums import LoginProvider, SyncProvider
+from shared.django_apps.codecov_auth.models import Plan
 from utils import strtobool
 
 config_bindable = ObjectType("Config")
@@ -145,3 +146,13 @@ def resolve_bitbucket_server_url(_, info):
 
     if settings.BITBUCKET_SERVER_CLIENT_ID:
         return settings.BITBUCKET_SERVER_URL
+
+
+@config_bindable.field("planPrices")
+@sync_to_async
+def resolve_plan_prices(_, info) -> list[str]:
+    return list(
+        Plan.objects.filter(is_active=True, stripe_id__isnull=False)
+        .exclude(stripe_id="")
+        .values_list("stripe_id", flat=True)
+    )
