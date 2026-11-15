@@ -54,6 +54,24 @@ def resolve_change_coverage(impacted_file: ImpactedFile, info) -> float:
     return impacted_file.change_coverage
 
 
+@impacted_file_bindable.field("lineCoverage")
+def resolve_line_coverage(impacted_file: ImpactedFile, info) -> dict:
+    """
+    Compatibility field for clients querying lineCoverage.
+    Maps baseNumber and headNumber to the percentCovered values of
+    baseCoverage and headCoverage respectively.
+    """
+    base_coverage = impacted_file.base_coverage
+    head_coverage = impacted_file.head_coverage
+    base_number = base_coverage.coverage if base_coverage else None
+    head_number = head_coverage.coverage if head_coverage else None
+    return {
+        "baseNumber": base_number,
+        "headNumber": head_number,
+        "headCoverage": head_number,
+    }
+
+
 @impacted_file_bindable.field("hashedPath")
 def resolve_hashed_path(impacted_file: ImpactedFile, info) -> str:
     path = impacted_file.head_name
