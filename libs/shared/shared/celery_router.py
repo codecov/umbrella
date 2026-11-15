@@ -1,11 +1,16 @@
 import fnmatch
+import logging
 import re
 from collections import OrderedDict
 from collections.abc import Mapping
 
+from django.db import OperationalError
+
 from shared.celery_config import BaseCeleryConfig, get_task_group
 from shared.config import get_config
 from shared.django_apps.codecov_auth.models import Plan
+
+log = logging.getLogger(__name__)
 
 Pattern = re.Pattern
 
@@ -79,7 +84,15 @@ def route_tasks_based_on_user_plan(task_name: str, user_plan: str, owner: int) -
     Returns:
         Dict containing queue name and any extra configuration
     """
-    plan = Plan.objects.get(name=user_plan)
+    try:
+        plan = Plan.objects.get(name=user_plan)
+    except OperationalError:
+        log.warning(
+            "route_tasks_based_on_user_plan: DB connection unavailable, "
+            "falling back to default queue",
+            extra={"task_name": task_name, "user_plan": user_plan},
+        )
+        return {"queue": _get_default_queue(task_name), "extra_config": {}}
 
     if not plan.is_enterprise_plan:
         return {"queue": _get_default_queue(task_name), "extra_config": {}}
