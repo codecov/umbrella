@@ -102,6 +102,7 @@ def update_uploads(
     """
 
     # first, delete removed sessions, as report merging can reuse deleted `session_id`s.
+    deleted_upload_ids: set[int] = set()
     if merge_result.deleted_sessions:
         any_upload_id = next(iter(merge_result.session_mapping.keys()))
         report_id = (
@@ -110,8 +111,10 @@ def update_uploads(
             .first()[0]
         )
 
-        delete_uploads_by_sessionid(
-            db_session, report_id, merge_result.deleted_sessions
+        deleted_upload_ids = set(
+            delete_uploads_by_sessionid(
+                db_session, report_id, merge_result.deleted_sessions
+            )
         )
 
     precision: int = read_yaml_field(commit_yaml, ("coverage", "precision"), 2)
@@ -127,6 +130,8 @@ def update_uploads(
     all_upload_updates: list[dict] = []
     for result in processing_results:
         upload_id = result["upload_id"]
+        if upload_id in deleted_upload_ids:
+            continue
 
         if result["successful"]:
             update = {
