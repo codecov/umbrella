@@ -346,8 +346,17 @@ class AsyncGraphqlView(GraphQLAsyncView):
         is_anonymous = user.is_anonymous if user else True
         # the only way to check for a malformed query
         is_bad_query = "Cannot query field" in error.formatted["message"]
+        # variable coercion errors are also client errors (e.g. passing a string
+        # where a GraphQL input object is expected)
+        is_bad_variable = "Expected type" in error.formatted[
+            "message"
+        ] and "to be a mapping" in error.formatted["message"]
         if debug or (not is_anonymous and is_bad_query):
             return format_error(error, debug)
+        if is_bad_variable:
+            formatted = error.formatted
+            formatted["type"] = "ClientError"
+            return formatted
         formatted = error.formatted
         formatted["message"] = "INTERNAL SERVER ERROR"
         formatted["type"] = "ServerError"
