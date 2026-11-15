@@ -16,7 +16,7 @@ type Repository {
   token: String!
   branch(name: String!): Branch
   commit(id: String!): Commit
-  pull(id: Int!): Pull
+  pull(id: Int, pullId: Int): Pull
   pulls(
     filters: PullsSetFilters
     orderingDirection: OrderingDirection
