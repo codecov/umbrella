@@ -10,7 +10,7 @@ from graphql_api.helpers.mutation import (
 async def resolve_regenerate_support_pin(_, info):
     command = info.context["executor"].get_command("owner")
     me = await command.regenerate_support_pin()
-    return {"me": me}
+    return {"me": me, "pin": me.support_pin}
 
 
 error_regenerate_support_pin = UnionType("RegenerateSupportPinError")
