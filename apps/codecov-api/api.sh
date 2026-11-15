@@ -83,6 +83,13 @@ if [[ "${CODECOV_SKIP_MIGRATIONS:-}" != "true" && ("${RUN_ENV:-}" = "ENTERPRISE"
   $pre_migrate $berglas python manage.py migrate $post_migrate
   $pre_migrate $berglas python migrate_timeseries.py $post_migrate
   $pre_migrate $berglas python manage.py pgpartition --yes --skip-delete $post_migrate
+elif [[ "${CODECOV_SKIP_MIGRATIONS:-}" != "true" && ("${RUN_ENV:-}" = "PROD" || "${RUN_ENV:-}" = "STAGING") ]]; then
+  echo "Checking for unapplied migrations before starting server..."
+  if ! $berglas python manage.py migrate --check 2>&1; then
+    echo "ERROR: There are unapplied database migrations. Run migrate.sh before deploying." >&2
+    exit 1
+  fi
+  echo "All migrations applied. Starting server."
 fi
 
 if [[ "${RUN_ENV:-}" = "STAGING" || "${RUN_ENV:-}" = "DEV" ]]; then
