@@ -75,10 +75,19 @@ class CompareViewSetMixin(CompareSlugMixin, viewsets.GenericViewSet):
                 state=CommitComparison.CommitComparisonStates.PENDING,
             )
             new_comparison.save()
-            TaskService().compute_comparison(new_comparison.pk)
-            log.info(
-                "CommitComparison not found, creating and request to compute new entry"
-            )
+            try:
+                TaskService().compute_comparison(new_comparison.pk)
+                log.info(
+                    "CommitComparison not found, creating and request to compute new entry"
+                )
+            except Exception:
+                log.warning(
+                    "Failed to enqueue compute_comparison task, deleting pending CommitComparison so it can be retried",
+                    extra={"comparison_id": new_comparison.pk},
+                    exc_info=True,
+                )
+                new_comparison.delete()
+                raise
             return new_comparison
         return commit_comparison[0]
 
