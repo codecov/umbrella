@@ -10,6 +10,7 @@ import sentry_sdk
 from asgiref.sync import async_to_sync
 from celery.exceptions import SoftTimeLimitExceeded
 from sqlalchemy.orm import Session as DbSession
+from urllib3.exceptions import IncompleteRead, ProtocolError, ReadTimeoutError
 
 from database.models import Commit, Repository, Upload, UploadError
 from database.models.reports import (
@@ -629,6 +630,30 @@ class ReportService(BaseReportService):
             )
             result.error = ProcessingError(
                 code=UploadErrorCode.FILE_NOT_IN_STORAGE,
+                params={"location": archive_url},
+                is_retryable=True,
+            )
+            raw_report_info.error = result.error
+            return result
+        except (
+            ProtocolError,
+            ReadTimeoutError,
+            IncompleteRead,
+            ConnectionError,
+        ) as e:
+            # Transient network failures while streaming the object body
+            # (e.g. connection reset by peer) are not covered by urllib3's
+            # request-level Retry. Mark them retryable so the task retries
+            # with backoff; the task reports to Sentry if retries are exhausted.
+            log.warning(
+                "Transient error when fetching raw report from storage",
+                extra={
+                    "archive_path": archive_url,
+                    "error": repr(e),
+                },
+            )
+            result.error = ProcessingError(
+                code=UploadErrorCode.UNKNOWN_STORAGE,
                 params={"location": archive_url},
                 is_retryable=True,
             )
