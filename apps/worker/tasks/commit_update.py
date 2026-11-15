@@ -14,7 +14,11 @@ from shared.django_apps.upload_breadcrumbs.models import (
     Errors,
     Milestones,
 )
-from shared.torngit.exceptions import TorngitClientError, TorngitRepoNotFoundError
+from shared.torngit.exceptions import (
+    TorngitClientError,
+    TorngitRefreshTokenFailedError,
+    TorngitRepoNotFoundError,
+)
 from tasks.base import BaseCodecovTask
 
 log = logging.getLogger(__name__)
@@ -135,6 +139,13 @@ class CommitUpdateTask(BaseCodecovTask, name=commit_update_task_name):
                 extra={"repoid": repoid, "commit": commitid},
             )
             error = Errors.REPO_NOT_FOUND
+        except TorngitRefreshTokenFailedError:
+            log.warning(
+                "Unable to reach git provider because token refresh failed",
+                extra={"repoid": repoid, "commit": commitid},
+                exc_info=True,
+            )
+            error = Errors.GIT_CLIENT_ERROR
         except TorngitClientError:
             log.warning(
                 "Unable to reach git provider because there was a 4xx error",
