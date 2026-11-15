@@ -2,5 +2,5 @@ type Flag {
     name: String!
     percentCovered: Float
     percentChange: Float
-    measurements(interval: MeasurementInterval!, after: DateTime!, before: DateTime!): [Measurement!]!
-} 
+    measurements(interval: MeasurementInterval!, after: DateTime!, before: DateTime!, branch: String): [Measurement!]!
+}   

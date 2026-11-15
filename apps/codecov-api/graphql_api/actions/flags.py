@@ -47,6 +47,7 @@ def flag_measurements(
     interval: Interval,
     after: datetime,
     before: datetime,
+    branch: str | None = None,
 ) -> Mapping[int, Iterable[dict]]:
     measurements = measurements_by_ids(
         repository=repository,
@@ -55,6 +56,7 @@ def flag_measurements(
         interval=interval,
         after=after,
         before=before,
+        branch=branch,
     )
 
     # By default the measurable_id is str type,
