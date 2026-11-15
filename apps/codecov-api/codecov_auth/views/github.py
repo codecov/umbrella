@@ -78,7 +78,7 @@ class GithubLoginView(LoginMixin, StateMixin, View):
         # This is specific to GitHub
         repo_service = self.repo_service_instance
         authenticated_user = await repo_service.get_authenticated_user(code)
-        if "access_token" not in authenticated_user:
+        if not authenticated_user or "access_token" not in authenticated_user:
             log.warning(
                 "Missing access_token during GitHub OAuth",
                 extra={
