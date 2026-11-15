@@ -1,3 +1,4 @@
 type SelfHostedLicense {
   expirationDate: DateTime
+  numberOfLicenses: Int
 }
