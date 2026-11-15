@@ -10,6 +10,7 @@ from collections.abc import Iterator
 from typing import TypedDict
 
 from celery.exceptions import CeleryError, SoftTimeLimitExceeded
+from shared.torngit.exceptions import TorngitServer5xxCodeError
 
 from database.enums import notification_type_status_or_checks
 from database.models.core import GITHUB_APP_INSTALLATION_DEFAULT_NAME, Owner, Repository
@@ -346,7 +347,7 @@ class NotificationService:
 
             log.info("Individual notification done", extra=log_extra)
             return notifier, res
-        except (CeleryError, SoftTimeLimitExceeded):
+        except (CeleryError, SoftTimeLimitExceeded, TorngitServer5xxCodeError):
             raise
         except Exception:
             log.exception("Individual notifier failed", extra=log_extra)
