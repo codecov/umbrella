@@ -229,7 +229,7 @@ class NotificationService:
                     **status,
                 }
                 yield (
-                    status["type"],
+                    status.get("type", "project"),
                     f"{status.get('name_prefix', '')}{component.get_display_name()}",
                     n_st,
                 )
@@ -248,7 +248,7 @@ class NotificationService:
             if flag_configuration and flag_configuration.get("enabled", True):
                 for st in flag_configuration.get("statuses", []):
                     n_st = {"flags": [f_name], **st}
-                    yield (st["type"], f"{st.get('name_prefix', '')}{f_name}", n_st)
+                    yield (st.get("type", "project"), f"{st.get('name_prefix', '')}{f_name}", n_st)
         # Component based statuses
         yield from self._get_component_statuses(current_flags)
 
