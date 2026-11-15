@@ -10,6 +10,7 @@ from helpers.checkpoint_logger.flows import TestResultsFlow
 from services.lock_manager import LockManager, LockRetry, LockType
 from services.test_analytics.ta_finish_upload import ta_finish_upload
 from shared.celery_config import test_results_finisher_task_name
+from shared.django_apps.upload_breadcrumbs.models import Errors, Milestones
 from shared.yaml import UserYaml
 from tasks.base import BaseCodecovTask
 from tasks.notify import notify_task_name
@@ -35,12 +36,27 @@ class TestResultsFinisherTask(BaseCodecovTask, name=test_results_finisher_task_n
         }
         log.info("Starting test results finisher task", extra=self.extra_dict)
 
+        bc_kwargs = {
+            "commit_sha": commitid,
+            "repo_id": repoid,
+            "task_name": self.name,
+            "parent_task_id": self.request.parent_id,
+        }
+
+        self._call_upload_breadcrumb_task(
+            milestone=Milestones.NOTIFICATIONS_TRIGGERED, **bc_kwargs
+        )
+
         lock_manager = LockManager(
             repoid=repoid,
             commitid=commitid,
             report_type=ReportType.COVERAGE,
             lock_timeout=max(80, self.hard_time_limit_task),
             blocking_timeout=None,
+        )
+
+        self._call_upload_breadcrumb_task(
+            milestone=Milestones.LOCK_ACQUIRING, **bc_kwargs
         )
 
         try:
@@ -51,6 +67,9 @@ class TestResultsFinisherTask(BaseCodecovTask, name=test_results_finisher_task_n
                 max_retries=5,
                 retry_num=self.attempts,
             ):
+                self._call_upload_breadcrumb_task(
+                    milestone=Milestones.LOCK_ACQUIRED, **bc_kwargs
+                )
                 finisher_result = self.process_impl_within_lock(
                     db_session=db_session,
                     repoid=repoid,
@@ -58,6 +77,10 @@ class TestResultsFinisherTask(BaseCodecovTask, name=test_results_finisher_task_n
                     commit_yaml=UserYaml.from_dict(commit_yaml),
                     **kwargs,
                 )
+            self._call_upload_breadcrumb_task(
+                milestone=Milestones.LOCK_RELEASED, **bc_kwargs
+            )
+
             if finisher_result["queue_notify"]:
                 self.app.tasks[notify_task_name].apply_async(
                     args=None,
@@ -68,9 +91,16 @@ class TestResultsFinisherTask(BaseCodecovTask, name=test_results_finisher_task_n
                     },
                 )
 
+            self._call_upload_breadcrumb_task(
+                milestone=Milestones.NOTIFICATIONS_SENT, **bc_kwargs
+            )
+
             return finisher_result
 
         except LockRetry as retry:
+            self._call_upload_breadcrumb_task(
+                error=Errors.INTERNAL_LOCK_ERROR, **bc_kwargs
+            )
             if retry.max_retries_exceeded:
                 log.error(
                     "Not retrying lock acquisition - max retries exceeded",
