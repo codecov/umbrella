@@ -93,4 +93,22 @@ type BranchEdge {
   node: Branch!
 }
 
+"""
+Result of a repository lookup. Use inline fragments to access type-specific fields.
+
+Example:
+  repository(name: "my-repo") {
+    ... on Repository {
+      name
+      private
+      coverageEnabled
+    }
+    ... on NotFoundError {
+      message
+    }
+    ... on OwnerNotActivatedError {
+      message
+    }
+  }
+"""
 union RepositoryResult = Repository | NotFoundError | OwnerNotActivatedError
