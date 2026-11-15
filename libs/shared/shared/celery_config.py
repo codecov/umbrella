@@ -344,6 +344,53 @@ DEFAULT_BLOCKING_TIMEOUT_SECONDS = int(
 )
 
 
+
+# How often (seconds) redis-py PINGs idle broker connections to detect staleness
+# before they're used for task ACKs. Set to 0 to disable.
+# Default: 30 seconds
+BROKER_HEALTH_CHECK_INTERVAL_SECONDS = int(
+    get_config(
+        "setup", "tasks", "celery", "broker_health_check_interval", default=30
+    )
+)
+
+# Enable TCP socket keepalive on broker connections so OS sends keepalive probes
+# on idle sockets, preventing the Redis server or network devices from silently
+# resetting them due to inactivity.
+# Default: True
+BROKER_SOCKET_KEEPALIVE = bool(
+    get_config(
+        "setup", "tasks", "celery", "broker_socket_keepalive", default=True
+    )
+)
+
+# OS-level TCP keepalive parameters (Linux only).
+# KEEPIDLE:  seconds idle before sending first probe (default: 60)
+# KEEPINTVL: seconds between probes (default: 10)
+# KEEPCNT:   number of failed probes before declaring connection dead (default: 5)
+import socket as _socket
+
+BROKER_SOCKET_KEEPALIVE_OPTIONS: dict = {}
+if BROKER_SOCKET_KEEPALIVE and hasattr(_socket, "TCP_KEEPIDLE"):
+    BROKER_SOCKET_KEEPALIVE_OPTIONS = {
+        _socket.TCP_KEEPIDLE: int(
+            get_config(
+                "setup", "tasks", "celery", "broker_tcp_keepidle", default=60
+            )
+        ),
+        _socket.TCP_KEEPINTVL: int(
+            get_config(
+                "setup", "tasks", "celery", "broker_tcp_keepintvl", default=10
+            )
+        ),
+        _socket.TCP_KEEPCNT: int(
+            get_config(
+                "setup", "tasks", "celery", "broker_tcp_keepcnt", default=5
+            )
+        ),
+    }
+
+
 class BaseCeleryConfig:
     broker_url = get_config("services", "celery_broker") or get_config(
         "services", "redis_url"
@@ -363,6 +410,13 @@ class BaseCeleryConfig:
     # Can be overridden via: setup.tasks.celery.visibility_timeout config
     broker_transport_options = {
         "visibility_timeout": TASK_VISIBILITY_TIMEOUT_SECONDS,
+        # Periodically PING idle connections so stale ones are detected and
+        # replaced before they're needed for task acknowledgment.
+        "health_check_interval": BROKER_HEALTH_CHECK_INTERVAL_SECONDS,
+        # Keep idle TCP connections alive so the Redis server / network
+        # middleboxes don't silently reset them (ECONNRESET / errno 104).
+        "socket_keepalive": BROKER_SOCKET_KEEPALIVE,
+        "socket_keepalive_options": BROKER_SOCKET_KEEPALIVE_OPTIONS,
     }
     result_extended = True
     task_default_queue = get_config(
