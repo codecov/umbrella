@@ -271,7 +271,7 @@ def _location_to_int(location: dict) -> int | None:
     if location.get("skip"):
         return None
 
-    elif location["start"].get("line", 0) == 0:
+    elif not location["start"].get("line"):
         return None
 
     return int(location["start"]["line"])
