@@ -7,4 +7,5 @@ type BundleAnalysisReport {
   bundleData: BundleData!
   bundle(name: String!, filters: BundleAnalysisReportFilters): BundleReport
   isCached: Boolean!
+  data: BundleData! @deprecated(reason: "Use bundleData instead")
 }
