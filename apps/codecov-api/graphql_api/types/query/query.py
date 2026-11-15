@@ -41,9 +41,17 @@ def resolve_me(_: Any, info: GraphQLResolveInfo) -> Owner | None:
 
 @query_bindable.field("owner")
 async def resolve_owner(
-    _: Any, info: GraphQLResolveInfo, username: str
+    _: Any,
+    info: GraphQLResolveInfo,
+    username: str | None = None,
+    name: str | None = None,
 ) -> Owner | None:
     configure_sentry_scope(query_name(info))
+
+    # Accept either `username` or `name` as the owner identifier
+    resolved_username = username or name
+    if not resolved_username:
+        return None
 
     service = info.context["service"]
     if not service:
@@ -56,7 +64,7 @@ async def resolve_owner(
             raise UnauthorizedGuestAccess()
 
         # if the owner tracks plan activated users, check if the user is in the list
-        target_owner = await get_owner(service, username)
+        target_owner = await get_owner(service, resolved_username)
         has_plan_activated_users = (
             target_owner
             and target_owner.plan_activated_users is not None
@@ -68,7 +76,7 @@ async def resolve_owner(
         ):
             raise UnauthorizedGuestAccess()
 
-    return await get_owner(service, username)
+    return await get_owner(service, resolved_username)
 
 
 @query_bindable.field("config")
