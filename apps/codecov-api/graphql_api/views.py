@@ -224,7 +224,12 @@ class AsyncGraphqlView(GraphQLAsyncView):
     def get_clean_query(self, request_body: dict[str, Any]) -> str | None:
         # clean up graphql query to remove new lines and extra spaces
         if "query" in request_body and isinstance(request_body["query"], str):
-            clean_query = request_body["query"].replace("\n", " ")
+            clean_query = request_body["query"].strip()
+            # Strip accidental surrounding double-quotes (e.g. clients that send
+            # the query as a JSON-encoded string instead of a plain string).
+            if clean_query.startswith('"') and clean_query.endswith('"'):
+                clean_query = clean_query[1:-1].strip()
+            clean_query = clean_query.replace("\n", " ")
             clean_query = clean_query.replace("  ", "").strip()
             return clean_query
 
@@ -248,6 +253,9 @@ class AsyncGraphqlView(GraphQLAsyncView):
         cleaned_query = self.get_clean_query(req_body)
         if cleaned_query:
             req_body["query"] = cleaned_query
+            # Rewrite the cached request body so ariadne's parent view parses
+            # the normalized query (e.g. with surrounding quotes stripped).
+            request._body = json.dumps(req_body).encode("utf-8")
 
         # put everything together for log
         log_data = {
