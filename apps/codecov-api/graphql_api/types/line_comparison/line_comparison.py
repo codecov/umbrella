@@ -70,6 +70,16 @@ def resolve_content(line_comparison: LineComparison, info) -> str:
     return f" {value}"
 
 
+@line_comparison_bindable.field("coverage")
+def resolve_coverage(line_comparison: LineComparison, info) -> dict | None:
+    base_type: LineType = line_comparison.coverage["base"]
+    head_type: LineType = line_comparison.coverage["head"]
+    return {
+        "base": line_coverages.get(base_type) if base_type is not None else None,
+        "head": line_coverages.get(head_type) if head_type is not None else None,
+    }
+
+
 @line_comparison_bindable.field("coverageInfo")
 def resolve_coverage_info(
     line_comparison: LineComparison,
