@@ -2132,6 +2132,8 @@ class Github(TorngitBaseAdapter):
                     url_name="find_pull_request"
                 ).substitute(slug=self.slug, commit=commit)
                 res = await self.api(client, "get", url, token=token)
+                if res is None:
+                    return None
                 prs_with_commit = [
                     data["number"] for data in res if data["state"] == state
                 ]
