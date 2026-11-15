@@ -44,20 +44,30 @@ class Bitbucket(TorngitBaseAdapter):
     }
 
     async def _send_request(self, client, method, url, kwargs, log_dict):
-        try:
-            res = await client.request(method.upper(), url, **kwargs)
-            logged_body = None
-            if res.status_code >= 300 and res.text is not None:
-                logged_body = res.text
-            log.log(
-                logging.WARNING if res.status_code >= 300 else logging.INFO,
-                "Bitbucket HTTP %s",
-                res.status_code,
-                extra=dict(body=logged_body, **log_dict),
-            )
-            return res
-        except (httpx.NetworkError, httpx.TimeoutException):
-            raise TorngitServerUnreachableError("Bitbucket was not able to be reached.")
+        max_attempts = 3
+        for attempt in range(1, max_attempts + 1):
+            try:
+                res = await client.request(method.upper(), url, **kwargs)
+                logged_body = None
+                if res.status_code >= 300 and res.text is not None:
+                    logged_body = res.text
+                log.log(
+                    logging.WARNING if res.status_code >= 300 else logging.INFO,
+                    "Bitbucket HTTP %s",
+                    res.status_code,
+                    extra=dict(body=logged_body, **log_dict),
+                )
+                return res
+            except (httpx.NetworkError, httpx.TimeoutException):
+                if attempt < max_attempts:
+                    log.warning(
+                        "Transient network error contacting Bitbucket, retrying",
+                        extra=dict(attempt=attempt, **log_dict),
+                    )
+                    continue
+                raise TorngitServerUnreachableError(
+                    "Bitbucket was not able to be reached."
+                )
 
     async def api(
         self, client, version, method, path, json=False, body=None, token=None, **kwargs
@@ -432,7 +442,7 @@ class Bitbucket(TorngitBaseAdapter):
                         yield repos
                         if len(repos) == 0 or not has_next:
                             break
-                except TorngitClientError:
+                except (TorngitClientError, TorngitServerUnreachableError):
                     log.warning(
                         "Unable to fetch repos from team on Bitbucket",
                         extra={"team_name": team},
