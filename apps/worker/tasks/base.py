@@ -31,15 +31,13 @@ from helpers.exceptions import NoConfiguredAppsAvailable, RepositoryWithoutValid
 from helpers.log_context import LogContext, set_log_context
 from helpers.save_commit_error import save_commit_error
 from services.repository import get_repo_provider_service
-from shared.celery_config import (
-    TASK_RETRY_BACKOFF_BASE_SECONDS,
-    upload_breadcrumb_task_name,
-)
+from shared.celery_config import TASK_RETRY_BACKOFF_BASE_SECONDS
 from shared.celery_router import route_tasks_based_on_user_plan
 from shared.django_apps.upload_breadcrumbs.models import (
     BreadcrumbData,
     Errors,
     Milestones,
+    UploadBreadcrumb,
 )
 from shared.metrics import Counter, Histogram
 from shared.torngit.base import TorngitBaseAdapter
@@ -725,23 +723,27 @@ class BaseCodecovTask(celery_app.Task):
         error_text: str | None = None,
     ):
         """
-        Queue a task to create an upload breadcrumb.
+        Create an upload breadcrumb by writing directly to the database.
+
+        Previously this enqueued a Celery task, but doing so required a Redis
+        write which could fail under Redis OOM prevention. Since breadcrumb
+        creation is just a DB write plus metric increments, we do it inline to
+        avoid the Redis dependency entirely.
         """
         try:
-            self.app.tasks[upload_breadcrumb_task_name].apply_async(
-                kwargs={
-                    "commit_sha": commit_sha,
-                    "repo_id": repo_id,
-                    "breadcrumb_data": BreadcrumbData(
-                        milestone=milestone, error=error, error_text=error_text
-                    ),
-                    "upload_ids": upload_ids,
-                    "sentry_trace_id": current_sentry_trace_id(),
-                }
+            breadcrumb_data = BreadcrumbData(
+                milestone=milestone, error=error, error_text=error_text
+            )
+            UploadBreadcrumb.objects.create(
+                commit_sha=commit_sha,
+                repo_id=repo_id,
+                breadcrumb_data=breadcrumb_data.model_dump(),
+                upload_ids=upload_ids,
+                sentry_trace_id=current_sentry_trace_id(),
             )
         except Exception:
             log.exception(
-                "Failed to queue upload breadcrumb task",
+                "Failed to create upload breadcrumb",
                 extra={
                     "commit_sha": commit_sha,
                     "repo_id": repo_id,
