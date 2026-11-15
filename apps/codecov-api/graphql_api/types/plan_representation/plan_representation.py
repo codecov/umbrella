@@ -46,6 +46,13 @@ def resolve_benefits(plan_data: Plan, info) -> list[str]:
     return plan_data.benefits
 
 
+@plan_representation_bindable.field("hasSeatsLeft")
+@sync_to_async
+def resolve_has_seats_left(plan_data: Plan, info) -> bool:
+    plan_service: PlanService = info.context["plan_service"]
+    return plan_service.has_seats_left
+
+
 @plan_representation_bindable.field("monthlyUploadLimit")
 def resolve_monthly_uploads_limit(plan_data: Plan, info) -> int | None:
     return plan_data.monthly_uploads_limit
