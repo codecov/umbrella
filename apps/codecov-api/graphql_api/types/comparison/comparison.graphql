@@ -14,6 +14,8 @@ type Comparison {
   hasDifferentNumberOfHeadAndBaseReports: Boolean!
   flagComparisonsCount: Int!
   componentComparisonsCount: Int!
+  "CoverageAnalytics are fields related to Codecov's Coverage product for the head commit's repository"
+  coverageAnalytics: CoverageAnalytics
 }
 
 type MissingBaseCommit implements ResolverError {
