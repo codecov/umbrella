@@ -1,6 +1,7 @@
 import logging
 
 from asgiref.sync import async_to_sync
+from celery.exceptions import SoftTimeLimitExceeded
 
 from app import celery_app
 from database.models import Commit
@@ -40,37 +41,44 @@ class StatusSetErrorTask(BaseCodecovTask, name=status_set_error_task_name):
 
         status_set = False
 
-        if settings and any(settings.values()):
-            statuses = async_to_sync(repo_service.get_commit_statuses)(commitid)
-            url = make_url(repo_service, "commit", commitid)
-            for context in ("project", "patch", "changes"):
-                if settings.get(context):
-                    for key, data in default_if_true(settings[context]):
-                        context = "codecov/{}{}".format(
-                            context,
-                            ("/" + key if key != "default" else ""),
-                        )
-                        state = (
-                            "success"
-                            if data.get("informational")
-                            else data.get("if_ci_failed", "error")
-                        )
-                        message = (
-                            message or "Coverage not measured fully because CI failed"
-                        )
-                        if context in statuses:
-                            async_to_sync(repo_service.set_commit_status)(
-                                commitid, state, context, message, url
+        try:
+            if settings and any(settings.values()):
+                statuses = async_to_sync(repo_service.get_commit_statuses)(commitid)
+                url = make_url(repo_service, "commit", commitid)
+                for context in ("project", "patch", "changes"):
+                    if settings.get(context):
+                        for key, data in default_if_true(settings[context]):
+                            context = "codecov/{}{}".format(
+                                context,
+                                ("/" + key if key != "default" else ""),
                             )
-                            status_set = True
-                            log.info(
-                                "Status set",
-                                extra={
-                                    "context": context,
-                                    "description": message,
-                                    "state": state,
-                                },
+                            state = (
+                                "success"
+                                if data.get("informational")
+                                else data.get("if_ci_failed", "error")
                             )
+                            message = (
+                                message
+                                or "Coverage not measured fully because CI failed"
+                            )
+                            if context in statuses:
+                                async_to_sync(repo_service.set_commit_status)(
+                                    commitid, state, context, message, url
+                                )
+                                status_set = True
+                                log.info(
+                                    "Status set",
+                                    extra={
+                                        "context": context,
+                                        "description": message,
+                                        "state": state,
+                                    },
+                                )
+        except SoftTimeLimitExceeded:
+            log.warning(
+                "SetError task hit soft time limit while setting commit statuses",
+                extra={"repoid": repoid, "commitid": commitid},
+            )
 
         return {"status_set": status_set}
 
