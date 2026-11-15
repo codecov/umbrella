@@ -36,6 +36,10 @@ type MissingHeadReport implements ResolverError {
   message: String!
 }
 
+type MissingReports implements ResolverError {
+  message: String!
+}
+
 type FirstPullRequest {
   message: String!
 }
@@ -48,3 +52,4 @@ union ComparisonResult =
   | MissingComparison
   | MissingBaseReport
   | MissingHeadReport
+  | MissingReports

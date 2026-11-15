@@ -18,6 +18,7 @@ from graphql_api.types.errors import (
     MissingComparison,
     MissingHeadCommit,
     MissingHeadReport,
+    MissingReports,
 )
 from graphql_api.types.errors.errors import UnknownFlags
 from reports.models import ReportLevelTotals
@@ -278,5 +279,7 @@ def resolve_comparison_result_type(obj, *_):
         return "MissingBaseReport"
     elif isinstance(obj, MissingHeadReport):
         return "MissingHeadReport"
+    elif isinstance(obj, MissingReports):
+        return "MissingReports"
     elif isinstance(obj, FirstPullRequest):
         return "FirstPullRequest"
