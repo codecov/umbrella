@@ -171,6 +171,8 @@ class ComparisonProxy:
         """
         if self._patch_totals is NOT_RESOLVED:
             diff = self.get_diff(use_original_base=True)
+            if self.head.report is None:
+                return None
             self._patch_totals = self.head.report.apply_diff(diff)
 
         return self._patch_totals
@@ -363,6 +365,8 @@ class FilteredComparison:
         if self._patch_totals:
             return self._patch_totals
         diff = self.get_diff(use_original_base=True)
+        if self.head.report is None:
+            return None
         self._patch_totals = self.head.report.apply_diff(diff)
         return self._patch_totals
 
