@@ -38,6 +38,10 @@ class SetYamlOnOwnerInteractor(BaseInteractor):
         yaml_safe = html.escape(yaml_input, quote=False)
         try:
             yaml_dict = yaml.safe_load(yaml_safe)
+        except yaml.reader.ReaderError as e:
+            raise ValidationError(
+                "Invalid YAML: contains non-printable or binary characters"
+            )
         except yaml.scanner.ScannerError as e:
             line = e.problem_mark.line
             column = e.problem_mark.column
