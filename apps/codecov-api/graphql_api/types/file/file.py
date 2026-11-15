@@ -6,6 +6,7 @@ from graphql_api.types.enums import CoverageLine
 from shared.utils.merge import LineType, line_type
 
 file_bindable = ObjectType("File")
+line_with_coverage_bindable = ObjectType("LineWithCoverage")
 
 
 @file_bindable.field("content")
@@ -27,6 +28,19 @@ def get_coverage_type(line_report):
 
 @file_bindable.field("coverage")
 def resolve_coverage(data, info):
+    file_report = data.get("file_report")
+
+    if not file_report:
+        return []
+
+    return [
+        {"line": line_report[0], "coverage": get_coverage_type(line_report[1])}
+        for line_report in file_report.lines
+    ]
+
+
+@file_bindable.field("lineWithCoverage")
+def resolve_line_with_coverage(data, info):
     file_report = data.get("file_report")
 
     if not file_report:

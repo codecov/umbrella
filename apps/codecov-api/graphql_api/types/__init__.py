@@ -33,7 +33,7 @@ from .config import config, config_bindable
 from .coverage_analytics import coverage_analytics, coverage_analytics_bindable
 from .coverage_totals import coverage_totals, coverage_totals_bindable
 from .enums import enum_types
-from .file import commit_file, file_bindable
+from .file import commit_file, file_bindable, line_with_coverage_bindable
 from .flag import flag, flag_bindable
 from .flag_comparison import flag_comparison, flag_comparison_bindable
 from .flake_aggregates import flake_aggregates, flake_aggregates_bindable
@@ -163,6 +163,7 @@ bindables = [
     coverage_totals_bindable,
     datetime_scalar,
     file_bindable,
+    line_with_coverage_bindable,
     flag_bindable,
     flag_comparison_bindable,
     impacted_file_bindable,
