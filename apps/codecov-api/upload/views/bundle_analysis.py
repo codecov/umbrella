@@ -34,7 +34,10 @@ from upload.helpers import (
     generate_upload_prometheus_metrics_labels,
 )
 from upload.views.base import ShelterMixin
-from upload.views.helpers import get_repository_from_string
+from upload.views.helpers import (
+    get_or_create_repository_from_string,
+    get_repository_from_string,
+)
 
 log = logging.getLogger(__name__)
 
@@ -104,7 +107,9 @@ class BundleAnalysisView(ShelterMixin, APIView):
         if isinstance(request.user, Owner):
             # using org token
             owner = request.user
-            repo = get_repository_from_string(Service(owner.service), data["slug"])
+            repo, _ = get_or_create_repository_from_string(
+                Service(owner.service), data["slug"]
+            )
         elif isinstance(request.user, RepositoryAsUser):
             # repository token
             repo = request.user._repository
