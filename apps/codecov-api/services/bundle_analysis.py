@@ -361,6 +361,10 @@ class BundleAnalysisReport:
         return sum([bundle.size_total for bundle in self.bundles])
 
     @cached_property
+    def gzip_size_total(self) -> int:
+        return sum([bundle.gzip_size_total for bundle in self.bundles])
+
+    @cached_property
     def is_cached(self) -> bool:
         return self.report.is_cached()
 
