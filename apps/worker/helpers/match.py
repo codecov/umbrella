@@ -1,4 +1,13 @@
+import fnmatch
 import re
+
+
+def _safe_match(pattern: str, string: str) -> re.Match | None:
+    """Match string against pattern, falling back to glob interpretation on invalid regex."""
+    try:
+        return re.match(pattern, string)
+    except re.error:
+        return re.match(fnmatch.translate(pattern), string)
 
 
 def match(patterns: list[str] | None, string: str) -> bool:
@@ -12,13 +21,13 @@ def match(patterns: list[str] | None, string: str) -> bool:
     # must not match
     for pattern in negatives:
         # matched a negative search
-        if re.match(pattern.replace("!", ""), string):
+        if _safe_match(pattern.replace("!", ""), string):
             return False
 
     if positives:
         for pattern in positives:
             # match was found
-            if re.match(pattern, string):
+            if _safe_match(pattern, string):
                 return True
 
         # did not match any required paths
