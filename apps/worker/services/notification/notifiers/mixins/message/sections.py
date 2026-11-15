@@ -15,6 +15,8 @@ from services.notification.notifiers.mixins.message.helpers import (
     diff_to_string,
     ellipsis,
     escape_markdown,
+    get_patch_status_target,
+    get_patch_status_threshold,
     get_table_header,
     get_table_layout,
     has_project_status,
@@ -165,9 +167,27 @@ class HeaderSectionWriter(BaseSectionWriter):
             patch_coverage = None
         if misses_and_partials:
             ln_text = "lines" if misses_and_partials > 1 else "line"
-            yield (
-                f":x: Patch coverage is `{patch_coverage}%` with `{misses_and_partials} {ln_text}` in your changes missing coverage. Please review."
+            # A custom patch target means "green once the patch clears that bar", not only
+            # at 100%. Mirror the codecov/patch status so the comment agrees with the check.
+            # Default (auto) targets keep the historical 100%-only checkmark.
+            target, is_custom_target = get_patch_status_target(yaml, comparison)
+            threshold = get_patch_status_threshold(yaml)
+            meets_custom_target = (
+                is_custom_target
+                and target is not None
+                and patch_coverage is not None
+                and Decimal(str(patch_coverage)) >= target - threshold
             )
+            if meets_custom_target:
+                yield (
+                    f":white_check_mark: Patch coverage is `{patch_coverage}%`, meeting the "
+                    f"`{round_number(yaml, target)}%` target (`{misses_and_partials} {ln_text}` "
+                    f"in your changes still missing coverage)."
+                )
+            else:
+                yield (
+                    f":x: Patch coverage is `{patch_coverage}%` with `{misses_and_partials} {ln_text}` in your changes missing coverage. Please review."
+                )
         else:
             yield ":white_check_mark: All modified and coverable lines are covered by tests."
 
