@@ -42,7 +42,7 @@ if [[ -n "${CODECOV_WORKER_QUEUES:-}" ]]; then
   queues="--queue $CODECOV_WORKER_QUEUES"
 fi
 
-if [[ "${CODECOV_SKIP_MIGRATIONS:-}" != "true" && ("${RUN_ENV:-}" = "ENTERPRISE" || "${RUN_ENV:-}" = "DEV") ]]; then
+if [[ "${CODECOV_SKIP_MIGRATIONS:-}" != "true" ]]; then
   echo "Running migrations"
   $pre_migrate $berglas python manage.py migrate $post_migrate
   $pre_migrate $berglas python migrate_timeseries.py $post_migrate
