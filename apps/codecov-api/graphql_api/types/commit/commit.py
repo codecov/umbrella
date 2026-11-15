@@ -53,6 +53,7 @@ commit_coverage_analytics_bindable = ObjectType("CommitCoverageAnalytics")
 commit_bundle_analysis_bindable = ObjectType("CommitBundleAnalysis")
 
 commit_bindable.set_alias("createdAt", "timestamp")
+commit_bindable.set_alias("commitId", "commitid")
 commit_bindable.set_alias("pullId", "pullid")
 commit_bindable.set_alias("branchName", "branch")
 
