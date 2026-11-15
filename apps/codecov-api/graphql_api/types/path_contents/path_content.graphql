@@ -16,6 +16,7 @@ type PathContentFile implements PathContent {
   partials: Int!
   lines: Int!
   percentCovered: Float!
+  isCriticalFile: Boolean! @deprecated(reason: "Impact Analysis has been removed. This field always returns false.")
 }
 
 type PathContentDir implements PathContent {
