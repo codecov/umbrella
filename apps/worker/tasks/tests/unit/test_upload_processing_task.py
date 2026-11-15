@@ -987,15 +987,17 @@ class TestUploadProcessorTask:
         )
         dbsession.add(upload_1)
         dbsession.flush()
-        with pytest.raises(celery.exceptions.SoftTimeLimitExceeded, match="banana"):
-            UploadProcessorTask().run_impl(
-                dbsession,
-                {},
-                repoid=commit.repoid,
-                commitid=commit.commitid,
-                commit_yaml={},
-                arguments={"url": "url", "what": "huh", "upload_id": upload_1.id_},
-            )
+        result = UploadProcessorTask().run_impl(
+            dbsession,
+            {},
+            repoid=commit.repoid,
+            commitid=commit.commitid,
+            commit_yaml={},
+            arguments={"url": "url", "what": "huh", "upload_id": upload_1.id_},
+        )
+        # SoftTimeLimitExceeded is now caught and returned as a failed result
+        # instead of re-raising, so the chord is not broken.
+        assert result == {"successful": False, "error": "SoftTimeLimitExceeded"}
         assert commit.state == "error"
         mock_self_app.tasks[upload_breadcrumb_task_name].apply_async.assert_has_calls(
             [
