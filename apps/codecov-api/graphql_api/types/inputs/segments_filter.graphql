@@ -1,3 +1,4 @@
 input SegmentsFilters {
   hasUnintendedChanges: Boolean
+  flags: [String!]
 }
