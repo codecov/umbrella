@@ -737,11 +737,19 @@ class BaseCodecovTask(celery_app.Task):
                     ),
                     "upload_ids": upload_ids,
                     "sentry_trace_id": current_sentry_trace_id(),
-                }
+                },
+                retry=True,
+                retry_policy={
+                    "max_retries": 3,
+                    "interval_start": 0.2,
+                    "interval_step": 0.2,
+                    "interval_max": 1,
+                },
             )
         except Exception:
-            log.exception(
+            log.warning(
                 "Failed to queue upload breadcrumb task",
+                exc_info=True,
                 extra={
                     "commit_sha": commit_sha,
                     "repo_id": repo_id,
