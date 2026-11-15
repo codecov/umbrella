@@ -747,13 +747,18 @@ class ReportService(BaseReportService):
                 "commitid": commit.commitid,
             },
         )
+        # Fetch `commit.report` (which queries `CommitReport`) BEFORE dirtying the
+        # commit object. If fetched after mutations, SQLAlchemy's autoflush would
+        # flush the pending UPDATE to `commits` mid-query, which triggers a DB trigger
+        # that locks the `owners` row — causing deadlocks with concurrent tasks.
+        existing_commit_report = commit.report
+
         # `report_json` is an `ArchiveField`, so this will trigger an upload
         # FIXME: we do an unnecessary `loads` roundtrip because of this abstraction,
         # and we should just save the `report_json` to archive storage directly instead.
         commit.report_json = orjson.loads(report_json)
 
-        # `report` is an accessor which implicitly queries `CommitReport`
-        if commit_report := commit.report:
+        if commit_report := existing_commit_report:
             db_session = commit.get_db_session()
 
             report_totals = commit_report.totals
