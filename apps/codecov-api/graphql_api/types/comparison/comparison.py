@@ -193,10 +193,7 @@ def resolve_flag_comparisons(
     return list(all_flags)
 
 
-@comparison_bindable.field("componentComparisons")
-@sync_to_async
-@sentry_sdk.trace
-def resolve_component_comparisons(
+def _fetch_component_comparisons(
     comparison_report: ComparisonReport, info: GraphQLResolveInfo, filters=None
 ) -> list[ComponentComparison]:
     current_owner = info.context["request"].current_owner
@@ -225,6 +222,25 @@ def resolve_component_comparisons(
     }
 
     return list(list_components)
+
+
+@comparison_bindable.field("componentComparisons")
+@sync_to_async
+@sentry_sdk.trace
+def resolve_component_comparisons(
+    comparison_report: ComparisonReport, info: GraphQLResolveInfo, filters=None
+) -> list[ComponentComparison]:
+    return _fetch_component_comparisons(comparison_report, info, filters)
+
+
+@comparison_bindable.field("components")
+@sync_to_async
+@sentry_sdk.trace
+def resolve_components(
+    comparison_report: ComparisonReport, info: GraphQLResolveInfo, filters=None
+) -> list[ComponentComparison]:
+    """Deprecated alias for componentComparisons."""
+    return _fetch_component_comparisons(comparison_report, info, filters)
 
 
 @comparison_bindable.field("componentComparisonsCount")
