@@ -39,6 +39,11 @@ def resolve_owner(user, _):
     return user
 
 
+@me_bindable.field("ownerid")
+def resolve_ownerid(user: Owner, _) -> int:
+    return user.ownerid
+
+
 @me_bindable.field("viewableRepositories")
 @sentry_sdk.trace
 def resolve_viewable_repositories(
