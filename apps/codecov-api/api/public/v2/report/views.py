@@ -1,3 +1,5 @@
+import re
+
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import mixins, viewsets
@@ -115,10 +117,17 @@ class BaseReportViewSet(
                 # empty report since the flag is not part of the component
                 return Report()
 
+        if path:
+            # Strip trailing glob wildcards and slashes, then re.escape so that
+            # user-supplied paths with regex metacharacters (e.g. "**", "?", ".")
+            # don't cause re.compile to raise a PatternError.
+            sanitized_path = re.escape(path.rstrip("*").rstrip("/"))
+            path_pattern = f"{sanitized_path}.*"
+
         if path and flag:
-            report = report.filter(flags=[flag], paths=[f"{path}.*"])
+            report = report.filter(flags=[flag], paths=[path_pattern])
         elif path:
-            report = report.filter(paths=[f"{path}.*"])
+            report = report.filter(paths=[path_pattern])
         elif flag:
             report = report.filter(flags=[flag])
         elif component_id:
