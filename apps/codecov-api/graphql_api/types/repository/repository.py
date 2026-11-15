@@ -201,8 +201,11 @@ async def resolve_branches(
 
 
 @repository_bindable.field("defaultBranch")
-def resolve_default_branch(repository: Repository, info: GraphQLResolveInfo) -> str:
-    return repository.branch
+def resolve_default_branch(repository: Repository, info: GraphQLResolveInfo) -> Branch | None:
+    if not repository.branch:
+        return None
+    command = info.context["executor"].get_command("branch")
+    return command.fetch_branch(repository, repository.branch)
 
 
 @repository_bindable.field("staticAnalysisToken")

@@ -39,7 +39,7 @@ type Repository {
     last: Int
     before: String
   ): BranchConnection @cost(complexity: 3, multipliers: ["first", "last"])
-  defaultBranch: String
+  defaultBranch: Branch
   graphToken: String
   yaml: String
   bot: Owner
