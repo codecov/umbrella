@@ -56,7 +56,6 @@ from .start_trial import error_start_trial, resolve_start_trial
 from .store_event_metrics import error_store_event_metrics, resolve_store_event_metrics
 from .sync_repos import error_sync_repos, resolve_sync_repos
 from .sync_with_git_provider import (
-    error_sync_with_git_provider,
     resolve_sync_with_git_provider,
 )
 from .update_bundle_cache_config import (
@@ -126,7 +125,6 @@ mutation_resolvers = [
     error_create_user_token,
     error_revoke_user_token,
     error_set_yaml_error,
-    error_sync_with_git_provider,
     error_sync_repos,
     error_delete_session,
     error_update_profile,
