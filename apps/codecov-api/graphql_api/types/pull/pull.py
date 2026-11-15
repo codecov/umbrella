@@ -21,6 +21,7 @@ from graphql_api.types.comparison.comparison import (
     MissingBaseCommit,
     MissingHeadCommit,
 )
+from graphql_api.types.coverage_analytics.coverage_analytics import CoverageAnalyticsProps
 from graphql_api.types.enums import OrderingDirection, PullRequestState
 from services.bundle_analysis import BundleAnalysisComparison
 from services.comparison import ComparisonReport, PullRequestComparison
@@ -168,3 +169,11 @@ def resolve_behind_by_commit(
 def resolve_first_pull(pull: Pull, info: GraphQLResolveInfo) -> bool:
     # returns true if this pull is/was the 1st for a repo
     return pull.repository.pull_requests.order_by("id").first() == pull
+
+
+@pull_bindable.field("coverageAnalytics")
+@sync_to_async
+def resolve_coverage_analytics(
+    pull: Pull, info: GraphQLResolveInfo
+) -> CoverageAnalyticsProps:
+    return CoverageAnalyticsProps(repository=pull.repository)
