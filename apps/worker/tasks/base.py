@@ -7,7 +7,7 @@ import sentry_sdk
 from celery._state import get_current_task
 from celery.exceptions import MaxRetriesExceededError, SoftTimeLimitExceeded
 from celery.worker.request import Request
-from django.db import InterfaceError, close_old_connections
+from django.db import InterfaceError, OperationalError, close_old_connections
 from sqlalchemy.exc import (
     DataError,
     IntegrityError,
@@ -229,9 +229,18 @@ class BaseCodecovTask(celery_app.Task):
         db_session = get_db_session()
         user_plan = _get_user_plan_from_task(db_session, self.name, kwargs)
         ownerid = _get_ownerid_from_task(db_session, self.name, kwargs)
-        route_with_extra_config = route_tasks_based_on_user_plan(
-            self.name, user_plan, ownerid
-        )
+        close_old_connections()
+        try:
+            route_with_extra_config = route_tasks_based_on_user_plan(
+                self.name, user_plan, ownerid
+            )
+        except (OperationalError, InterfaceError):
+            log.warning(
+                "Failed to route task due to DB connection error, using default routing",
+                extra={"task_name": self.name},
+                exc_info=True,
+            )
+            route_with_extra_config = {"queue": None, "extra_config": {}}
         extra_config = route_with_extra_config.get("extra_config", {})
         celery_compatible_config = {
             "time_limit": extra_config.get("hard_timelimit", None),
