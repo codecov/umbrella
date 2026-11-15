@@ -21,7 +21,7 @@ from django.http import (
     HttpResponseNotAllowed,
     JsonResponse,
 )
-from graphql import DocumentNode
+from graphql import DocumentNode, GraphQLSyntaxError
 from rest_framework.exceptions import APIException
 from sentry_sdk import capture_exception
 
@@ -353,6 +353,9 @@ class AsyncGraphqlView(GraphQLAsyncView):
         formatted["type"] = "ServerError"
         # if this is one of our own command exception, we can tell a bit more
         original_error = error.original_error
+        if original_error is None or isinstance(original_error, GraphQLSyntaxError):
+            # client-side parse/syntax errors — not a server problem, don't log to Sentry
+            return formatted
         if isinstance(original_error, BaseException) or isinstance(
             original_error, ServiceException
         ):
