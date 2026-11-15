@@ -73,6 +73,11 @@ class FetchImpactedFiles(BaseInteractor):
         if components_paths:
             matcher = Matcher(components_paths)
             res = [file for file in impacted_files if matcher.match(file.head_name)]
+
+        search = filters.get("search")
+        if search:
+            res = [file for file in res if search.lower() in (file.head_name or "").lower()]
+
         return res
 
     def get_attribute(
