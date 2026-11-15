@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import dataclasses
+import json
 from decimal import Decimal
 from fractions import Fraction
 from types import GeneratorType
@@ -47,7 +48,7 @@ def serialize_report(
 
         files = {file.name: [i, None] for i, file in indexed_files}
 
-    report_json = orjson.dumps(
+    report_json = _orjson_dumps_with_fallback(
         {"files": files, "sessions": report.sessions, "totals": totals},
         default=report_default,
         option=orjson_option,
@@ -77,13 +78,32 @@ def report_default(obj):
 orjson_option = orjson.OPT_PASSTHROUGH_DATACLASS | orjson.OPT_NON_STR_KEYS
 
 
+class _ReportJSONEncoder(json.JSONEncoder):
+    def default(self, obj):
+        result = report_default(obj)
+        if result is obj:
+            return super().default(obj)
+        return result
+
+
+def _orjson_dumps_with_fallback(value, **kwargs) -> bytes:
+    """Call orjson.dumps; fall back to stdlib json for integers exceeding 64-bit range."""
+    try:
+        return orjson.dumps(value, **kwargs)
+    except TypeError as e:
+        if "64-bit" in str(e):
+            encoded = json.dumps(value, cls=_ReportJSONEncoder)
+            return encoded.encode()
+        raise
+
+
 def _dumps_not_none(value) -> str:
     if isinstance(value, list):
-        return orjson.dumps(
+        return _orjson_dumps_with_fallback(
             _rstrip_none(list(value)), default=report_default, option=orjson_option
         ).decode()
     if isinstance(value, ReportLine):
-        return orjson.dumps(
+        return _orjson_dumps_with_fallback(
             _rstrip_none(list(value.astuple())),
             default=report_default,
             option=orjson_option,
