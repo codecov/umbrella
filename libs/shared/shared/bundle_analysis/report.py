@@ -585,6 +585,20 @@ class BundleAnalysisReport:
                 return None
             return BundleReport(self.db_path, bundle)
 
+    def bundle_sizes(self) -> dict[str, int]:
+        """
+        Returns a mapping of bundle name to total asset size for all bundles
+        in a single grouped query, avoiding N+1 queries when iterating bundles.
+        """
+        with get_db_session(self.db_path) as session:
+            results = (
+                session.query(Bundle.name, func.sum(Asset.size).label("asset_size"))
+                .join(Session, Session.bundle_id == Bundle.id)
+                .join(Asset, Asset.session_id == Session.id)
+                .group_by(Bundle.id)
+            ).all()
+            return {name: (size or 0) for name, size in results}
+
     def session_count(self) -> int:
         with get_db_session(self.db_path) as session:
             return session.query(Session).count()
