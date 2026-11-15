@@ -2,10 +2,16 @@
 type CoverageTotals {
   percentCovered: Float
   fileCount: Int
+  filesCount: Int
   lineCount: Int
+  linesCount: Int
   hitsCount: Int
   missesCount: Int
   partialsCount: Int
+  branchesCount: Int
+  methodsCount: Int
+  sessionsCount: Int
+  diff: Int
 
   coverage: Float @deprecated(reason: "Use `percentCovered`")
 }
