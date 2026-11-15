@@ -1,3 +1,18 @@
+type FileComparison {
+  name: String
+  headName: String
+  patchCoverage: CoverageTotals
+  headCoverage: CoverageTotals
+}
+
+type FileComparisonEdge {
+  node: FileComparison
+}
+
+type FileComparisonConnection {
+  edges: [FileComparisonEdge]
+}
+
 type Comparison {
   state: String!
   impactedFile(path: String!): ImpactedFile
@@ -14,6 +29,7 @@ type Comparison {
   hasDifferentNumberOfHeadAndBaseReports: Boolean!
   flagComparisonsCount: Int!
   componentComparisonsCount: Int!
+  fileComparisons: FileComparisonConnection
 }
 
 type MissingBaseCommit implements ResolverError {
