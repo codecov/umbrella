@@ -1,7 +1,9 @@
 input PathContentsFilters {
   searchValue: String
+  search: String @deprecated(reason: "Use searchValue instead")
   displayType: PathContentDisplayType
   ordering: PathContentsOrdering
+  orderingDirection: OrderingDirection @deprecated(reason: "Use ordering.direction instead")
   flags: [String!]
   components: [String!]
 }
