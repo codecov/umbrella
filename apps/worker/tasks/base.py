@@ -3,6 +3,8 @@ import time
 from contextlib import contextmanager
 from datetime import datetime
 
+import kombu.exceptions
+import redis.exceptions
 import sentry_sdk
 from celery._state import get_current_task
 from celery.exceptions import MaxRetriesExceededError, SoftTimeLimitExceeded
@@ -738,6 +740,23 @@ class BaseCodecovTask(celery_app.Task):
                     "upload_ids": upload_ids,
                     "sentry_trace_id": current_sentry_trace_id(),
                 }
+            )
+        except (kombu.exceptions.OperationalError, redis.exceptions.ConnectionError):
+            # Transient broker connectivity issues (e.g. Redis pod restart) should
+            # not surface as Sentry error events since the breadcrumb task is
+            # non-critical telemetry.  Log at warning level so the stack trace is
+            # still available in logs without triggering Sentry error capture.
+            log.warning(
+                "Failed to queue upload breadcrumb task due to broker connection error",
+                exc_info=True,
+                extra={
+                    "commit_sha": commit_sha,
+                    "repo_id": repo_id,
+                    "milestone": milestone,
+                    "upload_ids": upload_ids,
+                    "error": error,
+                    "error_text": error_text,
+                },
             )
         except Exception:
             log.exception(
