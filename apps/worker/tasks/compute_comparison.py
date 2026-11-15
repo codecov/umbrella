@@ -188,6 +188,7 @@ class ComputeComparisonTask(BaseCodecovTask, name=compute_comparison_task_name):
             .all()
         }
 
+        new_flag_comparisons = []
         for flag_name in flag_names:
             totals = self.get_flag_comparison_totals(flag_name, comparison_proxy)
             repositoryflag = repository_flags_by_name[flag_name]
@@ -198,8 +199,8 @@ class ComputeComparisonTask(BaseCodecovTask, name=compute_comparison_task_name):
                     "No previous flag comparisons; adding flag comparisons",
                     extra={"repoid": repository_id},
                 )
-                self.store_flag_comparison(
-                    db_session, comparison, repositoryflag, totals
+                new_flag_comparisons.append(
+                    self.build_flag_comparison(comparison, repositoryflag, totals)
                 )
             else:
                 log.debug(
@@ -209,6 +210,11 @@ class ComputeComparisonTask(BaseCodecovTask, name=compute_comparison_task_name):
                 flag_comparison_entry.head_totals = totals["head_totals"]
                 flag_comparison_entry.base_totals = totals["base_totals"]
                 flag_comparison_entry.patch_totals = totals["patch_totals"]
+
+        if new_flag_comparisons:
+            db_session.add_all(new_flag_comparisons)
+            db_session.flush()
+
         log.info(
             "Flag comparisons stored successfully",
             extra={"number_stored": len(head_report_flags)},
@@ -239,22 +245,19 @@ class ComputeComparisonTask(BaseCodecovTask, name=compute_comparison_task_name):
                 totals["patch_totals"] = patch_totals.asdict()
         return totals
 
-    def store_flag_comparison(
+    def build_flag_comparison(
         self,
-        db_session,
         comparison: CompareCommit,
         repositoryflag: RepositoryFlag,
         totals,
-    ):
-        flag_comparison = CompareFlag(
+    ) -> CompareFlag:
+        return CompareFlag(
             commit_comparison=comparison,
             repositoryflag=repositoryflag,
             patch_totals=totals["patch_totals"],
             head_totals=totals["head_totals"],
             base_totals=totals["base_totals"],
         )
-        db_session.add(flag_comparison)
-        db_session.flush()
 
     @sentry_sdk.trace
     def compute_component_comparisons(
