@@ -10,6 +10,7 @@ from typing import Any
 import sentry_sdk
 import sqlalchemy.orm
 from asgiref.sync import async_to_sync
+from kombu.exceptions import OperationalError as KombuOperationalError
 from redis.exceptions import LockError
 
 from app import celery_app
@@ -260,9 +261,16 @@ class PullSyncTask(BaseCodecovTask, name=pulls_task_name):
         notifier_was_called = False
         if should_send_notifications:
             notifier_was_called = True
-            self.app.tasks[notify_task_name].apply_async(
-                kwargs={"repoid": repoid, "commitid": pull.head}
-            )
+            try:
+                self.app.tasks[notify_task_name].apply_async(
+                    kwargs={"repoid": repoid, "commitid": pull.head}
+                )
+            except KombuOperationalError as exc:
+                log.warning(
+                    "Redis broker OOM when enqueuing notify task; retrying pull sync",
+                    extra={"repoid": repoid, "pullid": pullid, "exc": str(exc)},
+                )
+                self.retry(exc=exc, countdown=60, max_retries=3)
         self.clear_pull_related_caches(redis_connection, enriched_pull)
         return {
             "notifier_called": notifier_was_called,
@@ -576,9 +584,19 @@ class PullSyncTask(BaseCodecovTask, name=pulls_task_name):
             redis_client = get_redis_connection()
             redis_client.set(f"flake_uploads:{repository.repoid}", 0)
             redis_client.lpush(KEY_NAME.format(repository.repoid), pull_head)
-            self.app.tasks[process_flakes_task_name].apply_async(
-                kwargs={"repo_id": repository.repoid, "commit_id": pull_head}
-            )
+            try:
+                self.app.tasks[process_flakes_task_name].apply_async(
+                    kwargs={"repo_id": repository.repoid, "commit_id": pull_head}
+                )
+            except KombuOperationalError as exc:
+                log.warning(
+                    "Redis broker OOM when enqueuing process_flakes task; skipping",
+                    extra={
+                        "repoid": repository.repoid,
+                        "commit_id": pull_head,
+                        "exc": str(exc),
+                    },
+                )
 
     def trigger_ai_pr_review(self, enriched_pull: EnrichedPull, current_yaml: UserYaml):
         pull = enriched_pull.database_pull
@@ -605,9 +623,19 @@ class PullSyncTask(BaseCodecovTask, name=pulls_task_name):
                         "pull_labels": pull_labels,
                     },
                 )
-                self.app.tasks[ai_pr_review_task_name].apply_async(
-                    kwargs={"repoid": pull.repoid, "pullid": pull.pullid}
-                )
+                try:
+                    self.app.tasks[ai_pr_review_task_name].apply_async(
+                        kwargs={"repoid": pull.repoid, "pullid": pull.pullid}
+                    )
+                except KombuOperationalError as exc:
+                    log.warning(
+                        "Redis broker OOM when enqueuing ai_pr_review task; skipping",
+                        extra={
+                            "repoid": pull.repoid,
+                            "pullid": pull.pullid,
+                            "exc": str(exc),
+                        },
+                    )
 
 
 RegisteredPullSyncTask = celery_app.register_task(PullSyncTask())
