@@ -45,6 +45,12 @@ type CommitCoverageAnalytics {
 type CommitBundleAnalysis {
   bundleAnalysisCompareWithParent: BundleAnalysisComparisonResult
   bundleAnalysisReport: BundleAnalysisReportResult
+  "Total uncompressed size in bytes across all bundles"
+  sizeTotal: Int
+  "Total estimated 3G load time in milliseconds across all bundles"
+  loadTimeTotal: Int
+  "List of individual bundle reports"
+  bundles: [BundleReport]
 }
 
 type CommitErrorsConnection {
