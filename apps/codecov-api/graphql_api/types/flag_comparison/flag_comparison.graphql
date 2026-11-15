@@ -3,4 +3,5 @@ type FlagComparison {
     headTotals: CoverageTotals
     baseTotals: CoverageTotals
     patchTotals: CoverageTotals
+    changeCoverage: Float
 }
