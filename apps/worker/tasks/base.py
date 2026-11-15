@@ -7,7 +7,8 @@ import sentry_sdk
 from celery._state import get_current_task
 from celery.exceptions import MaxRetriesExceededError, SoftTimeLimitExceeded
 from celery.worker.request import Request
-from django.db import InterfaceError, close_old_connections
+from django.db import InterfaceError, close_old_connections, connections
+from django.db import OperationalError as DjangoOperationalError
 from sqlalchemy.exc import (
     DataError,
     IntegrityError,
@@ -471,6 +472,36 @@ class BaseCodecovTask(celery_app.Task):
                     "Errors related to the constraints of database happened",
                     extra={"task_args": args, "task_kwargs": kwargs},
                 )
+                db_session.rollback()
+                countdown = TASK_RETRY_BACKOFF_BASE_SECONDS * (2**retry_count)
+                try:
+                    if not self.safe_retry(countdown=countdown):
+                        return None
+                except MaxRetriesExceededError:
+                    if UploadFlow.has_begun():
+                        UploadFlow.log(UploadFlow.UNCAUGHT_RETRY_EXCEPTION)
+                    if TestResultsFlow.has_begun():
+                        TestResultsFlow.log(TestResultsFlow.UNCAUGHT_RETRY_EXCEPTION)
+                    return None
+            except DjangoOperationalError:
+                # The Django connection was dropped by the server (e.g. read
+                # replica / pgbouncer disconnect). Discard broken connections so
+                # the retried task opens fresh ones, then retry with backoff.
+                retry_count = getattr(self.request, "retries", 0)
+                log.warning(
+                    "Django database connection error, retrying task",
+                    extra={"task_name": self.name, "retry_count": retry_count},
+                    exc_info=True,
+                )
+                for conn in connections.all(initialized_only=True):
+                    try:
+                        conn.close_if_unusable_or_obsolete()
+                    except Exception:
+                        log.warning(
+                            "Failed to close unusable Django connection",
+                            extra={"alias": conn.alias},
+                            exc_info=True,
+                        )
                 db_session.rollback()
                 retry_count = getattr(self.request, "retries", 0)
                 countdown = TASK_RETRY_BACKOFF_BASE_SECONDS * (2**retry_count)
