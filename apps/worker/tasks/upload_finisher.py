@@ -604,10 +604,17 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
 
                 if is_timeseries_enabled():
                     log.info("handle_finisher_lock: Saving commit measurements")
-                    dataset_names = [
-                        dataset.name
-                        for dataset in repository_datasets_query(repository)
-                    ]
+                    try:
+                        dataset_names = [
+                            dataset.name
+                            for dataset in repository_datasets_query(repository)
+                        ]
+                    except Exception:
+                        log.warning(
+                            "handle_finisher_lock: failed to query timeseries datasets, skipping commit measurements",
+                            exc_info=True,
+                        )
+                        dataset_names = []
                     if dataset_names:
                         self._enqueue_timeseries_save(repoid, commitid, dataset_names)
 
