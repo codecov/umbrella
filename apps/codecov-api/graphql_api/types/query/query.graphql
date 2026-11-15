@@ -2,6 +2,7 @@ scalar DateTime
 
 type Query {
   me: Me
+  viewer: Me
   owner(username: String!): Owner
   config: Config!
 }
