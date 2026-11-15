@@ -3,6 +3,12 @@ import gc
 import logging
 from datetime import timedelta
 
+# django-celery-results stores Celery task results (including chord accounting)
+# in PostgreSQL instead of Redis, preventing fatal failures when Redis is
+# unavailable. Chords (used by UploadTask to fan out UploadProcessorTask and
+# trigger UploadFinisherTask) require the result backend; decoupling it from
+# Redis makes the upload pipeline resilient to Redis outages.
+
 from celery import signals
 from celery.beat import BeatLazyFunc
 from celery.schedules import crontab
@@ -152,3 +158,18 @@ class CeleryWorkerConfig(BaseCeleryConfig):
 
     beat_schedule = _beat_schedule()
     task_routes = route_task
+
+    # Use PostgreSQL (via django-celery-results) as the result backend instead
+    # of Redis.  Celery chords — used by UploadTask to fan out
+    # UploadProcessorTask instances and then fire UploadFinisherTask — require
+    # the result backend to track group completion.  Using Redis for this
+    # created a hard dependency on Redis availability: if Redis went down mid-
+    # task the worker raised a fatal "Retry limit exceeded" error and had to be
+    # restarted.  PostgreSQL is already highly available and is not subject to
+    # the same transient connection-refused failures.
+    result_backend = "django-db://"
+
+    # Expire stored results after 1 hour to prevent unbounded table growth.
+    # UploadFinisherTask fires within seconds/minutes of UploadProcessorTask
+    # completion, so 1 hour is far more than enough.
+    result_expires = timedelta(hours=1)
