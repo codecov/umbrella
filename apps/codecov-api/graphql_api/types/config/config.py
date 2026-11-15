@@ -91,6 +91,11 @@ def resolve_seats_limit(_, info):
     return self_hosted.license_seats()
 
 
+@config_bindable.field("isSelfHosted")
+def resolve_is_self_hosted(_, info) -> bool:
+    return bool(settings.IS_ENTERPRISE)
+
+
 @config_bindable.field("isTimescaleEnabled")
 @sync_to_async
 def resolve_is_timescale_enabled(_, info):
