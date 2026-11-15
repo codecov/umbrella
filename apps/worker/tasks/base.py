@@ -506,12 +506,14 @@ class BaseCodecovTask(celery_app.Task):
                 self.wrap_up_dbsession(db_session)
 
     def wrap_up_dbsession(self, db_session):
-        """Commit and close database session, handling timeout edge cases.
+        """Commit and close database session, handling all failure cases.
 
-        Handles the corner case where `SoftTimeLimitExceeded` is raised during
-        `db_session.commit()`, which can leave the session in an unusable state.
+        Handles the corner case where an exception is raised during
+        `db_session.commit()`, which can leave the session in an unusable state
+        (e.g. 'prepared' state from SQLAlchemy's internal two-phase prepare step).
         Since we reuse sessions across tasks, this would break future tasks in
-        the same process, so we catch both timeout and invalid state exceptions.
+        the same process, so we always call `get_db_session.remove()` on any
+        commit failure to evict the corrupted session from the scoped registry.
         """
         try:
             db_session.commit()
@@ -524,13 +526,13 @@ class BaseCodecovTask(celery_app.Task):
             try:
                 db_session.commit()
                 db_session.close()
-            except InvalidRequestError:
+            except Exception:
                 log.warning(
                     "DB session cannot be operated on any longer. Closing it and removing it",
                     exc_info=True,
                 )
                 get_db_session.remove()
-        except InvalidRequestError:
+        except Exception:
             log.warning(
                 "DB session cannot be operated on any longer. Closing it and removing it",
                 exc_info=True,
