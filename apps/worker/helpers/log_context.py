@@ -69,6 +69,12 @@ class LogContext:
             # - repo_id is enough to get repo and owner
             # - owner_id is just enough to get owner
 
+            # Apply a short statement timeout so that lock-wait contention on
+            # the repos/owners rows cannot block the entire Celery task past
+            # the soft time limit. This query is purely for logging enrichment;
+            # errors and timeouts are already caught below.
+            dbsession.execute("SET LOCAL statement_timeout = '5000'")
+
             if self.repo_id:
                 query = (
                     dbsession.query(
