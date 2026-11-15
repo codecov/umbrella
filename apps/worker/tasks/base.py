@@ -457,6 +457,21 @@ class BaseCodecovTask(celery_app.Task):
                     )
                     time_in_queue_timer.observe(delta.total_seconds())
 
+            # Defensively reset any leftover session state from a prior task.
+            # Sessions are reused across tasks (scoped_session); if a previous
+            # task's commit was interrupted (e.g. SoftTimeLimitExceeded during
+            # two-phase commit prepare()), the session may be stuck in
+            # 'prepared' state and will reject all SQL until rolled back.
+            try:
+                db_session.rollback()
+            except Exception:
+                log.warning(
+                    "Failed to reset db session state at task start; removing session",
+                    exc_info=True,
+                )
+                get_db_session.remove()
+                db_session = get_db_session()
+
             close_old_connections()
 
             try:
@@ -524,7 +539,7 @@ class BaseCodecovTask(celery_app.Task):
             try:
                 db_session.commit()
                 db_session.close()
-            except InvalidRequestError:
+            except Exception:
                 log.warning(
                     "DB session cannot be operated on any longer. Closing it and removing it",
                     exc_info=True,
