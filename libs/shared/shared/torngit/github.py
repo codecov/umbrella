@@ -2332,7 +2332,7 @@ class Github(TorngitBaseAdapter):
                     endCursor = repositories["pageInfo"]["endCursor"]
 
                     for repo in repositories["nodes"]:
-                        languages = repo["languages"]["edges"]
+                        languages = (repo.get("languages") or {}).get("edges", [])
                         res_languages = [
                             language["node"]["name"].lower() for language in languages
                         ]
