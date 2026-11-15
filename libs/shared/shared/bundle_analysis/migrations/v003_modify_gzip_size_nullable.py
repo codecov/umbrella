@@ -22,6 +22,18 @@ def modify_gzip_size_nullable(db_session: Session):
         # Ignore the case where uuid column already exists
         pass
 
+    # Fixes an issue where old bundle reports lack the asset_type column.
+    # Without this, the INSERT...SELECT below would fail with "no such column: asset_type".
+    try:
+        db_session.execute(
+            text("""
+            ALTER TABLE "assets" ADD COLUMN "asset_type" text DEFAULT 'unknown'
+        """)
+        )
+    except OperationalError:
+        # Ignore the case where asset_type column already exists
+        pass
+
     stmts = [
         """
         PRAGMA foreign_keys=off;
