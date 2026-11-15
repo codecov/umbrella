@@ -98,9 +98,8 @@ def shorten_file_paths(string):
                 at Promise.then.completed (.../jest-circus/build/utils.js:298:28)
     """
 
-    matches = file_path_regex.findall(string)
-    for match_tuple in matches:
-        file_path = match_tuple[0]
+    def _shorten_match(match):
+        file_path = match.group(0)
         split_file_path = file_path.split("/")
 
         # if the file_path has more than 3 components we should shorten it
@@ -112,8 +111,8 @@ def shorten_file_paths(string):
             if no_dots_shortened_file_path.startswith("/"):
                 no_dots_shortened_file_path = no_dots_shortened_file_path[1:]
 
-            shortened_path = ".../" + no_dots_shortened_file_path
+            return ".../" + no_dots_shortened_file_path
 
-            string = string.replace(file_path, shortened_path)
+        return file_path
 
-    return string
+    return file_path_regex.sub(_shorten_match, string)
