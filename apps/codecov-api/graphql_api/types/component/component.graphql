@@ -1,6 +1,11 @@
 type Component {
-    id: String!
+    id: String! @deprecated(reason: "Use `componentId`")
+    componentId: String!
     name: String!
+    percentCovered: Float
+    percentChange: Float
+    lineCount: Int
+    hitsCount: Int
     totals: CoverageTotals
 }
 
