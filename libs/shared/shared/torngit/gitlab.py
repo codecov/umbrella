@@ -18,6 +18,7 @@ from shared.torngit.exceptions import (
     TorngitObjectNotFoundError,
     TorngitRefreshTokenFailedError,
     TorngitServer5xxCodeError,
+    TorngitServerFailureError,
     TorngitServerUnreachableError,
 )
 from shared.torngit.response_types import ProviderPull
@@ -822,7 +823,7 @@ class Gitlab(TorngitBaseAdapter):
         try:
             result = await self.api("get", url, token=token_to_use)
             return result.get("pipeline", {}).get("sha")
-        except TorngitClientError as err:
+        except (TorngitClientError, TorngitServerFailureError) as err:
             log.warning("Failed to get pipeline details", extra={"error": err})
             return None
 
