@@ -3,6 +3,7 @@ from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import mixins
 from rest_framework.authentication import BasicAuthentication, SessionAuthentication
+from rest_framework.response import Response
 
 from api.public.v2.schema import repo_parameters
 from api.shared.pagination import PaginationMixin
@@ -13,6 +14,7 @@ from codecov_auth.authentication import (
     UserTokenAuthentication,
 )
 from core.models import Pull, PullStates
+from services.comparison import CommitComparisonService
 
 from .serializers import PullSerializer
 
@@ -76,7 +78,22 @@ class PullViewSet(
         Orderable by:
         * `pullid`
         """
-        return super().list(request, *args, **kwargs)
+        queryset = self.filter_queryset(self.get_queryset())
+
+        page = self.paginate_queryset(queryset)
+        pulls = list(page) if page is not None else list(queryset)
+
+        # Fetch all CommitComparisons for this page with one query, instead of
+        # one query per pull in PullSerializer.get_patch.
+        context = self.get_serializer_context()
+        context["commit_comparisons"] = (
+            CommitComparisonService.get_commit_comparisons_for_pulls(pulls)
+        )
+        serializer = self.get_serializer_class()(pulls, many=True, context=context)
+
+        if page is not None:
+            return self.get_paginated_response(serializer.data)
+        return Response(serializer.data)
 
     @extend_schema(
         summary="Pull detail",
