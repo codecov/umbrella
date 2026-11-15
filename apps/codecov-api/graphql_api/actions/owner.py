@@ -19,6 +19,11 @@ def get_owner(service, username):
     if not service:
         raise MissingService()
 
+    # Postgres cannot store/compare strings containing NUL bytes, so such a
+    # username can never match an owner; treat it as not found.
+    if not username or "\x00" in username:
+        return None
+
     long_service = get_long_service_name(service)
     return (
         Owner.objects.filter(username=username, service=long_service)
