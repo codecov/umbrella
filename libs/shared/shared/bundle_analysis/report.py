@@ -29,6 +29,7 @@ from shared.bundle_analysis.models import (
     MetadataKey,
     Module,
     Session,
+    assets_chunks,
     get_db_session,
 )
 from shared.bundle_analysis.parser import Parser
@@ -150,20 +151,19 @@ class AssetReport:
         This is retrieving by querying all unique Assets in the DynamicImport
         model for each Chunk of the current Asset.
         """
+        asset_id = self.asset.id
         with get_db_session(self.db_path) as session:
-            # Reattach self.asset to the current session to avoid DetachedInstanceError
-            asset = session.merge(self.asset)
-
-            # Alias the chunks table for the Asset.chunks relationship
-            asset_chunks = aliased(Chunk)
+            # Subquery: get the IDs of all chunks belonging to this asset
+            # using the assets_chunks join table directly to avoid lazy-loading
+            chunk_ids = session.query(assets_chunks.c.chunk_id).filter(
+                assets_chunks.c.asset_id == asset_id
+            )
 
             assets = (
                 session.query(Asset)
                 .distinct()
                 .join(DynamicImport, DynamicImport.asset_id == Asset.id)
-                .join(Chunk, DynamicImport.chunk_id == Chunk.id)
-                .join(asset_chunks, asset_chunks.id == DynamicImport.chunk_id)
-                .filter(asset_chunks.id.in_([chunk.id for chunk in asset.chunks]))
+                .filter(DynamicImport.chunk_id.in_(chunk_ids))
             )
 
             return (
