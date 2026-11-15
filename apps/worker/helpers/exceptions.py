@@ -40,6 +40,14 @@ class ReportEmptyError(Exception):
         self.total_files = total_files
 
 
+class ReportTooLargeError(Exception):
+    """Raised when a coverage report is too large to be processed within time limits."""
+
+    def __init__(self, message: str = "Report is too large to process.") -> None:
+        super().__init__(message)
+        self.message = message
+
+
 class CorruptRawReportError(Exception):
     """Error indicated that report is somehow different than it should be
 

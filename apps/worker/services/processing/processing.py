@@ -2,7 +2,7 @@ import logging
 from collections.abc import Callable
 
 import sentry_sdk
-from celery.exceptions import CeleryError
+from celery.exceptions import CeleryError, SoftTimeLimitExceeded
 from sqlalchemy.orm import Session as DbSession
 
 from app import celery_app
@@ -105,7 +105,17 @@ def process_upload(
     finally:
         # this is a noop in the success case, but makes sure unrecoverable errors
         # or retries are not blocking later merge/notify stages
-        state.clear_in_progress_uploads([upload_id])
+        try:
+            state.clear_in_progress_uploads([upload_id])
+        except SoftTimeLimitExceeded:
+            # The soft time limit may fire during this cleanup step if processing
+            # finished very close to the limit. Swallow it here so the chord
+            # result is not recorded as FAILURE for an otherwise completed task.
+            log.warning(
+                "SoftTimeLimitExceeded raised during finally-block cleanup; "
+                "upload state may not have been fully cleared",
+                extra={"upload_id": upload_id},
+            )
 
     return result
 
