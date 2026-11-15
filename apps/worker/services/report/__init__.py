@@ -7,6 +7,7 @@ from typing import Any
 
 import orjson
 import sentry_sdk
+import urllib3.exceptions
 from asgiref.sync import async_to_sync
 from celery.exceptions import SoftTimeLimitExceeded
 from sqlalchemy.orm import Session as DbSession
@@ -335,6 +336,12 @@ class ReportService(BaseReportService):
         except FileNotInStorageError:
             log.warning(
                 "File for chunks not found in storage",
+                extra={"commit": commitid, "repo": commit.repoid},
+            )
+            return None
+        except urllib3.exceptions.ReadTimeoutError:
+            log.warning(
+                "Timed out reading chunks from storage",
                 extra={"commit": commitid, "repo": commit.repoid},
             )
             return None

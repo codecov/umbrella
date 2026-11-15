@@ -1,6 +1,7 @@
 import logging
 
 import sentry_sdk
+import urllib3.exceptions
 from django.utils.functional import cached_property
 
 from shared.api_archive.archive import ArchiveService
@@ -58,6 +59,12 @@ def build_report_from_commit(commit: Commit, report_class=None):
     except FileNotInStorageError:
         log.warning(
             "File for chunks not found in storage",
+            extra={"commit": commit.commitid, "repo": commit.repository_id},
+        )
+        return None
+    except urllib3.exceptions.ReadTimeoutError:
+        log.warning(
+            "Timed out reading chunks from storage",
             extra={"commit": commit.commitid, "repo": commit.repository_id},
         )
         return None
