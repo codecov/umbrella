@@ -65,6 +65,12 @@ def resolve_author(commit: Commit, info: GraphQLResolveInfo) -> Owner | None:
         return OwnerLoader.loader(info).load(commit.author_id)
 
 
+@commit_bindable.field("bot")
+@sync_to_async
+def resolve_commit_bot(commit: Commit, info: GraphQLResolveInfo) -> Owner | None:
+    return commit.repository.bot
+
+
 @commit_bindable.field("parent")
 def resolve_parent(commit: Commit, info: GraphQLResolveInfo) -> Commit | None:
     if commit.parent_commit_id:
