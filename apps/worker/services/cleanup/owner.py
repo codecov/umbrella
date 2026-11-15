@@ -5,6 +5,7 @@ from django.db.models import Q
 
 from services.cleanup.cleanup import cleanup_queryset
 from services.cleanup.utils import CleanupSummary, cleanup_context
+from shared.config import get_config
 from shared.django_apps.codecov_auth.models import Owner, OwnerProfile, OwnerToBeDeleted
 from shared.django_apps.core.models import Commit, Pull, Repository
 
@@ -13,13 +14,41 @@ log = logging.getLogger(__name__)
 CLEAR_ARRAY_FIELDS = ["plan_activated_users", "organizations", "admins"]
 
 
+def _get_repo_chunk_size() -> int:
+    return get_config("cleanup", "repo_chunk_size", default=10)
+
+
 def cleanup_owner(owner_id: int) -> CleanupSummary:
     log.info("Started/Continuing Owner cleanup", extra={"ownerid": owner_id})
 
     clear_owner_references(owner_id)
-    owner_query = Owner.objects.filter(ownerid=owner_id)
+
+    # Fetch all repo IDs for this owner upfront so we can process them in
+    # small chunks. Without chunking, a large owner (200+ repos, 100k+ commits)
+    # causes `simplified_lookup` to fall back to nested subqueries at every
+    # level (Commit → CommitReport → ReportSession), producing a 3-level deep
+    # subquery that runs for 15+ minutes and gets killed by PostgreSQL.
+    repo_ids = list(
+        Repository.objects.filter(author_id=owner_id).values_list("repoid", flat=True)
+    )
+    chunk_size = _get_repo_chunk_size()
+    repo_chunks = [repo_ids[i : i + chunk_size] for i in range(0, len(repo_ids), chunk_size)]
+
     with cleanup_context() as context:
+        for idx, chunk in enumerate(repo_chunks):
+            log.info(
+                "cleanup_owner: processing repo chunk %d/%d",
+                idx + 1,
+                len(repo_chunks),
+                extra={"ownerid": owner_id, "chunk": idx + 1, "total_chunks": len(repo_chunks), "repo_ids": chunk},
+            )
+            repo_query = Repository.objects.filter(repoid__in=chunk)
+            cleanup_queryset(repo_query, context)
+
+        # Clean up the owner record itself after all repos are gone.
+        owner_query = Owner.objects.filter(ownerid=owner_id)
         cleanup_queryset(owner_query, context)
+
         summary = context.summary
 
     OwnerToBeDeleted.objects.filter(owner_id=owner_id).delete()
