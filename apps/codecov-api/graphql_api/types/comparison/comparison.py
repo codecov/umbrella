@@ -64,6 +64,23 @@ def resolve_impacted_files_count(
     return len(comparison.impacted_files)
 
 
+@comparison_bindable.field("directChangedFiles")
+@sync_to_async
+def resolve_direct_changed_files(
+    comparison_report: ComparisonReport, info: GraphQLResolveInfo, filters=None
+):
+    command: CompareCommands = info.context["executor"].get_command("compare")
+    comparison: Comparison = info.context.get("comparison", None)
+
+    # Force filter to direct changes only (hasUnintendedChanges=False)
+    filters = dict(filters) if filters else {}
+    filters["has_unintended_changes"] = False
+
+    return {
+        "results": command.fetch_impacted_files(comparison_report, comparison, filters)
+    }
+
+
 @comparison_bindable.field("directChangedFilesCount")
 @sync_to_async
 def resolve_direct_changed_files_count(
