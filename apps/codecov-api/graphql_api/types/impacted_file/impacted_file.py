@@ -133,6 +133,20 @@ def resolve_misses_count(impacted_file: ImpactedFile, info) -> int:
     return impacted_file.misses_count
 
 
+impacted_files_bindable = ObjectType("ImpactedFiles")
+
+
+@impacted_files_bindable.field("pageInfo")
+def resolve_impacted_files_page_info(impacted_files, info) -> dict:
+    """Backward-compatibility stub: impactedFiles returns all results without pagination."""
+    return {
+        "has_next_page": False,
+        "has_previous_page": False,
+        "start_cursor": None,
+        "end_cursor": None,
+    }
+
+
 impacted_files_result_bindable = UnionType("ImpactedFilesResult")
 
 
