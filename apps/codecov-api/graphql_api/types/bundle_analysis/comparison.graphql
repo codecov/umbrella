@@ -10,6 +10,8 @@ type BundleAnalysisComparison {
   bundles: [BundleComparison]!
   bundleData: BundleData!
   bundleChange: BundleData!
+  sizeDelta: Int!
+  loadTimeDelta: Int!
 }
 
 type BundleComparison {
@@ -17,4 +19,8 @@ type BundleComparison {
   changeType: String!
   bundleData: BundleData!
   bundleChange: BundleData!
+  sizeDelta: Int!
+  sizeTotal: Int!
+  loadTimeDelta: Int!
+  loadTimeTotal: Int!
 }
