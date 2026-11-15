@@ -63,7 +63,10 @@ def is_first_pull_request(pull: Pull) -> bool:
 @pull_bindable.field("compareWithBase")
 @sentry_sdk.trace
 async def resolve_compare_with_base(
-    pull: Pull, info: GraphQLResolveInfo, **kwargs: Any
+    pull: Pull,
+    info: GraphQLResolveInfo,
+    hasUnintendedChanges: bool | None = None,
+    **kwargs: Any,
 ) -> CommitComparison | Any:
     if not pull.compared_to:
         if await is_first_pull_request(pull):
@@ -90,6 +93,9 @@ async def resolve_compare_with_base(
         )
         # store the comparison in the context - to be used in the `Comparison` resolvers
         info.context["comparison"] = comparison
+
+    # store the hasUnintendedChanges filter in the context for use by Comparison resolvers
+    info.context["has_unintended_changes_filter"] = hasUnintendedChanges
 
     return ComparisonReport(commit_comparison)
 
