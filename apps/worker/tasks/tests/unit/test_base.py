@@ -192,43 +192,45 @@ class TestBaseCodecovTask:
             SampleTaskWithSoftTimeout().run()
 
     def test_wrap_up_dbsession_success(self, mocker):
+        mocked_get_db_session = mocker.patch("tasks.base.get_db_session")
         task = BaseCodecovTask()
         fake_session = mocker.MagicMock()
         task.wrap_up_dbsession(fake_session)
         assert fake_session.commit.call_count == 1
         assert fake_session.close.call_count == 1
-
-    def test_wrap_up_dbsession_timeout_but_ok(self, mocker):
-        task = BaseCodecovTask()
-        fake_session = mocker.MagicMock(
-            commit=mocker.MagicMock(side_effect=[SoftTimeLimitExceeded(), 1])
-        )
-        task.wrap_up_dbsession(fake_session)
-        assert fake_session.commit.call_count == 2
-        assert fake_session.close.call_count == 1
-
-    def test_wrap_up_dbsession_timeout_nothing_works(self, mocker):
-        mocked_get_db_session = mocker.patch("tasks.base.get_db_session")
-        task = BaseCodecovTask()
-        fake_session = mocker.MagicMock(
-            commit=mocker.MagicMock(
-                side_effect=[SoftTimeLimitExceeded(), InvalidRequestError()]
-            )
-        )
-        task.wrap_up_dbsession(fake_session)
-        assert fake_session.commit.call_count == 2
-        assert fake_session.close.call_count == 0
+        # remove() is always called to ensure a clean session for the next task
         assert mocked_get_db_session.remove.call_count == 1
 
-    def test_wrap_up_dbsession_invalid_nothing_works(self, mocker):
+    def test_wrap_up_dbsession_timeout_rolls_back_and_removes(self, mocker):
         mocked_get_db_session = mocker.patch("tasks.base.get_db_session")
         task = BaseCodecovTask()
         fake_session = mocker.MagicMock(
-            commit=mocker.MagicMock(side_effect=[InvalidRequestError()])
+            commit=mocker.MagicMock(side_effect=SoftTimeLimitExceeded())
         )
         task.wrap_up_dbsession(fake_session)
         assert fake_session.commit.call_count == 1
-        assert fake_session.close.call_count == 0
+        assert fake_session.rollback.call_count == 1
+        assert mocked_get_db_session.remove.call_count == 1
+
+    def test_wrap_up_dbsession_invalid_rolls_back_and_removes(self, mocker):
+        mocked_get_db_session = mocker.patch("tasks.base.get_db_session")
+        task = BaseCodecovTask()
+        fake_session = mocker.MagicMock(
+            commit=mocker.MagicMock(side_effect=InvalidRequestError())
+        )
+        task.wrap_up_dbsession(fake_session)
+        assert fake_session.commit.call_count == 1
+        assert mocked_get_db_session.remove.call_count == 1
+
+    def test_wrap_up_dbsession_unexpected_error_rolls_back_and_removes(self, mocker):
+        mocked_get_db_session = mocker.patch("tasks.base.get_db_session")
+        task = BaseCodecovTask()
+        fake_session = mocker.MagicMock(
+            commit=mocker.MagicMock(side_effect=Exception("unexpected db error"))
+        )
+        task.wrap_up_dbsession(fake_session)
+        assert fake_session.commit.call_count == 1
+        assert fake_session.rollback.call_count == 1
         assert mocked_get_db_session.remove.call_count == 1
 
     def test_run_success_commits_sqlalchemy(self, mocker, dbsession):
