@@ -413,7 +413,7 @@ class BaseCeleryConfig:
     # Can be overridden via: setup.tasks.celery.reject_on_worker_lost config
     # Celery docs: https://docs.celeryq.dev/en/stable/userguide/configuration.html#task-reject-on-worker-lost
     task_reject_on_worker_lost = bool(
-        get_config("setup", "tasks", "celery", "reject_on_worker_lost", default=False)
+        get_config("setup", "tasks", "celery", "reject_on_worker_lost", default=True)
     )
 
     # http://celery.readthedocs.org/en/latest/userguide/optimizing.html#prefetch-limits
@@ -460,6 +460,27 @@ class BaseCeleryConfig:
         "setup", "tasks", TaskConfigGroup.daily.value, "hard_timelimit", default=680
     )
 
+    # Pulls task gets explicit soft/hard limits with a 120s margin so the
+    # SoftTimeLimitExceeded handler has time to exit before SIGKILL fires.
+    pulls_soft_time_limit = int(
+        get_config(
+            "setup",
+            "tasks",
+            TaskConfigGroup.pulls.value,
+            "soft_timelimit",
+            default=task_soft_time_limit,
+        )
+    )
+    pulls_hard_time_limit = int(
+        get_config(
+            "setup",
+            "tasks",
+            TaskConfigGroup.pulls.value,
+            "hard_timelimit",
+            default=task_soft_time_limit + 120,
+        )
+    )
+
     task_annotations = {
         delete_owner_task_name: {
             "soft_time_limit": 4 * task_soft_time_limit,
@@ -492,6 +513,10 @@ class BaseCeleryConfig:
         gh_app_webhook_check_task_name: {
             "soft_time_limit": gh_webhook_retry_soft_time_limit,
             "time_limit": gh_webhook_retry_hard_time_limit,
+        },
+        pulls_task_name: {
+            "soft_time_limit": pulls_soft_time_limit,
+            "time_limit": pulls_hard_time_limit,
         },
     }
 
