@@ -6,6 +6,7 @@ from typing import Any, cast
 
 import sentry_sdk
 from celery.exceptions import CeleryError, SoftTimeLimitExceeded
+from kombu.exceptions import OperationalError as KombuOperationalError
 
 from app import celery_app
 from database.enums import ReportType
@@ -469,15 +470,27 @@ class BundleAnalysisProcessorTask(
                 result.previous_bundle_report.cleanup()
 
         # Create task to save bundle measurements
-        self.app.tasks[bundle_analysis_save_measurements_task_name].apply_async(
-            kwargs={
-                "commitid": commit.commitid,
-                "repoid": commit.repoid,
-                "uploadid": upload.id_,
-                "commit_yaml": commit_yaml.to_dict(),
-                "previous_result": processing_results,
-            }
-        )
+        try:
+            self.app.tasks[bundle_analysis_save_measurements_task_name].apply_async(
+                kwargs={
+                    "commitid": commit.commitid,
+                    "repoid": commit.repoid,
+                    "uploadid": upload.id_,
+                    "commit_yaml": commit_yaml.to_dict(),
+                    "previous_result": processing_results,
+                }
+            )
+        except KombuOperationalError as e:
+            log.warning(
+                "Failed to enqueue BundleAnalysisSaveMeasurements due to broker error; retrying",
+                extra={
+                    "repoid": repoid,
+                    "commit": commitid,
+                    "upload_id": upload.id_,
+                    "exc": str(e),
+                },
+            )
+            raise self.retry(exc=e, countdown=60, max_retries=3)
 
         log.info(
             "Finished bundle analysis processor",
