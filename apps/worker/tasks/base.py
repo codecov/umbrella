@@ -521,10 +521,11 @@ class BaseCodecovTask(celery_app.Task):
                 "We had an issue where a timeout happened directly during the DB commit",
                 exc_info=True,
             )
+            get_db_session.remove()
             try:
                 db_session.commit()
                 db_session.close()
-            except InvalidRequestError:
+            except Exception:
                 log.warning(
                     "DB session cannot be operated on any longer. Closing it and removing it",
                     exc_info=True,
