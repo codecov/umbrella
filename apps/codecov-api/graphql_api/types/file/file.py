@@ -44,6 +44,12 @@ def resolve_totals(data, info):
     return file_report.totals if file_report else None
 
 
+@file_bindable.field("isCriticalFile")
+def resolve_is_critical_file(data, info):
+    """DEPRECATED. Impact Analysis has been removed. Always returns None."""
+    return None
+
+
 @file_bindable.field("hashedPath")
 def resolve_hashed_path(data, info):
     path = data.get("path")
