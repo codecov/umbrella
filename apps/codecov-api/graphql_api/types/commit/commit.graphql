@@ -5,6 +5,7 @@ type Commit {
   commitid: String!
   author: Owner
   parent: Commit
+  parentCommitid: String
   pullId: Int
   branchName: String
   yaml: String
