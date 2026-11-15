@@ -12,6 +12,7 @@ from database.enums import CompareCommitError, CompareCommitState
 from database.models import CompareCommit, CompareComponent, CompareFlag
 from database.models.core import Commit, Repository
 from database.models.reports import RepositoryFlag
+from helpers.clock import get_utc_now
 from helpers.comparison import minimal_totals
 from helpers.github_installation import get_installation_name_for_owner_for_task
 from rollouts import PARALLEL_COMPONENT_COMPARISON
@@ -188,6 +189,13 @@ class ComputeComparisonTask(BaseCodecovTask, name=compute_comparison_task_name):
             .all()
         }
 
+        # Accumulate all writes and persist them once after the loop, instead of
+        # flushing per new row and updating existing rows one-by-one (N+1).
+        new_flag_comparisons: list[CompareFlag] = []
+        flag_comparison_updates: list[dict] = []
+        updated_entries: list[CompareFlag] = []
+        now = get_utc_now()
+
         for flag_name in flag_names:
             totals = self.get_flag_comparison_totals(flag_name, comparison_proxy)
             repositoryflag = repository_flags_by_name[flag_name]
@@ -198,17 +206,40 @@ class ComputeComparisonTask(BaseCodecovTask, name=compute_comparison_task_name):
                     "No previous flag comparisons; adding flag comparisons",
                     extra={"repoid": repository_id},
                 )
-                self.store_flag_comparison(
-                    db_session, comparison, repositoryflag, totals
+                new_flag_comparisons.append(
+                    self.store_flag_comparison(
+                        db_session, comparison, repositoryflag, totals
+                    )
                 )
             else:
                 log.debug(
                     "Updating totals for existing flag comparison entry",
                     extra={"repoid": repository_id},
                 )
-                flag_comparison_entry.head_totals = totals["head_totals"]
-                flag_comparison_entry.base_totals = totals["base_totals"]
-                flag_comparison_entry.patch_totals = totals["patch_totals"]
+                # Uniform keys for every mapping so SQLAlchemy can batch them
+                # into a single executemany UPDATE.
+                flag_comparison_updates.append(
+                    {
+                        "id_": flag_comparison_entry.id_,
+                        "head_totals": totals["head_totals"],
+                        "base_totals": totals["base_totals"],
+                        "patch_totals": totals["patch_totals"],
+                        "updated_at": now,
+                    }
+                )
+                updated_entries.append(flag_comparison_entry)
+
+        if flag_comparison_updates:
+            db_session.bulk_update_mappings(CompareFlag, flag_comparison_updates)
+            # bulk_update_mappings bypasses the identity map; expire the loaded
+            # instances so subsequent reads reflect the persisted values.
+            for entry in updated_entries:
+                db_session.expire(entry)
+        if new_flag_comparisons:
+            db_session.add_all(new_flag_comparisons)
+        if flag_comparison_updates or new_flag_comparisons:
+            db_session.flush()
+
         log.info(
             "Flag comparisons stored successfully",
             extra={"number_stored": len(head_report_flags)},
@@ -245,16 +276,15 @@ class ComputeComparisonTask(BaseCodecovTask, name=compute_comparison_task_name):
         comparison: CompareCommit,
         repositoryflag: RepositoryFlag,
         totals,
-    ):
-        flag_comparison = CompareFlag(
-            commit_comparison=comparison,
-            repositoryflag=repositoryflag,
+    ) -> CompareFlag:
+        # Builds the row only; the caller adds and flushes all new rows at once.
+        return CompareFlag(
+            commit_comparison_id=comparison.id,
+            repositoryflag_id=repositoryflag.id,
             patch_totals=totals["patch_totals"],
             head_totals=totals["head_totals"],
             base_totals=totals["base_totals"],
         )
-        db_session.add(flag_comparison)
-        db_session.flush()
 
     @sentry_sdk.trace
     def compute_component_comparisons(
