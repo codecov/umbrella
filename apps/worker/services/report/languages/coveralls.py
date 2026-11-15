@@ -7,7 +7,11 @@ from services.report.report_builder import ReportBuilderSession
 
 class CoverallsProcessor(BaseLanguageProcessor):
     def matches_content(self, content: dict, first_line: str, name: str) -> bool:
-        return "source_files" in content
+        source_files = content.get("source_files")
+        if not isinstance(source_files, list) or len(source_files) == 0:
+            return False
+        first_file = source_files[0]
+        return isinstance(first_file, dict) and "name" in first_file and "coverage" in first_file
 
     @sentry_sdk.trace
     def process(
@@ -18,13 +22,18 @@ class CoverallsProcessor(BaseLanguageProcessor):
 
 def from_json(report: dict, report_builder_session: ReportBuilderSession) -> None:
     for file in report["source_files"]:
-        _file = report_builder_session.create_coverage_file(file["name"])
+        filename = file.get("name")
+        if filename is None:
+            continue
+        _file = report_builder_session.create_coverage_file(filename)
         if _file is None:
             continue
 
         # for some reason, the `coverage` field is either a list directly,
         # or a string with a json-encoded list.
-        coverage: str | list = file["coverage"]
+        coverage: str | list = file.get("coverage")
+        if coverage is None:
+            continue
         if isinstance(coverage, str):
             coverage = orjson.loads(coverage)
 
