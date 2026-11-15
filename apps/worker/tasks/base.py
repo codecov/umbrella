@@ -7,11 +7,12 @@ import sentry_sdk
 from celery._state import get_current_task
 from celery.exceptions import MaxRetriesExceededError, SoftTimeLimitExceeded
 from celery.worker.request import Request
-from django.db import InterfaceError, close_old_connections
+from django.db import InterfaceError, close_old_connections, connections
 from sqlalchemy.exc import (
     DataError,
     IntegrityError,
     InvalidRequestError,
+    OperationalError,
     SQLAlchemyError,
 )
 
@@ -521,15 +522,26 @@ class BaseCodecovTask(celery_app.Task):
                 "We had an issue where a timeout happened directly during the DB commit",
                 exc_info=True,
             )
+            # Also close any Django ORM connections that may have been broken by the
+            # SoftTimeLimitExceeded signal firing mid-commit (e.g. ta_timeseries).
+            connections.close_all()
             try:
                 db_session.commit()
                 db_session.close()
-            except InvalidRequestError:
+            except (InvalidRequestError, OperationalError):
                 log.warning(
                     "DB session cannot be operated on any longer. Closing it and removing it",
                     exc_info=True,
                 )
                 get_db_session.remove()
+        except OperationalError:
+            log.warning(
+                "DB session encountered a broken connection, likely due to a timeout during "
+                "a Django ORM commit. Closing all connections and removing the session.",
+                exc_info=True,
+            )
+            connections.close_all()
+            get_db_session.remove()
         except InvalidRequestError:
             log.warning(
                 "DB session cannot be operated on any longer. Closing it and removing it",
