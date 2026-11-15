@@ -179,7 +179,7 @@ class BaseReportService:
             name=(name[:100] if name else None),
             provider=arguments.get("service"),
             state="started",
-            storage_path=arguments.get("url"),
+            storage_path=(arguments.get("url") or "").strip() or None,
             order_number=None,
             upload_extras={},
             upload_type=SessionType.uploaded.value,
