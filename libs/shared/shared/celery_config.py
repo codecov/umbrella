@@ -263,6 +263,13 @@ TASK_RETRY_BACKOFF_BASE_SECONDS = int(
     get_config("setup", "tasks", "celery", "retry_backoff_base", default=20)
 )
 
+# Maximum delay cap for exponential backoff retry strategy (seconds)
+# Prevents very long waits at high retry counts (e.g. retry 8+ would be 5120s+ without a cap)
+# Default: 60 seconds
+TASK_RETRY_BACKOFF_MAX_SECONDS = int(
+    get_config("setup", "tasks", "celery", "retry_backoff_max", default=60)
+)
+
 # Fixed retry delay for specific conditions (seconds)
 # Used for predictable retry intervals (e.g., waiting for processing lock)
 # Default: 60 seconds
