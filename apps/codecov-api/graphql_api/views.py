@@ -99,6 +99,10 @@ class QueryMetricsExtension(Extension):
     def set_type_and_name(self, query: str) -> None:
         operation_type = "unknown_type"  # default value
         operation_name = "unknown_name"  # default value
+        if not query:
+            self.operation_type = operation_type
+            self.operation_name = operation_name
+            return
         try:
             match_obj = regex.match(GQL_TYPE_AND_NAME_PATTERN, query, timeout=2)
         except TimeoutError:
@@ -221,12 +225,13 @@ class AsyncGraphqlView(GraphQLAsyncView):
 
     validation_rules = get_validation_rules  # type: ignore
 
-    def get_clean_query(self, request_body: dict[str, Any]) -> str | None:
+    def get_clean_query(self, request_body: dict[str, Any]) -> str:
         # clean up graphql query to remove new lines and extra spaces
         if "query" in request_body and isinstance(request_body["query"], str):
             clean_query = request_body["query"].replace("\n", " ")
             clean_query = clean_query.replace("  ", "").strip()
             return clean_query
+        return ""
 
     async def get(self, *args: Any, **kwargs: Any) -> HttpResponse:
         if settings.GRAPHQL_PLAYGROUND:
