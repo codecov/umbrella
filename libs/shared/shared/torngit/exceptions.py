@@ -40,6 +40,16 @@ class TorngitObjectNotFoundError(TorngitClientError):
         self.message = message
 
 
+class TorngitCommitNotFoundError(TorngitObjectNotFoundError):
+    """Raised when a 404 from the git provider indicates the commit itself
+    was not found (as opposed to a specific file being absent from the repo).
+    This typically occurs due to eventual-consistency delays after a push and
+    is transient — the caller should retry the operation.
+    """
+
+    pass
+
+
 class TorngitRateLimitError(TorngitClientError):
     def __init__(self, response_data, message, reset=None, retry_after=None):
         super().__init__(response_data, message, reset)
