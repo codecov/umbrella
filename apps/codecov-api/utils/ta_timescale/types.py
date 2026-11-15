@@ -10,6 +10,7 @@ class TestResultsAggregates:
     total_slow_tests: int
     fails: int
     skips: int
+    flaky_tests: int = 0
     total_duration_percent_change: float | None = None
     slowest_tests_duration_percent_change: float | None = None
     total_slow_tests_percent_change: float | None = None
