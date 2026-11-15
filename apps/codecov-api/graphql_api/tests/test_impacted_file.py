@@ -98,7 +98,7 @@ query ImpactedFile(
     $repo: String!
     $pull: Int!
     $path: String!
-    $filters: SegmentsFilters
+    $filters: SegmentFilters
 ) {
     owner(username: $org) {
         repository(name: $repo) {

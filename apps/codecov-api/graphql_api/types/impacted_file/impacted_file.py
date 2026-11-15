@@ -93,6 +93,8 @@ def resolve_segments(
 
     segments = file_comparison.segments or []
 
+    # Note: `flags` field is accepted for backward compatibility but not currently
+    # used to filter segments (flag-based filtering happens upstream).
     if filters.get("has_unintended_changes") is True:
         # segments with no diff changes and at least 1 unintended change
         segments = [segment for segment in segments if segment.has_unintended_changes]
