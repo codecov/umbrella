@@ -78,6 +78,12 @@ class ProcessingError:
 
     def _get_error_details(self) -> dict[str, Any]:
         match self.code:
+            case UploadErrorCode.COMMIT_NOT_FOUND:
+                return {
+                    "error_class": Exception,
+                    "error_text": "Commit not found in database.",
+                    "max_retries": 5,
+                }
             case UploadErrorCode.FILE_NOT_IN_STORAGE:
                 return {
                     "error_class": FileNotInStorageError,
