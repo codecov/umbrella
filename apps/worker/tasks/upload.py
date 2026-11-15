@@ -37,7 +37,11 @@ from services.repository import (
     possibly_update_commit_from_provider_info,
 )
 from services.test_results import TestResultsReportService
-from shared.celery_config import DEFAULT_LOCK_TIMEOUT_SECONDS, upload_task_name
+from shared.celery_config import (
+    DEFAULT_BLOCKING_TIMEOUT_SECONDS,
+    DEFAULT_LOCK_TIMEOUT_SECONDS,
+    upload_task_name,
+)
 from shared.config import get_config
 from shared.django_apps.upload_breadcrumbs.models import Errors, Milestones
 from shared.django_apps.user_measurements.models import UserMeasurement
@@ -336,7 +340,7 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
             commitid=commitid,
             report_type=upload_context.report_type,
             lock_timeout=self.get_lock_timeout(DEFAULT_LOCK_TIMEOUT_SECONDS),
-            blocking_timeout=None,
+            blocking_timeout=DEFAULT_BLOCKING_TIMEOUT_SECONDS,
             redis_connection=upload_context.redis_connection,
         )
 
