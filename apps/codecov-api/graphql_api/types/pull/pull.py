@@ -163,6 +163,23 @@ def resolve_behind_by_commit(
     return pull.behind_by_commit
 
 
+@pull_bindable.field("changedFiles")
+async def resolve_changed_files(
+    pull: Pull, info: GraphQLResolveInfo, **kwargs: Any
+) -> int | None:
+    if not pull.compared_to or not pull.head:
+        return None
+
+    comparison_loader = ComparisonLoader.loader(info, pull.repository_id)
+    commit_comparison = await comparison_loader.load((pull.compared_to, pull.head))
+
+    if not commit_comparison or not commit_comparison.is_processed:
+        return None
+
+    report = ComparisonReport(commit_comparison)
+    return len(report.impacted_files_with_direct_changes)
+
+
 @pull_bindable.field("firstPull")
 @sync_to_async
 def resolve_first_pull(pull: Pull, info: GraphQLResolveInfo) -> bool:
