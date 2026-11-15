@@ -224,6 +224,8 @@ class ParserV3(ParserTrait):
             self.info["plugin_version"] = value
         elif prefix == "duration":
             self.info["duration"] = value
+        elif prefix == "outputPath":
+            self.info["output_path"] = value
 
     def _parse_event(self, event: tuple[str, str, str]):
         prefix, _, value = event

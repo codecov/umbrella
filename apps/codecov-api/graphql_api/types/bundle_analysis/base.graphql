@@ -94,6 +94,7 @@ type BundleReport {
   ): AssetConnection
   info: BundleReportInfo!
   cacheConfig: Boolean!
+  outputPath: String
 }
 
 type BundleAnalysisMeasurements{
