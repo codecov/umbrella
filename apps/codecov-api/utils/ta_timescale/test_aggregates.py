@@ -28,6 +28,7 @@ def get_repo_aggregates_via_ca(
         total_duration=Sum("total_duration_seconds", output_field=FloatField()),
         fails=Sum(F("fail_count") + F("flaky_fail_count")),
         skips=Sum("skip_count"),
+        passes=Sum("pass_count"),
     )
 
     unique_test_count = (
@@ -97,6 +98,7 @@ def get_test_results_aggregates(
         total_duration=curr_aggregates["total_duration"] or 0,
         fails=int(curr_aggregates["fails"] or 0),
         skips=int(curr_aggregates["skips"] or 0),
+        total_passes=int(curr_aggregates["passes"] or 0),
         total_slow_tests=curr_slow_test_num,
         slowest_tests_duration=curr_slow_test_duration or 0.0,
         total_duration_percent_change=_pct_change(
