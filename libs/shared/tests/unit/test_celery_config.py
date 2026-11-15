@@ -54,7 +54,11 @@ def test_celery_config():
         "app.tasks.upload.*",
         "app.tasks.upload.UploadFinisher",
     ]
-    assert config.broker_transport_options == {"visibility_timeout": 900}
+    assert config.broker_transport_options == {
+        "visibility_timeout": 900,
+        "socket_keepalive": True,
+        "socket_connect_timeout": 4,
+    }
     assert config.result_extended is True
     assert config.imports == ("tasks",)
     assert config.task_serializer == "json"

@@ -363,7 +363,32 @@ class BaseCeleryConfig:
     # Can be overridden via: setup.tasks.celery.visibility_timeout config
     broker_transport_options = {
         "visibility_timeout": TASK_VISIBILITY_TIMEOUT_SECONDS,
+        # Enable TCP keepalive so the OS detects and closes stale connections
+        # to Redis quickly rather than hanging until a task-level timeout fires.
+        "socket_keepalive": True,
+        # Fail fast on connect so workers retry sooner when Redis is unavailable.
+        # Default: 4 seconds
+        "socket_connect_timeout": int(
+            get_config(
+                "setup",
+                "tasks",
+                "celery",
+                "broker_socket_connect_timeout",
+                default=4,
+            )
+        ),
     }
+
+    # Automatically retry the broker connection on worker startup.
+    # Without this, a transient Redis restart during worker boot causes the
+    # worker to exit immediately instead of waiting for Redis to recover.
+    # Celery docs: https://docs.celeryq.dev/en/stable/userguide/configuration.html#broker-connection-retry-on-startup
+    broker_connection_retry_on_startup = True
+
+    # Retry broker connection indefinitely on startup (None = no limit).
+    # Workers will keep retrying with backoff until Redis is available.
+    # Celery docs: https://docs.celeryq.dev/en/stable/userguide/configuration.html#broker-connection-max-retries
+    broker_connection_max_retries = None
     result_extended = True
     task_default_queue = get_config(
         "setup", "tasks", "celery", "default_queue", default="celery"
