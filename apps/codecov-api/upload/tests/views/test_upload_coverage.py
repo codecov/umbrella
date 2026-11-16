@@ -96,6 +96,49 @@ def test_deactivated_repo(db, mocker):
     )
 
 
+def test_public_deactivated_repo_upload_succeeds(db, mocker):
+    mock_all_plans_and_tiers()
+    mocker.patch.object(
+        CanDoCoverageUploadsPermission, "has_permission", return_value=True
+    )
+    mocker.patch(
+        "shared.storage.MinioStorageService.create_presigned_put",
+        return_value="presigned put",
+    )
+    mocker.patch("upload.views.uploads.trigger_upload_task", return_value=True)
+    mocker.patch("shared.events.amplitude.AmplitudeEventPublisher.publish")
+    mocker.patch.object(TaskService, "upload_breadcrumb")
+
+    repository = RepositoryFactory(
+        name="the_repo",
+        author__username="codecov",
+        author__service="github",
+        private=False,
+        active=True,
+        activated=False,
+    )
+    commit = CommitFactory(repository=repository)
+    client = APIClient()
+    client.force_authenticate(user=repository.author)
+    url = reverse(
+        "new_upload.upload_coverage",
+        args=[
+            repository.author.service,
+            f"{repository.author.username}::::{repository.name}",
+        ],
+    )
+    response = client.post(
+        url,
+        {"commitid": commit.commitid, "code": "default"},
+        format="json",
+    )
+
+    assert response.status_code == 201
+    repository.refresh_from_db()
+    assert repository.activated is True
+    assert repository.active is True
+
+
 def test_upload_coverage_with_errors(db, mocker):
     mock_all_plans_and_tiers()
     mock_upload_breadcrumb = mocker.patch.object(TaskService, "upload_breadcrumb")
