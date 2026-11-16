@@ -15,4 +15,4 @@ class Migration(migrations.Migration):
         ("core", "0088_repository_name_case_insensitive"),
     ]
 
-    operations = [migrations.RunPython(update_version)]
+    operations = [migrations.RunPython(update_version, migrations.RunPython.noop)]
