@@ -126,10 +126,10 @@ class GithubEnterpriseWebhookHandlerTests(APITestCase):
         response = self._post_event_data(event=GitHubWebhookEvents.PING)
         assert response.status_code == status.HTTP_200_OK
 
-    def test_repository_publicized_sets_activated_false_and_private_false(self):
+    def test_repository_publicized_sets_private_false_and_activated_true(self):
         self.repo.private = True
-        self.repo.activated = True
-
+        self.repo.activated = False
+        self.repo.active = True
         self.repo.save()
 
         response = self._post_event_data(
@@ -141,11 +141,14 @@ class GithubEnterpriseWebhookHandlerTests(APITestCase):
 
         self.repo.refresh_from_db()
 
-        assert self.repo.private == False
-        assert self.repo.activated == False
+        assert self.repo.private is False
+        assert self.repo.activated is True
+        assert self.repo.active is True
 
-    def test_repository_privatized_sets_private_true(self):
+    def test_repository_privatized_sets_private_true_and_leaves_activated(self):
         self.repo.private = False
+        self.repo.activated = True
+        self.repo.active = True
         self.repo.save()
 
         response = self._post_event_data(
@@ -157,7 +160,9 @@ class GithubEnterpriseWebhookHandlerTests(APITestCase):
 
         self.repo.refresh_from_db()
 
-        assert self.repo.private == True
+        assert self.repo.private is True
+        assert self.repo.activated is True
+        assert self.repo.active is True
 
     def test_repository_deleted_sets_deleted_activated_and_active(self):
         response = self._post_event_data(
@@ -202,9 +207,10 @@ class GithubEnterpriseWebhookHandlerTests(APITestCase):
         assert response.status_code == status.HTTP_405_METHOD_NOT_ALLOWED
         assert self.repo.branches.filter(name=branch.name).exists()
 
-    def test_public_sets_repo_private_false_and_activated_false(self):
+    def test_public_sets_repo_private_false_and_activated_true(self):
         self.repo.private = True
-        self.repo.activated = True
+        self.repo.activated = False
+        self.repo.active = True
         self.repo.save()
 
         response = self._post_event_data(
@@ -214,8 +220,9 @@ class GithubEnterpriseWebhookHandlerTests(APITestCase):
 
         assert response.status_code == status.HTTP_200_OK
         self.repo.refresh_from_db()
-        assert not self.repo.private
-        assert not self.repo.activated
+        assert self.repo.private is False
+        assert self.repo.activated is True
+        assert self.repo.active is True
 
     @patch("redis.Redis.sismember", lambda x, y, z: False)
     def test_push_updates_only_unmerged_commits_with_branch_name(self):

@@ -173,7 +173,10 @@ class GithubWebhookHandler(APIView):
     def repository(self, request, *args, **kwargs):
         action, repo = request.data.get("action"), self._get_repo(request)
         if action == "publicized":
-            repo.private, repo.activated = False, False
+            # Public repos are not billed. activated=False with active still
+            # true is the pair upload rejects.
+            repo.private = False
+            repo.activated = True
             repo.save()
             log.info(
                 "Repository publicized",
@@ -220,7 +223,9 @@ class GithubWebhookHandler(APIView):
 
     def public(self, request, *args, **kwargs):
         repo = self._get_repo(request)
-        repo.private, repo.activated = False, False
+        # Legacy public event. Same flag update as repository publicized.
+        repo.private = False
+        repo.activated = True
         repo.save()
         log.info(
             "Repository publicized",
