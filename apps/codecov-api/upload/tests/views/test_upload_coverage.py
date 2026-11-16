@@ -129,11 +129,18 @@ def test_public_deactivated_repo_upload_succeeds(db, mocker):
     )
     response = client.post(
         url,
-        {"commitid": commit.commitid, "code": "default"},
+        {
+            "ci_service": "ci_service",
+            "code": "default",
+            "commitid": commit.commitid,
+            "flags": ["flag1"],
+            "job_code": "job_code",
+            "version": "version",
+        },
         format="json",
     )
 
-    assert response.status_code == 201
+    assert response.status_code == 201, response.json()
     repository.refresh_from_db()
     assert repository.activated is True
     assert repository.active is True
