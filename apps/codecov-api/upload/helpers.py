@@ -808,14 +808,12 @@ def dispatch_upload_task(
 
 
 def validate_activated_repo(repository: Repository) -> None:
-    """
-    Validate that the repository is activated and active. If not, raise a
-    `ValidationError` with a link to the Codecov UI for activation.
-
-    :param repository: The repository to validate.
-    :raises ValidationError: If the repository is not activated or active.
-    """
-    if repository.active and not repository.activated:
+    """Reject uploads to a non-public repo that is active but not activated."""
+    if (
+        repository.private is not False
+        and repository.active
+        and not repository.activated
+    ):
         config_url = f"{settings.CODECOV_DASHBOARD_URL}/{repository.author.service}/{repository.author.username}/{repository.name}/config/general"
         raise ValidationError(
             f"This repository is deactivated. To resume uploading to it, please activate the repository in the codecov UI: {config_url}"

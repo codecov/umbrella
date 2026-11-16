@@ -295,7 +295,7 @@ def test_validate_upload_too_many_uploads_for_commit(
 
 
 def test_deactivated_repo(db, mocker):
-    repository = RepositoryFactory.create(active=True, activated=False)
+    repository = RepositoryFactory.create(active=True, activated=False, private=True)
     config_url = f"{settings.CODECOV_DASHBOARD_URL}/{repository.author.service}/{repository.author.username}/{repository.name}/config/general"
 
     with pytest.raises(ValidationError) as exp:
@@ -303,6 +303,27 @@ def test_deactivated_repo(db, mocker):
     assert exp.match(
         f"This repository is deactivated. To resume uploading to it, please activate the repository in the codecov UI: {config_url}"
     )
+
+
+def test_deactivated_repo_unknown_visibility_still_raises(db):
+    repository = RepositoryFactory.create(active=True, activated=False, private=True)
+    repository.private = None
+
+    with pytest.raises(ValidationError):
+        validate_activated_repo(repository)
+
+
+def test_deactivated_repo_activated_null_still_raises(db):
+    repository = RepositoryFactory.create(active=True, activated=None, private=True)
+
+    with pytest.raises(ValidationError):
+        validate_activated_repo(repository)
+
+
+def test_public_deactivated_repo_allowed(db):
+    repository = RepositoryFactory.create(active=True, activated=False, private=False)
+
+    validate_activated_repo(repository)
 
 
 @pytest.mark.django_db
