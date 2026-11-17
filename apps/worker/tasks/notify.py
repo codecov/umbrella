@@ -56,7 +56,11 @@ from shared.django_apps.upload_breadcrumbs.models import Errors, Milestones
 from shared.helpers.redis import Redis, get_redis_connection
 from shared.reports.readonly import ReadOnlyReport
 from shared.torngit.base import TokenType, TorngitBaseAdapter
-from shared.torngit.exceptions import TorngitClientError, TorngitServerFailureError
+from shared.torngit.exceptions import (
+    TorngitClientError,
+    TorngitRateLimitError,
+    TorngitServerFailureError,
+)
 from shared.typings.torngit import OwnerInfo, RepoInfo, TorngitInstanceData
 from shared.yaml import UserYaml
 from tasks.base import BaseCodecovTask
@@ -590,7 +594,18 @@ class NotifyTask(BaseCodecovTask, name=notify_task_name):
         if db_session is None:
             log.warning("Failed to save patch_totals. dbsession is None")
             return
-        patch_coverage = comparison.get_patch_totals()
+        try:
+            patch_coverage = comparison.get_patch_totals()
+        except TorngitRateLimitError:
+            log.warning(
+                "Failed to save patch_totals due to rate limit error",
+                extra={
+                    "repoid": head_commit.repoid,
+                    "commit": head_commit.commitid,
+                    "patch_coverage_base_commitid": comparison.comparison.patch_coverage_base_commitid,
+                },
+            )
+            return
         if (
             comparison.project_coverage_base is not None
             and comparison.project_coverage_base.commit is not None
