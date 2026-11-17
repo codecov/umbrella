@@ -82,25 +82,37 @@ class LogContext:
                     .filter(Repository.repoid == self.repo_id)
                 )
 
-                (
-                    self.repo_name,
-                    self.owner_id,
-                    self.owner_username,
-                    self.owner_service,
-                    self.owner_plan,
-                ) = query.first()
+                row = query.first()
+                if row is not None:
+                    (
+                        self.repo_name,
+                        self.owner_id,
+                        self.owner_username,
+                        self.owner_service,
+                        self.owner_plan,
+                    ) = row
 
             elif self.owner_id:
                 query = dbsession.query(
                     Owner.username, Owner.service, Owner.plan
                 ).filter(Owner.ownerid == self.owner_id)
 
-                (self.owner_username, self.owner_service, self.owner_plan) = (
-                    query.first()
-                )
+                row = query.first()
+                if row is not None:
+                    (self.owner_username, self.owner_service, self.owner_plan) = row
 
         except Exception:
             log.exception("Failed to populate log context")
+            # The failed query may have left the session's transaction in an
+            # invalid state (e.g. the DB connection was dropped). Since the same
+            # session is reused by the task, roll back so it's usable again.
+            try:
+                dbsession.rollback()
+            except Exception:
+                log.warning(
+                    "Failed to roll back DB session after log context population error",
+                    exc_info=True,
+                )
 
         self._populated_from_db = True
 
