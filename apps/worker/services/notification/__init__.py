@@ -41,6 +41,7 @@ from shared.django_apps.codecov_auth.models import Plan
 from shared.helpers.yaml import default_if_true
 from shared.plan.constants import TierName
 from shared.torngit.base import TorngitBaseAdapter
+from shared.torngit.exceptions import TorngitRateLimitError
 from shared.yaml import UserYaml
 
 log = logging.getLogger(__name__)
@@ -348,6 +349,18 @@ class NotificationService:
             return notifier, res
         except (CeleryError, SoftTimeLimitExceeded):
             raise
+        except TorngitRateLimitError as exc:
+            # Rate limits are an expected, external condition (the provider's
+            # per-installation quota). Don't report them as application errors.
+            log.warning(
+                "Individual notifier skipped due to rate limit",
+                extra={
+                    **log_extra,
+                    "rate_limit_reset": exc.reset,
+                    "retry_after": exc.retry_after,
+                },
+            )
+            return notifier, res
         except Exception:
             log.exception("Individual notifier failed", extra=log_extra)
             return notifier, res
