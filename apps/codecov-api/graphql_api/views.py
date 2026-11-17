@@ -21,7 +21,7 @@ from django.http import (
     HttpResponseNotAllowed,
     JsonResponse,
 )
-from graphql import DocumentNode
+from graphql import DocumentNode, GraphQLSyntaxError
 from rest_framework.exceptions import APIException
 from sentry_sdk import capture_exception
 
@@ -342,6 +342,15 @@ class AsyncGraphqlView(GraphQLAsyncView):
         }
 
     def error_formatter(self, error: Any, debug: bool = False) -> dict[str, Any]:
+        # Malformed queries are client errors: return the syntax message and
+        # don't report them to Sentry as internal server errors.
+        if isinstance(error, GraphQLSyntaxError):
+            log.info(
+                "GraphQL syntax error in request",
+                extra={"graphql_error": error.message},
+            )
+            return format_error(error, debug)
+
         user = self.request.user
         is_anonymous = user.is_anonymous if user else True
         # the only way to check for a malformed query
