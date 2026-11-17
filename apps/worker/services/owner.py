@@ -71,18 +71,38 @@ def clear_identical_owners(
         .first()
     )
 
-    if other_owner:
-        log.warning(
-            "clear_identical_owners: Username already exists for another owner",
-            extra={
-                "service": service,
-                "service_id": curr_owner.service_id,
-                "username": username,
-                "other_ownerid": other_owner.ownerid,
-                "current_ownerid": curr_owner.ownerid,
-            },
-        )
-        other_owner.username = None
-        db_session.query(LoginSession).filter(
-            LoginSession.ownerid == other_owner.ownerid
-        ).delete()
+    if not other_owner:
+        return
+
+    # Lock both owner rows in a deterministic order (by ownerid) before
+    # mutating them. Without this, concurrent workers touching the same
+    # owners can acquire row locks in opposite orders and deadlock.
+    (
+        db_session.query(Owner)
+        .filter(Owner.ownerid.in_([curr_owner.ownerid, other_owner.ownerid]))
+        .order_by(Owner.ownerid)
+        .with_for_update()
+        .all()
+    )
+    # Another worker may have changed the username while we waited on the lock
+    db_session.refresh(other_owner, attribute_names=["username"])
+    if other_owner.username != username:
+        return
+
+    log.warning(
+        "clear_identical_owners: Username already exists for another owner",
+        extra={
+            "service": service,
+            "service_id": curr_owner.service_id,
+            "username": username,
+            "other_ownerid": other_owner.ownerid,
+            "current_ownerid": curr_owner.ownerid,
+        },
+    )
+    other_owner.username = None
+    # Flush explicitly so the UPDATE happens here, under the locks we hold,
+    # instead of as a hidden autoflush side effect of the delete below.
+    db_session.flush()
+    db_session.query(LoginSession).filter(
+        LoginSession.ownerid == other_owner.ownerid
+    ).delete(synchronize_session=False)
