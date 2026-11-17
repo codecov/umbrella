@@ -9,6 +9,11 @@ on:
       event_name:
         type: string
         required: false
+      # Full unit/integration suites. False on merge_group (build gate only) and
+      # on push to main (merge queue already validated; proceed to deploy).
+      run_tests:
+        type: boolean
+        default: true
 
 permissions:
   contents: "read"
@@ -37,7 +42,7 @@ jobs:
 
   worker-test:
     name: Test (Worker)
-    if: ${{ inputs.skip == false }}
+    if: ${{ inputs.skip == false && inputs.run_tests == true }}
     needs: [worker-build]
     uses: ./.github/workflows/_run-tests.yml
     secrets: inherit
@@ -50,7 +55,9 @@ jobs:
 
   worker-build-self-hosted:
     name: Build Self Hosted (Worker)
-    if: ${{ inputs.skip == false }}
+    # Skip on merge_group: not needed for the merge gate. On push to main,
+    # worker-test is skipped so allow the job to proceed when tests are skipped.
+    if: ${{ inputs.skip == false && inputs.event_name != 'merge_group' && needs.worker-build.result == 'success' && (needs.worker-test.result == 'success' || needs.worker-test.result == 'skipped') }}
     needs: [worker-build, worker-test]
     uses: ./.github/workflows/_self-hosted.yml
     secrets: inherit
@@ -62,7 +69,7 @@ jobs:
   worker-production:
     name: Push Production Image (Worker)
     needs: [worker-build, worker-test]
-    if: ${{ inputs.skip == false && github.event_name == 'push' && github.event.ref == 'refs/heads/main' && github.repository_owner == 'codecov' }}
+    if: ${{ inputs.skip == false && github.event_name == 'push' && github.event.ref == 'refs/heads/main' && github.repository_owner == 'codecov' && needs.worker-build.result == 'success' && (needs.worker-test.result == 'success' || needs.worker-test.result == 'skipped') }}
     uses: ./.github/workflows/_push-env.yml
     secrets: inherit
     with:
@@ -76,7 +83,7 @@ jobs:
     name: Push Self Hosted Image (Worker)
     needs: [worker-build-self-hosted, worker-test]
     secrets: inherit
-    if: ${{ inputs.skip == false && github.event_name == 'push' && github.event.ref == 'refs/heads/main' && github.repository_owner == 'codecov' }}
+    if: ${{ inputs.skip == false && github.event_name == 'push' && github.event.ref == 'refs/heads/main' && github.repository_owner == 'codecov' && needs.worker-build-self-hosted.result == 'success' && (needs.worker-test.result == 'success' || needs.worker-test.result == 'skipped') }}
     uses: ./.github/workflows/_self-hosted.yml
     with:
       push_rolling: true
@@ -96,18 +103,26 @@ jobs:
   # Because this job does not use a reusable workflow, it will produce the same
   # check whether or not it is skipped. So, we can make this check required and
   # have it figure out whether the jobs we actually care about failed.
+  #
+  # On pull_request / staging: requires tests. On merge_group / push to main:
+  # tests are skipped and the build is the gate.
   worker-required-checks:
     name: Required checks (Worker)
-    if: ${{ !cancelled() && inputs.skip == false }}
+    # Reference needs.*.result so this still runs when worker-test is skipped
+    # (merge_group / push to main).
+    if: ${{ !cancelled() && inputs.skip == false && needs.worker-build.result != 'skipped' && (needs.worker-test.result == 'success' || needs.worker-test.result == 'skipped' || needs.worker-test.result == 'failure') }}
     runs-on: ubuntu-latest
-    needs: [worker-test]
+    needs: [worker-build, worker-test]
     steps:
+      - name: Fail build
+        if: ${{ needs.worker-build.result == 'failure' || needs.worker-build.result == 'cancelled' }}
+        run: exit 1
       - name: Fail tests
-        if: ${{ needs.worker-test.outputs.tests_passed == 'failure' }}
+        if: ${{ needs.worker-test.result == 'failure' }}
         run: exit 1
 
   trigger-worker-deploy:
     name: Trigger worker deployment
     needs: [worker-required-checks, worker-production]
-    if: ${{ !cancelled() && inputs.event_name == 'push' && inputs.skip == false }}
+    if: ${{ !cancelled() && inputs.event_name == 'push' && inputs.skip == false && needs.worker-required-checks.result == 'success' && needs.worker-production.result == 'success' }}
     uses: ./.github/workflows/trigger-worker-deploy.yml
