@@ -1,9 +1,12 @@
 from typing import Any
 
-from graphql import GraphQLError, ValidationRule
+from graphql import GraphQLEnumType, GraphQLError, GraphQLSchema, ValidationRule
 from graphql.language.ast import (
     DocumentNode,
     FieldNode,
+    ListTypeNode,
+    NamedTypeNode,
+    NonNullTypeNode,
     OperationDefinitionNode,
     VariableDefinitionNode,
 )
@@ -52,6 +55,59 @@ def create_required_variables_rule(variables: dict) -> type[ValidationRule]:
                 )
 
     return RequiredVariablesValidationRule
+
+
+def _get_named_type_name(type_node: Any) -> str | None:
+    """Unwrap NonNull and List AST type wrappers to get the base named type name."""
+    if isinstance(type_node, NamedTypeNode):
+        return type_node.name.value
+    if isinstance(type_node, (NonNullTypeNode, ListTypeNode)):
+        return _get_named_type_name(type_node.type)
+    return None
+
+
+def create_enum_variable_value_rule(
+    variables: dict, schema: GraphQLSchema
+) -> type[ValidationRule]:
+    """
+    Validation rule that rejects unhashable values (e.g. dicts, lists) provided for
+    enum-typed variables. Without this, ariadne's patched_parse_value raises an
+    unhandled TypeError when it attempts a dict membership check on such values,
+    resulting in a 500 internal server error instead of a clean validation response.
+    """
+
+    class EnumVariableValueRule(ValidationRule):
+        def __init__(self, context: ValidationContext) -> None:
+            super().__init__(context)
+            self.variables = variables
+            self.schema = schema
+
+        def enter_variable_definition(
+            self, node: VariableDefinitionNode, *_args: Any
+        ) -> None:
+            var_name = node.variable.name.value
+            if var_name not in self.variables:
+                return
+
+            type_name = _get_named_type_name(node.type)
+            if type_name is None:
+                return
+
+            schema_type = self.schema.type_map.get(type_name)
+            if not isinstance(schema_type, GraphQLEnumType):
+                return
+
+            value = self.variables[var_name]
+            if not isinstance(value, (str, int, float, bool, type(None))):
+                self.report_error(
+                    GraphQLError(
+                        f"Variable '${var_name}' got invalid value {value!r}; "
+                        f"Expected type '{type_name}' to be a scalar, not {type(value).__name__}.",
+                        node,
+                    )
+                )
+
+    return EnumVariableValueRule
 
 
 def create_max_depth_rule(max_depth: int) -> type[ValidationRule]:
