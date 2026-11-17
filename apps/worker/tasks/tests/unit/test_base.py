@@ -243,7 +243,7 @@ class TestBaseCodecovTask:
         task = SampleTask()
         task.run()
 
-        assert mock_wrap_up.call_args_list == [call(dbsession)]
+        assert mock_wrap_up.call_args_list == [call(dbsession, task_completed=True)]
 
         assert mock_dbsession_rollback.call_count == 0
 
@@ -265,7 +265,7 @@ class TestBaseCodecovTask:
 
         assert mock_dbsession_rollback.call_args_list == [call()]
 
-        assert mock_wrap_up.call_args_list == [call(dbsession)]
+        assert mock_wrap_up.call_args_list == [call(dbsession, task_completed=False)]
 
     def test_run_sqlalchemy_error_rollback(self, mocker, dbsession, celery_app):
         mock_dbsession_rollback = mocker.patch.object(dbsession, "rollback")
@@ -286,7 +286,7 @@ class TestBaseCodecovTask:
 
         assert mock_dbsession_rollback.call_args_list == [call()]
 
-        assert mock_wrap_up.call_args_list == [call(dbsession)]
+        assert mock_wrap_up.call_args_list == [call(dbsession, task_completed=False)]
 
     def test_get_repo_provider_service_working(self, mocker, mock_self_app):
         mock_repo_provider = mocker.MagicMock()
