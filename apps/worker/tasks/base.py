@@ -7,13 +7,15 @@ import sentry_sdk
 from celery._state import get_current_task
 from celery.exceptions import MaxRetriesExceededError, SoftTimeLimitExceeded
 from celery.worker.request import Request
-from django.db import InterfaceError, close_old_connections
+from django.db import InterfaceError, close_old_connections, connections
+from django.db import OperationalError as DjangoOperationalError
 from sqlalchemy.exc import (
     DataError,
     IntegrityError,
     InvalidRequestError,
     SQLAlchemyError,
 )
+from sqlalchemy.exc import OperationalError as SQLAlchemyOperationalError
 
 from app import celery_app
 from celery_task_router import _get_ownerid_from_task, _get_user_plan_from_task
@@ -483,6 +485,26 @@ class BaseCodecovTask(celery_app.Task):
                     if TestResultsFlow.has_begun():
                         TestResultsFlow.log(TestResultsFlow.UNCAUGHT_RETRY_EXCEPTION)
                     return None
+            except DjangoOperationalError:
+                # The DB server (or proxy) dropped the connection mid-task.
+                # Reset broken connections and retry instead of crashing.
+                log.warning(
+                    "Database seems to be unavailable (Django connection)",
+                    extra={"task_args": args, "task_kwargs": kwargs},
+                    exc_info=True,
+                )
+                self._reset_broken_db_connections(db_session)
+                retry_count = getattr(self.request, "retries", 0)
+                countdown = TASK_RETRY_BACKOFF_BASE_SECONDS * (2**retry_count)
+                try:
+                    if not self.safe_retry(countdown=countdown):
+                        return None
+                except MaxRetriesExceededError:
+                    if UploadFlow.has_begun():
+                        UploadFlow.log(UploadFlow.UNCAUGHT_RETRY_EXCEPTION)
+                    if TestResultsFlow.has_begun():
+                        TestResultsFlow.log(TestResultsFlow.UNCAUGHT_RETRY_EXCEPTION)
+                    return None
             except SQLAlchemyError as ex:
                 self._analyse_error(ex, args, kwargs)
                 db_session.rollback()
@@ -504,6 +526,26 @@ class BaseCodecovTask(celery_app.Task):
                     TestResultsFlow.log(TestResultsFlow.UNCAUGHT_RETRY_EXCEPTION)
             finally:
                 self.wrap_up_dbsession(db_session)
+
+    def _reset_broken_db_connections(self, db_session):
+        """Close unusable Django connections and roll back (or discard) the
+        SQLAlchemy session so a retry starts with fresh connections."""
+        for conn in connections.all(initialized_only=True):
+            try:
+                conn.close_if_unusable_or_obsolete()
+            except Exception:
+                log.warning(
+                    "Failed to close unusable Django DB connection",
+                    exc_info=True,
+                )
+        try:
+            db_session.rollback()
+        except SQLAlchemyError:
+            log.warning(
+                "DB session rollback failed after connection loss; removing session",
+                exc_info=True,
+            )
+            get_db_session.remove()
 
     def wrap_up_dbsession(self, db_session):
         """Commit and close database session, handling timeout edge cases.
@@ -534,6 +576,16 @@ class BaseCodecovTask(celery_app.Task):
             log.warning(
                 "DB session cannot be operated on any longer. Closing it and removing it",
                 exc_info=True,
+            )
+            get_db_session.remove()
+        except SQLAlchemyOperationalError:
+            # The connection was dropped by the server (e.g. "server closed the
+            # connection unexpectedly"). Raising here from the `finally` block
+            # would mask the task's real outcome (including celery's Retry), so
+            # report it and discard the broken session instead.
+            log.exception(
+                "DB connection lost while committing session. Removing it",
+                extra={"task_name": self.name},
             )
             get_db_session.remove()
 
