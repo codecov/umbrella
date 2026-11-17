@@ -346,13 +346,26 @@ class AsyncGraphqlView(GraphQLAsyncView):
         is_anonymous = user.is_anonymous if user else True
         # the only way to check for a malformed query
         is_bad_query = "Cannot query field" in error.formatted["message"]
+        original_error = error.original_error
+        # GraphQL syntax/validation errors never reach a resolver, so they have
+        # no original_error. They are client mistakes, not server failures.
+        is_validation_error = original_error is None
         if debug or (not is_anonymous and is_bad_query):
             return format_error(error, debug)
         formatted = error.formatted
+        if is_bad_query or is_validation_error:
+            # Don't report client query errors to Sentry. Anonymous callers
+            # still get a masked message so schema details aren't leaked.
+            log.info(
+                "GraphQL query validation error",
+                extra={"error_message": formatted.get("message")},
+            )
+            formatted["message"] = "INTERNAL SERVER ERROR"
+            formatted["type"] = "ServerError"
+            return formatted
         formatted["message"] = "INTERNAL SERVER ERROR"
         formatted["type"] = "ServerError"
         # if this is one of our own command exception, we can tell a bit more
-        original_error = error.original_error
         if isinstance(original_error, BaseException) or isinstance(
             original_error, ServiceException
         ):
