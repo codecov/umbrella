@@ -86,18 +86,24 @@ def transform_failures(
     uploads: dict[int, ReportSession], failures: list[FailedTestInstance]
 ) -> list[TestResultsNotificationFailure[bytes]]:
     notif_failures = []
+    # cache flag names per upload so each upload's flags are only queried once
+    flag_names_by_upload: dict[int, list[str]] = {}
     for failure in failures:
         if failure["failure_message"] is not None:
             failure["failure_message"] = shorten_file_paths(
                 failure["failure_message"]
             ).replace("\r", "")
 
+        upload_id = failure["upload_id"]
+        if upload_id not in flag_names_by_upload:
+            flag_names_by_upload[upload_id] = uploads[upload_id].flag_names
+
         notif_failures.append(
             TestResultsNotificationFailure(
                 display_name=failure["computed_name"],
                 failure_message=failure["failure_message"],
                 test_id=failure["test_id"],
-                envs=uploads[failure["upload_id"]].flag_names,
+                envs=flag_names_by_upload[upload_id],
                 duration_seconds=failure["duration_seconds"] or 0,
                 build_url=uploads[failure["upload_id"]].build_url,
             )
