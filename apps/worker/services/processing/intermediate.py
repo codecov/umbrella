@@ -62,6 +62,9 @@ def save_intermediate_report(upload_id: int, report: Report):
 def cleanup_intermediate_reports(
     upload_ids: list[int],
 ):
+    if not upload_ids:
+        # Redis rejects `DEL` without any keys ("wrong number of arguments")
+        return
     keys = [intermediate_report_key(upload_id) for upload_id in upload_ids]
     redis = get_redis_connection()
     redis.delete(*keys)
