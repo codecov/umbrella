@@ -51,6 +51,17 @@ def create_required_variables_rule(variables: dict) -> type[ValidationRule]:
                     f"Missing required variables: {', '.join(missing_variables)}",
                 )
 
+            # Required (non-null) variables explicitly passed as null would
+            # otherwise blow up later (e.g. in the query cost validator) and be
+            # reported as an internal server error.
+            null_variables = [
+                var for var in required_variables if self.variables.get(var) is None
+            ]
+            if null_variables:
+                raise MissingVariablesError(
+                    f"Required variables must not be null: {', '.join(null_variables)}",
+                )
+
     return RequiredVariablesValidationRule
 
 
