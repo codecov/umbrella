@@ -128,6 +128,8 @@ class FileComparisonTraverseManager:
 
     def traverse_finished(self):
         if self.segments:
+            if self.src and self.head_ln > len(self.src):
+                return True
             return False
         if self.src:
             return self.head_ln > len(self.src)
