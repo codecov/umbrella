@@ -228,6 +228,19 @@ class AsyncGraphqlView(GraphQLAsyncView):
             clean_query = clean_query.replace("  ", "").strip()
             return clean_query
 
+    _VALID_GRAPHQL_STARTERS = (
+        "{",
+        "query",
+        "mutation",
+        "subscription",
+        "fragment",
+    )
+
+    def is_valid_graphql_query(self, query: str) -> bool:
+        """Return True if the query string looks like a GraphQL document."""
+        lower = query.lstrip().lower()
+        return lower.startswith(self._VALID_GRAPHQL_STARTERS)
+
     async def get(self, *args: Any, **kwargs: Any) -> HttpResponse:
         if settings.GRAPHQL_PLAYGROUND:
             return await super().get(*args, **kwargs)
@@ -259,6 +272,20 @@ class AsyncGraphqlView(GraphQLAsyncView):
         }
         log.info("GraphQL Request", extra=log_data)
         inc_counter(GQL_REQUEST_MADE_COUNTER, labels={"path": req_path})
+
+        if cleaned_query is not None and not self.is_valid_graphql_query(cleaned_query):
+            inc_counter(
+                GQL_ERROR_TYPE_COUNTER,
+                labels={"error_type": "invalid_query", "path": req_path},
+            )
+            return JsonResponse(
+                data={
+                    "status": 400,
+                    "detail": "Invalid GraphQL query: query must be a valid GraphQL document.",
+                },
+                status=400,
+            )
+
         if self._check_ratelimit(request=request):
             inc_counter(
                 GQL_ERROR_TYPE_COUNTER,
