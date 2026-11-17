@@ -1,6 +1,7 @@
 import logging
 
 from sqlalchemy import func
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.sql import text
 
 from app import celery_app
@@ -16,6 +17,72 @@ from shared.celery_config import (
 )
 
 log = logging.getLogger(__name__)
+
+# Maximum time to wait for the org's owners row lock during auto-activation.
+# Without this, the UPDATE in try_to_auto_activate can queue behind another
+# long-running transaction on the same row for minutes, pinning a DB connection
+# and contributing to database-wide stalls.
+AUTO_ACTIVATE_LOCK_TIMEOUT = "2s"
+
+# Postgres SQLSTATE for lock_not_available (raised when lock_timeout expires)
+LOCK_NOT_AVAILABLE_PGCODE = "55P03"
+
+
+def _is_user_already_activated(db_session, org_ownerid: int, user_ownerid: int) -> bool:
+    """
+    Plain (non-locking) read to check whether the user is already activated,
+    so we can skip the row-locking UPDATE entirely in the common case.
+    """
+    row = db_session.execute(
+        text(
+            """
+            SELECT coalesce(plan_activated_users @> array[:user_ownerid]::int[], false)
+            FROM owners
+            WHERE ownerid = :org_ownerid
+            """
+        ),
+        {"user_ownerid": user_ownerid, "org_ownerid": org_ownerid},
+    ).first()
+    return bool(row and row[0])
+
+
+def _try_to_auto_activate_with_lock_timeout(
+    db_session, org_ownerid: int, user_ownerid: int
+) -> bool:
+    """
+    Calls try_to_auto_activate inside a savepoint with a bounded lock_timeout,
+    restoring the previous lock_timeout afterwards so the rest of the
+    transaction is unaffected.
+    """
+    previous_lock_timeout = db_session.execute(text("SHOW lock_timeout")).scalar()
+    try:
+        with db_session.begin_nested():
+            db_session.execute(
+                text("SELECT set_config('lock_timeout', :timeout, true)"),
+                {"timeout": AUTO_ACTIVATE_LOCK_TIMEOUT},
+            )
+            result = db_session.query(
+                func.public.try_to_auto_activate(org_ownerid, user_ownerid)
+            ).first()
+        return bool(result and result[0])
+    except OperationalError as exc:
+        pgcode = getattr(getattr(exc, "orig", None), "pgcode", None)
+        if pgcode != LOCK_NOT_AVAILABLE_PGCODE:
+            raise
+        log.warning(
+            "Auto activation skipped: timed out waiting for owners row lock",
+            extra={
+                "org_ownerid": org_ownerid,
+                "author_ownerid": user_ownerid,
+                "lock_timeout": AUTO_ACTIVATE_LOCK_TIMEOUT,
+            },
+        )
+        return False
+    finally:
+        db_session.execute(
+            text("SELECT set_config('lock_timeout', :timeout, true)"),
+            {"timeout": previous_lock_timeout},
+        )
 
 
 def activate_user(db_session, org_ownerid: int, user_ownerid: int) -> bool:
@@ -89,9 +156,12 @@ def activate_user(db_session, org_ownerid: int, user_ownerid: int) -> bool:
 
     # TODO: we need to decide the best way for this logic to be shared across
     # worker and codecov-api - ideally moving logic from database to application layer
-    (activation_success,) = db_session.query(
-        func.public.try_to_auto_activate(org_ownerid, user_ownerid)
-    ).first()
+    if _is_user_already_activated(db_session, org_ownerid, user_ownerid):
+        activation_success = True
+    else:
+        activation_success = _try_to_auto_activate_with_lock_timeout(
+            db_session, org_ownerid, user_ownerid
+        )
 
     log.info(
         "Auto activation attempted",
