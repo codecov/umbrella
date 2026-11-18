@@ -1069,6 +1069,59 @@ class TestUnitGithub:
         assert after_second_call - before_second_call == 1  # len(mocked_response[json]
 
     @pytest.mark.asyncio
+    async def test_create_check_run_in_progress(self, valid_handler):
+        before = REGISTRY.get_sample_value(
+            "git_provider_api_calls_github_total",
+            labels={"endpoint": "create_check_run"},
+        )
+        with respx.mock:
+            mocked_response = respx.post(
+                url="https://api.github.com/repos/ThiagoCodecov/example-python/check-runs",
+                json={
+                    "name": "codecov/patch",
+                    "head_sha": "a" * 40,
+                    "status": "in_progress",
+                },
+            ).mock(return_value=httpx.Response(status_code=201, json={"id": 42}))
+            res = await valid_handler.create_check_run("codecov/patch", "a" * 40)
+        assert res == 42
+        assert mocked_response.call_count == 1
+        after = REGISTRY.get_sample_value(
+            "git_provider_api_calls_github_total",
+            labels={"endpoint": "create_check_run"},
+        )
+        assert after - (before or 0) == 1
+
+    @pytest.mark.asyncio
+    async def test_create_check_run_completed(self, valid_handler, mocker):
+        frozen = datetime.datetime(2026, 11, 17, 15, 4, 5, tzinfo=datetime.UTC)
+        mocker.patch("shared.torngit.github.datetime").now.return_value = frozen
+        url = "https://app.codecov.io/gh/codecov/example-python/compare/1?src=pr"
+        output = {"title": "Codecov Report", "summary": "Summary"}
+        with respx.mock:
+            mocked_response = respx.post(
+                url="https://api.github.com/repos/ThiagoCodecov/example-python/check-runs",
+                json={
+                    "name": "codecov/patch",
+                    "head_sha": "a" * 40,
+                    "status": "completed",
+                    "conclusion": "failure",
+                    "completed_at": "2026-11-17T15:04:05Z",
+                    "output": output,
+                    "details_url": url,
+                },
+            ).mock(return_value=httpx.Response(status_code=201, json={"id": 42}))
+            res = await valid_handler.create_check_run(
+                "codecov/patch",
+                "a" * 40,
+                conclusion="failure",
+                output=output,
+                url=url,
+            )
+        assert res == 42
+        assert mocked_response.call_count == 1
+
+    @pytest.mark.asyncio
     async def test_update_check_run_no_url(self, valid_handler):
         before = REGISTRY.get_sample_value(
             "git_provider_api_calls_github_total",
