@@ -2245,7 +2245,6 @@ class Github(TorngitBaseAdapter):
         if conclusion is not None:
             body["status"] = "completed"
             body["conclusion"] = conclusion
-            body["completed_at"] = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
         if output is not None:
             body["output"] = output
         if url:

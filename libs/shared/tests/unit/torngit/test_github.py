@@ -1093,9 +1093,7 @@ class TestUnitGithub:
         assert after - (before or 0) == 1
 
     @pytest.mark.asyncio
-    async def test_create_check_run_completed(self, valid_handler, mocker):
-        frozen = datetime.datetime(2026, 11, 17, 15, 4, 5, tzinfo=datetime.UTC)
-        mocker.patch("shared.torngit.github.datetime").now.return_value = frozen
+    async def test_create_check_run_completed(self, valid_handler):
         url = "https://app.codecov.io/gh/codecov/example-python/compare/1?src=pr"
         output = {"title": "Codecov Report", "summary": "Summary"}
         with respx.mock:
@@ -1106,7 +1104,6 @@ class TestUnitGithub:
                     "head_sha": "a" * 40,
                     "status": "completed",
                     "conclusion": "failure",
-                    "completed_at": "2026-11-17T15:04:05Z",
                     "output": output,
                     "details_url": url,
                 },

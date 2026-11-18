@@ -40,6 +40,8 @@ class ChecksNotifier(StatusNotifier):
         self._repository_service = None
 
     ANNOTATIONS_PER_REQUEST = 50
+    # `if_not_found` accepts commit-status states that aren't valid check conclusions
+    CONCLUSION_FOR_STATE = {"error": "failure", "ignore": "neutral"}
 
     def is_enabled(self) -> bool:
         return True
@@ -395,6 +397,7 @@ class ChecksNotifier(StatusNotifier):
         head = comparison.head.commit
         state = payload["state"]
         state = "success" if self.notifier_yaml_settings.get("informational") else state
+        state = self.CONCLUSION_FOR_STATE.get(state, state)
 
         # Append tracking parameters to any codecov urls in the title or summary
         output = payload.get("output", {})
@@ -448,8 +451,7 @@ class ChecksNotifier(StatusNotifier):
                 for annotation_page in annotation_pages
             ]
 
-        # GitHub can 404 an update to a check run it just created, so the
-        # conclusion has to go out with the create rather than a follow-up update.
+        # Updates to a just-created check run can 404, so the conclusion must be set on create.
         check_id = async_to_sync(repository_service.create_check_run)(
             check_name=title,
             head_sha=head.commitid,
@@ -470,6 +472,8 @@ class ChecksNotifier(StatusNotifier):
                     "Unable to append check run annotations",
                     exc_info=True,
                     extra={
+                        "notifier_name": self.name,
+                        "check_name": title,
                         "check_id": check_id,
                         "page_number": page_number,
                         "number_pages": len(outputs),

@@ -1,3 +1,4 @@
+import logging
 from copy import deepcopy
 from unittest.mock import Mock
 
@@ -356,7 +357,7 @@ class TestChecksWithFallback:
         assert res.notification_successful == False
         assert res.explanation == "server_side_error_provider"
 
-    def test_checks_never_left_in_progress_when_updates_404(
+    def test_checks_created_completed_without_update(
         self, sample_comparison, mocker, mock_repo_provider
     ):
         mock_repo_provider.get_commit_statuses.return_value = Status([])
@@ -390,9 +391,9 @@ class TestChecksWithFallback:
 
         assert res.notification_successful == True
         mock_repo_provider.create_check_run.assert_called_once()
-        assert mock_repo_provider.create_check_run.call_args.kwargs["conclusion"] in (
-            "success",
-            "failure",
+        assert (
+            mock_repo_provider.create_check_run.call_args.kwargs["conclusion"]
+            == "success"
         )
         mock_repo_provider.update_check_run.assert_not_called()
         status_notifier.notify.assert_not_called()
@@ -1059,7 +1060,7 @@ class TestPatchChecksNotifier:
         assert snapshot("json") == result.data_sent
 
     def test_send_notification_annotation_page_failure_keeps_notification(
-        self, sample_comparison, mock_repo_provider
+        self, sample_comparison, mock_repo_provider, caplog
     ):
         comparison = sample_comparison
         payload = {
@@ -1082,13 +1083,91 @@ class TestPatchChecksNotifier:
             current_yaml=UserYaml({}),
             repository_service=mock_repo_provider,
         )
-        result = notifier.send_notification(sample_comparison, payload)
+        with caplog.at_level(logging.WARNING):
+            result = notifier.send_notification(sample_comparison, payload)
         assert result.notification_successful == True
+        assert result.explanation is None
         assert (
             mock_repo_provider.create_check_run.call_args.kwargs["conclusion"]
             == "failure"
         )
-        assert mock_repo_provider.update_check_run.call_count == 1
+        mock_repo_provider.update_check_run.assert_called_once_with(
+            2234563,
+            "failure",
+            output={
+                "title": "Codecov Report",
+                "summary": "Summary",
+                "annotations": list(range(51, 101)),
+            },
+            url=None,
+        )
+        (record,) = [
+            r
+            for r in caplog.records
+            if r.message == "Unable to append check run annotations"
+        ]
+        assert record.levelno == logging.WARNING
+        assert record.check_name == "codecov/patch/title"
+        assert (record.check_id, record.page_number, record.number_pages) == (
+            2234563,
+            2,
+            3,
+        )
+
+    def test_send_notification_informational_creates_success(
+        self, sample_comparison, mock_repo_provider
+    ):
+        mock_repo_provider.create_check_run.return_value = 1
+        notifier = PatchChecksNotifier(
+            repository=sample_comparison.head.commit.repository,
+            title="title",
+            notifier_yaml_settings={"informational": True},
+            notifier_site_settings=True,
+            current_yaml=UserYaml({}),
+            repository_service=mock_repo_provider,
+        )
+        payload = {
+            "state": "failure",
+            "output": {"title": "t", "summary": "s", "annotations": []},
+        }
+        result = notifier.send_notification(sample_comparison, payload)
+        assert result.notification_successful == True
+        assert (
+            mock_repo_provider.create_check_run.call_args.kwargs["conclusion"]
+            == "success"
+        )
+        mock_repo_provider.update_check_run.assert_not_called()
+
+    @pytest.mark.parametrize(
+        "state, conclusion",
+        [
+            ("success", "success"),
+            ("failure", "failure"),
+            ("error", "failure"),
+            ("ignore", "neutral"),
+        ],
+    )
+    def test_send_notification_maps_state_to_valid_conclusion(
+        self, sample_comparison, mock_repo_provider, state, conclusion
+    ):
+        mock_repo_provider.create_check_run.return_value = 1
+        notifier = PatchChecksNotifier(
+            repository=sample_comparison.head.commit.repository,
+            title="title",
+            notifier_yaml_settings={},
+            notifier_site_settings=True,
+            current_yaml=UserYaml({}),
+            repository_service=mock_repo_provider,
+        )
+        payload = {
+            "state": state,
+            "output": {"title": "t", "summary": "s", "annotations": []},
+        }
+        notifier.send_notification(sample_comparison, payload)
+        assert (
+            mock_repo_provider.create_check_run.call_args.kwargs["conclusion"]
+            == conclusion
+        )
 
     def test_notify(
         self,
