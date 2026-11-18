@@ -40,6 +40,8 @@ class ChecksNotifier(StatusNotifier):
         self._repository_service = None
 
     ANNOTATIONS_PER_REQUEST = 50
+    # `if_not_found` accepts commit-status states that aren't valid check conclusions
+    CONCLUSION_FOR_STATE = {"error": "failure", "ignore": "neutral"}
 
     def is_enabled(self) -> bool:
         return True
@@ -395,6 +397,7 @@ class ChecksNotifier(StatusNotifier):
         head = comparison.head.commit
         state = payload["state"]
         state = "success" if self.notifier_yaml_settings.get("informational") else state
+        state = self.CONCLUSION_FOR_STATE.get(state, state)
 
         # Append tracking parameters to any codecov urls in the title or summary
         output = payload.get("output", {})
@@ -427,11 +430,7 @@ class ChecksNotifier(StatusNotifier):
                 org_name=self.repository.author.name,
             )
 
-        # We need to first create the check run, get that id and update the status
-        check_id = async_to_sync(repository_service.create_check_run)(
-            check_name=title, head_sha=head.commitid
-        )
-
+        outputs = [output]
         if len(output.get("annotations", [])) > self.ANNOTATIONS_PER_REQUEST:
             annotation_pages = list(
                 self.paginate_annotations(output.get("annotations"))
@@ -443,22 +442,46 @@ class ChecksNotifier(StatusNotifier):
                     "number_annotations": len(output.get("annotations")),
                 },
             )
-            for annotation_page in annotation_pages:
-                async_to_sync(repository_service.update_check_run)(
-                    check_id,
-                    state,
-                    output={
-                        "title": output.get("title"),
-                        "summary": output.get("summary"),
-                        "annotations": annotation_page,
-                    },
-                    url=payload.get("url"),
-                )
+            outputs = [
+                {
+                    "title": output.get("title"),
+                    "summary": output.get("summary"),
+                    "annotations": annotation_page,
+                }
+                for annotation_page in annotation_pages
+            ]
 
-        else:
-            async_to_sync(repository_service.update_check_run)(
-                check_id, state, output=output, url=payload.get("url")
-            )
+        # Updates to a just-created check run can 404, so the conclusion must be set on create.
+        check_id = async_to_sync(repository_service.create_check_run)(
+            check_name=title,
+            head_sha=head.commitid,
+            conclusion=state,
+            output=outputs[0],
+            url=payload.get("url"),
+        )
+
+        # GitHub caps annotations per request, so extra pages can only be
+        # appended via updates; the check run is already completed by now.
+        for page_number, page_output in enumerate(outputs[1:], start=2):
+            try:
+                async_to_sync(repository_service.update_check_run)(
+                    check_id, state, output=page_output, url=payload.get("url")
+                )
+            except TorngitError:
+                log.warning(
+                    "Unable to append check run annotations",
+                    exc_info=True,
+                    extra={
+                        "notifier_name": self.name,
+                        "check_name": title,
+                        "check_id": check_id,
+                        "page_number": page_number,
+                        "number_pages": len(outputs),
+                        "repoid": head.repoid,
+                        "commit": head.commitid,
+                    },
+                )
+                break
 
         return NotificationResult(
             notification_attempted=True,
