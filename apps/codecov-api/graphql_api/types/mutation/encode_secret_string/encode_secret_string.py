@@ -17,7 +17,7 @@ async def resolve_encode_secret_string(_, info, input) -> None:
     value = command.encode_secret_string(
         repo_name=repo_name, owner=current_owner, value=value
     )
-    return {"value": value}
+    return {"value": value, "encodedValue": value}
 
 
 error_encode_secret_string = UnionType("EraseRepositoryError")
