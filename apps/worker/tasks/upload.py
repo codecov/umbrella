@@ -6,6 +6,7 @@ from copy import deepcopy
 from datetime import UTC, datetime
 from typing import Any, TypedDict
 
+import kombu.exceptions
 import orjson
 import sentry_sdk
 from asgiref.sync import async_to_sync
@@ -891,7 +892,18 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
                 )
             )
 
-        return chain(task_signatures).apply_async()
+        try:
+            return chain(task_signatures).apply_async()
+        except (kombu.exceptions.OperationalError, AttributeError) as e:
+            retry_countdown = 20 * 2**self.request.retries
+            log.warning(
+                "Broker connection error while scheduling bundle analysis tasks, retrying",
+                extra={"exc": str(e), "countdown": retry_countdown},
+            )
+            self.retry(
+                max_retries=3,
+                countdown=retry_countdown,
+            )
 
     def _schedule_ta_processing_task(
         self,
