@@ -231,7 +231,9 @@ class BundleReport:
     def asset_report_by_name(self, name: str) -> AssetReport | None:
         with get_db_session(self.db_path) as session:
             asset = session.query(Asset).filter(Asset.name == name).one_or_none()
-            return AssetReport(self.db_path, asset, self.info()) if asset else None
+            if asset is None:
+                return None
+            return AssetReport(self.db_path, asset, self.info())
 
     @sentry_sdk.trace
     def asset_reports(
@@ -256,8 +258,12 @@ class BundleReport:
                 chunk_entry,
                 chunk_initial,
             ).order_by(ordering(getattr(Asset, ordering_column)))
+            # Fetch the bundle-level session info once; it is identical for every
+            # asset of this bundle, so querying it per asset causes an N+1.
+            asset_rows = assets.all()
+            bundle_info = self.info() if asset_rows else {}
             return (
-                AssetReport(self.db_path, asset, self.info()) for asset in assets.all()
+                AssetReport(self.db_path, asset, bundle_info) for asset in asset_rows
             )
 
     def total_size(

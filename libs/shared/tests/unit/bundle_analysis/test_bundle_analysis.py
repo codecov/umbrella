@@ -204,6 +204,26 @@ def test_create_bundle_report():
         report.cleanup()
 
 
+def test_bundle_report_asset_reports_fetches_info_once():
+    try:
+        report = BundleAnalysisReport()
+        report.ingest(sample_bundle_stats_path)
+        bundle_report = report.bundle_report("sample")
+        expected_info = bundle_report.info()
+
+        with patch.object(
+            type(bundle_report), "info", autospec=True, return_value=expected_info
+        ) as mock_info:
+            asset_reports = list(bundle_report.asset_reports())
+
+        assert len(asset_reports) == 5
+        assert mock_info.call_count == 1
+        for ar in asset_reports:
+            assert ar.bundle_info == expected_info
+    finally:
+        report.cleanup()
+
+
 def test_bundle_report_asset_filtering():
     try:
         report = BundleAnalysisReport()
