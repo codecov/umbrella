@@ -1,3 +1,4 @@
+import logging
 from collections import defaultdict
 from fractions import Fraction
 
@@ -7,6 +8,8 @@ from services.report.languages.base import BaseLanguageProcessor
 from services.report.report_builder import CoverageType, ReportBuilderSession
 from shared.reports.resources import ReportFile
 from shared.utils.merge import partials_to_line
+
+log = logging.getLogger(__name__)
 
 
 class NodeProcessor(BaseLanguageProcessor):
@@ -73,6 +76,39 @@ def must_be_dict(value):
         return value
 
 
+def _get_branch_hits(data: dict, bid, lid: int):
+    """
+    Returns the hit count for location `lid` of branch `bid`, or `None` if the
+    report does not contain a matching hit count (e.g. the `b` array is shorter
+    than the number of `locations` in the `branchMap`).
+    """
+    try:
+        return data["b"][bid][lid]
+    except (KeyError, IndexError, TypeError):
+        return None
+
+
+def _log_skipped_branch_locations(filename: str, skipped: list[dict]) -> None:
+    if skipped:
+        log.warning(
+            "Skipped branch locations without matching hit counts in Istanbul report",
+            extra={
+                "filename": filename,
+                "skipped_count": len(skipped),
+                "skipped_sample": skipped[:10],
+            },
+        )
+
+
+def _branch_mismatch_info(data: dict, bid, branch: dict) -> dict:
+    hits = data.get("b", {}).get(bid) if isinstance(data.get("b"), dict) else None
+    return {
+        "bid": bid,
+        "locations_len": len(branch.get("locations") or []),
+        "hits_len": len(hits) if isinstance(hits, list) else None,
+    }
+
+
 def next_from_json(
     report_dict: dict, report_builder_session: ReportBuilderSession
 ) -> None:
@@ -97,6 +133,7 @@ def next_from_json(
 
         ifs = {}
         _ifends = {}
+        skipped_branch_locations: list[dict] = []
         for bid, branch in must_be_dict(data.get("branchMap")).items():
             if branch.get("skip") is True:
                 continue
@@ -109,9 +146,13 @@ def next_from_json(
                 line_parts = defaultdict(list)
                 line_cov = defaultdict(list)
                 for lid, location in enumerate(branch["locations"]):
-                    ln, cov, partials = get_line_coverage(
-                        location, data["b"][bid][lid], "b"
-                    )
+                    branch_hits = _get_branch_hits(data, bid, lid)
+                    if branch_hits is None:
+                        skipped_branch_locations.append(
+                            {**_branch_mismatch_info(data, bid, branch), "lid": lid}
+                        )
+                        continue
+                    ln, cov, partials = get_line_coverage(location, branch_hits, "b")
                     if ln:
                         line_parts[ln].append(partials)
                         line_cov[ln].append(cov)
@@ -261,6 +302,7 @@ def next_from_json(
                     )
                     _file.append(ln, _line)
 
+        _log_skipped_branch_locations(filename, skipped_branch_locations)
         report_builder_session.append(_file)
 
 
@@ -366,19 +408,27 @@ def from_json(report_dict: dict, report_builder_session: ReportBuilderSession) -
                         ),
                     )
 
+        skipped_branch_locations: list[dict] = []
         for bid, branch in must_be_dict(data.get("branchMap")).items():
             if branch.get("skip") is not True:
                 # [FUTURE] we can record branch positions in the session
                 for lid, location in enumerate(branch["locations"]):
                     location_int = _location_to_int(location)
                     if location_int:
+                        branch_hits = _get_branch_hits(data, bid, lid)
+                        if branch_hits is None:
+                            skipped_branch_locations.append(
+                                {**_branch_mismatch_info(data, bid, branch), "lid": lid}
+                            )
+                            continue
                         _file.append(
                             location_int,
                             report_builder_session.create_coverage_line(
-                                data["b"][bid][lid],
+                                branch_hits,
                                 CoverageType.branch,
                             ),
                         )
+        _log_skipped_branch_locations(filename, skipped_branch_locations)
 
         for fid, func in must_be_dict(data.get("fnMap")).items():
             if func.get("skip") is not True:
