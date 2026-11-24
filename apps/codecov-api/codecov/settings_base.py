@@ -446,6 +446,28 @@ SENTRY_ORG_URL = get_config(
     "services", "sentry", "org_domain", default="https://sentry.io"
 )
 
+
+
+def drop_graphql_validation_errors(event, hint):
+    """
+    Drop GraphQL schema-validation errors (e.g. "Cannot query field 'x' on
+    type 'Y'") auto-captured by the Ariadne integration. These are caused by
+    malformed client queries rejected before any resolver runs, so they are
+    harmless client errors rather than server bugs. Real resolver exceptions
+    carry an `original_error` and are still reported.
+    """
+    exc_info = hint.get("exc_info") if hint else None
+    if exc_info:
+        exc = exc_info[1]
+        if (
+            type(exc).__name__ == "GraphQLError"
+            and getattr(exc, "original_error", None) is None
+            and "Cannot query field" in str(getattr(exc, "message", ""))
+        ):
+            return None
+    return event
+
+
 if SENTRY_DSN is not None:
     SENTRY_SAMPLE_RATE = float(
         get_config("services", "sentry", "sample_rate", default="1.0")
@@ -475,6 +497,7 @@ if SENTRY_DSN is not None:
             webhook_github_rate=SENTRY_WEBHOOK_GITHUB_SAMPLE_RATE,
         ),
         enable_backpressure_handling=False,
+        before_send=drop_graphql_validation_errors,
         profiles_sample_rate=float(
             get_config("services", "sentry", "profile_sample_rate", default="0.01")
         ),
