@@ -348,6 +348,25 @@ class AsyncGraphqlView(GraphQLAsyncView):
         is_bad_query = "Cannot query field" in error.formatted["message"]
         if debug or (not is_anonymous and is_bad_query):
             return format_error(error, debug)
+        if is_bad_query and error.original_error is None:
+            # Query validation failure caused by a malformed client query (e.g. an
+            # unknown field). This is a client error, not a server error, so we
+            # don't report it to Sentry. We also hide the schema hints
+            # ("Did you mean ...") from anonymous users since introspection is
+            # disabled in production.
+            log.warning(
+                "GraphQL bad query from anonymous user",
+                extra={
+                    "error_message": error.formatted["message"],
+                    "path": error.formatted.get("path"),
+                },
+            )
+            formatted = error.formatted
+            formatted["message"] = "Bad query: " + error.formatted["message"].split(
+                " Did you mean"
+            )[0]
+            formatted["type"] = "ValidationError"
+            return formatted
         formatted = error.formatted
         formatted["message"] = "INTERNAL SERVER ERROR"
         formatted["type"] = "ServerError"
