@@ -81,7 +81,18 @@ class ComputeComparisonTask(BaseCodecovTask, name=compute_comparison_task_name):
 
         # At this point we can calculate the patch coverage
         # Because we have a HEAD report and a base commit to get the diff from
-        patch_totals = comparison_proxy.get_patch_totals()
+        try:
+            patch_totals = comparison_proxy.get_patch_totals()
+        except TorngitRateLimitError:
+            log.warning(
+                "Unable to compute patch totals due to rate limit error",
+                extra={
+                    "comparison_id": comparison_id,
+                    "repoid": comparison.compare_commit.repoid,
+                },
+            )
+            comparison.state = CompareCommitState.error.value
+            return {"successful": False, "error": "torngit_rate_limit"}
         comparison.patch_totals = minimal_totals(patch_totals)
         db_session.commit()
 
