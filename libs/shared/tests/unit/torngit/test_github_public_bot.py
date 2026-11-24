@@ -4,6 +4,7 @@ import httpx
 import pytest
 from redis import RedisError
 
+from shared.torngit.exceptions import TorngitRateLimitError
 from shared.torngit.github import Github
 
 
@@ -85,7 +86,7 @@ class TestMakeHttpCallPublicBotCollection:
         record_repo.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_enforce_over_cap_drops_silently(self, public_bot_handler, mocker):
+    async def test_enforce_over_cap_raises_rate_limit(self, public_bot_handler, mocker):
         mocker.patch("shared.torngit.github.get_pool_reset", return_value=4_000_000_000)
         mocker.patch("shared.torngit.github.get_repo_usage", return_value=1000)
         mocker.patch("shared.torngit.github.get_pool_budget", return_value=15000)
@@ -93,15 +94,16 @@ class TestMakeHttpCallPublicBotCollection:
 
         client = mocker.MagicMock(request=mocker.AsyncMock())
 
-        result = await public_bot_handler.make_http_call(
-            client,
-            "GET",
-            "/repos/mongodb/mongo-python-driver/commits",
-            token_to_use=COMMIT_TOKEN,
-        )
+        with pytest.raises(TorngitRateLimitError) as exc:
+            await public_bot_handler.make_http_call(
+                client,
+                "GET",
+                "/repos/mongodb/mongo-python-driver/commits",
+                token_to_use=COMMIT_TOKEN,
+            )
 
+        assert exc.value.reset == 4_000_000_000
         client.request.assert_not_called()
-        assert result.status_code == 204
         record_repo.assert_not_called()
 
     @pytest.mark.asyncio
