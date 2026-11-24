@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import time
 from datetime import timedelta
 from functools import cache
 from io import BytesIO
@@ -19,6 +20,8 @@ from minio.credentials.providers import (
 from minio.error import MinioException, S3Error
 from minio.helpers import ObjectWriteResult
 from urllib3 import HTTPResponse, Retry
+from urllib3.exceptions import ProtocolError, ReadTimeoutError
+from urllib3.exceptions import SSLError as Urllib3SSLError
 from urllib3.util import Timeout
 
 from shared.storage.base import (
@@ -34,6 +37,12 @@ log = logging.getLogger(__name__)
 
 CONNECT_TIMEOUT = 10
 READ_TIMEOUT = 60
+
+# Retries for errors raised while streaming an object's body, which are not
+# covered by the urllib3 `Retry` policy on the PoolManager.
+READ_FILE_MAX_ATTEMPTS = 3
+READ_FILE_BACKOFF_SECONDS = 1
+READ_FILE_RETRYABLE_ERRORS = (ReadTimeoutError, ProtocolError, Urllib3SSLError)
 
 
 def init_minio_client(
@@ -279,6 +288,49 @@ class MinioStorageService(BaseStorageService, PresignedURLService):
         file_obj: BinaryIO | None = None,
         metadata_container: dict[str, str] | None = None,
     ) -> bytes | None:
+        # The urllib3 `Retry` configured on the PoolManager only covers
+        # establishing the connection and receiving response headers. Errors
+        # raised while streaming the body (e.g. GCS stalling mid-transfer and
+        # triggering a ReadTimeoutError) are not retried there, so we retry the
+        # whole download here.
+        for attempt in range(1, READ_FILE_MAX_ATTEMPTS + 1):
+            try:
+                return self._read_file_once(
+                    bucket_name, path, file_obj, metadata_container
+                )
+            except READ_FILE_RETRYABLE_ERRORS as e:
+                if attempt >= READ_FILE_MAX_ATTEMPTS:
+                    log.warning(
+                        "Failed to read file from storage after retries",
+                        extra={
+                            "bucket_name": bucket_name,
+                            "path": path,
+                            "attempt": attempt,
+                            "error": repr(e),
+                        },
+                    )
+                    raise
+                backoff = READ_FILE_BACKOFF_SECONDS * (2 ** (attempt - 1))
+                log.warning(
+                    "Transient error reading file body from storage, retrying",
+                    extra={
+                        "bucket_name": bucket_name,
+                        "path": path,
+                        "attempt": attempt,
+                        "backoff_seconds": backoff,
+                        "error": repr(e),
+                    },
+                )
+                time.sleep(backoff)
+        raise AssertionError("unreachable")  # pragma: no cover
+
+    def _read_file_once(
+        self,
+        bucket_name: str,
+        path: str,
+        file_obj: BinaryIO | None,
+        metadata_container: dict[str, str] | None,
+    ) -> bytes | None:
         try:
             response = cast(
                 HTTPResponse,
@@ -291,40 +343,42 @@ class MinioStorageService(BaseStorageService, PresignedURLService):
                 )
             raise e
 
-        if metadata_container is not None:
-            for header, value in response.headers.items():
-                if header.startswith("x-amz-meta-"):
-                    metadata_key = header.removeprefix("x-amz-meta-")
-                    metadata_container[metadata_key] = value
+        try:
+            if metadata_container is not None:
+                for header, value in response.headers.items():
+                    if header.startswith("x-amz-meta-"):
+                        metadata_key = header.removeprefix("x-amz-meta-")
+                        metadata_container[metadata_key] = value
 
-        reader = cast(IO[bytes], response)
-        if (
-            response.headers
-            and not zstd_default
-            and response.headers.get("Content-Encoding") == "zstd"
-        ):
-            # we have to manually decompress zstandard compressed data
-            cctx = zstandard.ZstdDecompressor()
-            # if the object passed to this has a read method then that's
-            # all this object will ever need, since it will just call read
-            # and get the bytes object resulting from it then compress that
-            # HTTPResponse
-            reader = cctx.stream_reader(reader)
+            reader = cast(IO[bytes], response)
+            if (
+                response.headers
+                and not zstd_default
+                and response.headers.get("Content-Encoding") == "zstd"
+            ):
+                # we have to manually decompress zstandard compressed data
+                cctx = zstandard.ZstdDecompressor()
+                # if the object passed to this has a read method then that's
+                # all this object will ever need, since it will just call read
+                # and get the bytes object resulting from it then compress that
+                # HTTPResponse
+                reader = cctx.stream_reader(reader)
 
-        if file_obj:
-            file_obj.seek(0)
-            while chunk := reader.read(CHUNK_SIZE):
-                file_obj.write(chunk)
+            if file_obj:
+                # reset any partial content written by a previous attempt
+                file_obj.seek(0)
+                file_obj.truncate()
+                while chunk := reader.read(CHUNK_SIZE):
+                    file_obj.write(chunk)
+                return None
+            else:
+                res = BytesIO()
+                while chunk := reader.read(CHUNK_SIZE):
+                    res.write(chunk)
+                return res.getvalue()
+        finally:
             response.close()
             response.release_conn()
-            return None
-        else:
-            res = BytesIO()
-            while chunk := reader.read(CHUNK_SIZE):
-                res.write(chunk)
-            response.close()
-            response.release_conn()
-            return res.getvalue()
 
     def delete_file(self, bucket_name: str, path: str) -> bool:
         try:
