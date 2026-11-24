@@ -151,7 +151,8 @@ class AriadneViewTestCase(GraphQLTestHelper, TestCase):
         schema = generate_schema_that_raise_with(Unauthorized())
         data = await self.do_query(schema, " { fieldThatDoesntExist }")
         assert data["errors"] is not None
-        assert data["errors"][0]["message"] == "INTERNAL SERVER ERROR"
+        assert data["errors"][0]["message"] == "INVALID QUERY"
+        assert data["errors"][0]["type"] == "ValidationError"
 
     @override_settings(DEBUG=False, GRAPHQL_QUERY_COST_THRESHOLD=1000)
     @patch("logging.Logger.error")
