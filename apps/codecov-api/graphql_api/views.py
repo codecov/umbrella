@@ -344,11 +344,21 @@ class AsyncGraphqlView(GraphQLAsyncView):
     def error_formatter(self, error: Any, debug: bool = False) -> dict[str, Any]:
         user = self.request.user
         is_anonymous = user.is_anonymous if user else True
-        # the only way to check for a malformed query
-        is_bad_query = "Cannot query field" in error.formatted["message"]
-        if debug or (not is_anonymous and is_bad_query):
+        # Errors produced during query validation (unknown fields, syntax errors,
+        # depth/alias limits, ...) are not tied to an execution path and carry no
+        # underlying exception. They are client errors, not server failures.
+        is_validation_error = error.original_error is None and not error.path
+        if debug or (not is_anonymous and is_validation_error):
             return format_error(error, debug)
         formatted = error.formatted
+        if is_validation_error:
+            log.info(
+                "GraphQL query failed validation",
+                extra={"validation_error": error.message},
+            )
+            formatted["message"] = "INVALID QUERY"
+            formatted["type"] = "BadRequest"
+            return formatted
         formatted["message"] = "INTERNAL SERVER ERROR"
         formatted["type"] = "ServerError"
         # if this is one of our own command exception, we can tell a bit more
