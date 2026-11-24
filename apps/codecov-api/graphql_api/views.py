@@ -348,6 +348,24 @@ class AsyncGraphqlView(GraphQLAsyncView):
         is_bad_query = "Cannot query field" in error.formatted["message"]
         if debug or (not is_anonymous and is_bad_query):
             return format_error(error, debug)
+        if is_bad_query and error.original_error is None:
+            # Schema validation error caused by a malformed client query. It is
+            # rejected before execution, so it's a client error, not a server bug.
+            # Hide "Did you mean ..." suggestions from anonymous users.
+            message = error.formatted["message"].split(" Did you mean")[0]
+            log.warning(
+                "GraphQL query validation error",
+                extra={
+                    "error_message": message,
+                    "query_slice": self.request.body[:200].decode(
+                        "utf-8", errors="replace"
+                    ),
+                },
+            )
+            formatted = error.formatted
+            formatted["message"] = message
+            formatted["type"] = "ValidationError"
+            return formatted
         formatted = error.formatted
         formatted["message"] = "INTERNAL SERVER ERROR"
         formatted["type"] = "ServerError"

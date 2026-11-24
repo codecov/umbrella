@@ -446,6 +446,32 @@ SENTRY_ORG_URL = get_config(
     "services", "sentry", "org_domain", default="https://sentry.io"
 )
 
+# Messages of GraphQL validation errors caused by malformed client queries.
+GRAPHQL_CLIENT_VALIDATION_MESSAGES = ("Cannot query field",)
+
+
+def sentry_before_send(event, hint):
+    """
+    Drop GraphQL schema validation errors captured automatically by the Ariadne
+    integration. These come from malformed client queries that are rejected
+    before execution (no server-side impact); they are logged as warnings in
+    graphql_api.views.AsyncGraphqlView.error_formatter instead.
+    """
+    exc_info = hint.get("exc_info") if hint else None
+    if exc_info:
+        exc = exc_info[1]
+        if (
+            type(exc).__name__ == "GraphQLError"
+            and getattr(exc, "original_error", None) is None
+            and any(
+                m in str(getattr(exc, "message", exc))
+                for m in GRAPHQL_CLIENT_VALIDATION_MESSAGES
+            )
+        ):
+            return None
+    return event
+
+
 if SENTRY_DSN is not None:
     SENTRY_SAMPLE_RATE = float(
         get_config("services", "sentry", "sample_rate", default="1.0")
@@ -459,6 +485,7 @@ if SENTRY_DSN is not None:
     sentry_sdk.init(
         dsn=SENTRY_DSN,
         event_scrubber=EventScrubber(denylist=SENTRY_DENY_LIST),
+        before_send=sentry_before_send,
         _experiments={
             "enable_logs": True,
         },
