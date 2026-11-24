@@ -1,11 +1,16 @@
 import fnmatch
+import logging
 import re
 from collections import OrderedDict
 from collections.abc import Mapping
 
 from shared.celery_config import BaseCeleryConfig, get_task_group
+from django.db import InterfaceError, OperationalError, connections
+
 from shared.config import get_config
 from shared.django_apps.codecov_auth.models import Plan
+
+log = logging.getLogger(__name__)
 
 Pattern = re.Pattern
 
@@ -68,6 +73,16 @@ def _get_enterprise_config(task_name: str, owner: int) -> tuple[str, dict]:
     return base_queue, queue_specific_config
 
 
+def _get_plan_with_reconnect(user_plan: str) -> Plan:
+    """Fetch the Plan, retrying once on a fresh connection if the pooled
+    connection was closed by the server (e.g. DB failover / pooler restart)."""
+    try:
+        return Plan.objects.get(name=user_plan)
+    except (OperationalError, InterfaceError):
+        connections[Plan.objects.db].close()
+        return Plan.objects.get(name=user_plan)
+
+
 def route_tasks_based_on_user_plan(task_name: str, user_plan: str, owner: int) -> dict:
     """Helper function to dynamically route tasks based on the user plan.
 
@@ -79,7 +94,15 @@ def route_tasks_based_on_user_plan(task_name: str, user_plan: str, owner: int) -
     Returns:
         Dict containing queue name and any extra configuration
     """
-    plan = Plan.objects.get(name=user_plan)
+    try:
+        plan = _get_plan_with_reconnect(user_plan)
+    except (OperationalError, InterfaceError):
+        log.warning(
+            "Failed to fetch plan for task routing, using default queue",
+            extra={"task_name": task_name, "user_plan": user_plan, "owner": owner},
+            exc_info=True,
+        )
+        return {"queue": _get_default_queue(task_name), "extra_config": {}}
 
     if not plan.is_enterprise_plan:
         return {"queue": _get_default_queue(task_name), "extra_config": {}}
