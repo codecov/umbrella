@@ -1,8 +1,14 @@
+import logging
+
+from sqlalchemy.exc import DBAPIError
+
 import shared.celery_config as shared_celery_config
 from database.engine import get_db_session
 from database.models.core import Commit, CompareCommit, Owner, Repository
 from shared.celery_router import route_tasks_based_on_user_plan
 from shared.plan.constants import DEFAULT_FREE_PLAN
+
+log = logging.getLogger(__name__)
 
 
 def _get_user_plan_from_ownerid(db_session, ownerid, *args, **kwargs) -> str:
@@ -142,6 +148,35 @@ def _get_user_plan_from_task(dbsession, task_name: str, task_kwargs: dict) -> st
     return func_to_use(dbsession, **task_kwargs)
 
 
+def _run_lookup(db_session, lookup_func, task_name: str, task_kwargs: dict):
+    """Run a routing DB lookup, recovering once from a dropped connection.
+
+    The scoped session may still hold a connection checked out by earlier work
+    in this thread. `pool_pre_ping` only validates connections on checkout, so a
+    connection that the server/PgBouncer/LB closed meanwhile surfaces here as a
+    disconnect error. Rolling back releases (and invalidates) the dead
+    connection so the retry checks out a fresh, pre-pinged one.
+    """
+    try:
+        return lookup_func(db_session, task_name, task_kwargs)
+    except DBAPIError as exc:
+        if not exc.connection_invalidated:
+            raise
+        log.warning(
+            "Database connection dropped during task routing, retrying",
+            extra={
+                "task_name": task_name,
+                "repoid": task_kwargs.get("repoid"),
+                "ownerid": task_kwargs.get("ownerid"),
+                "error": str(exc),
+            },
+        )
+        db_session.rollback()
+        # Retry once; a second failure is re-raised so persistent outages
+        # are still reported.
+        return lookup_func(db_session, task_name, task_kwargs)
+
+
 def route_task(name, args, kwargs, options, task=None, **kw):
     """Function to dynamically route tasks to the proper queue.
     Docs: https://docs.celeryq.dev/en/stable/userguide/routing.html#routers
@@ -152,7 +187,9 @@ def route_task(name, args, kwargs, options, task=None, **kw):
     if user_plan is None or ownerid is None:
         db_session = get_db_session()
         if user_plan is None:
-            user_plan = _get_user_plan_from_task(db_session, name, kwargs)
+            user_plan = _run_lookup(
+                db_session, _get_user_plan_from_task, name, kwargs
+            )
         if ownerid is None:
-            ownerid = _get_ownerid_from_task(db_session, name, kwargs)
+            ownerid = _run_lookup(db_session, _get_ownerid_from_task, name, kwargs)
     return route_tasks_based_on_user_plan(name, user_plan, ownerid)
