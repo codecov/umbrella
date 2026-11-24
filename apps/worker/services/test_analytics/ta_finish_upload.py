@@ -49,7 +49,7 @@ def get_relevant_upload_ids(commitid: str) -> dict[int, ReportSession]:
         for upload in ReportSession.objects.filter(
             report__commit__commitid=commitid,
             state__in=["processed", "finished", "flake_processed"],
-        )
+        ).prefetch_related("flags")
     }
 
 
