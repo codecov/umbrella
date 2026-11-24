@@ -10,6 +10,25 @@ from sentry_sdk.integrations.redis import RedisIntegration
 from sentry_sdk.scrubber import DEFAULT_DENYLIST, EventScrubber
 
 from codecov.sentry_sampling import make_traces_sampler
+
+
+def sentry_before_send(event, hint):
+    """
+    Drop GraphQL validation errors (no underlying exception), which are
+    harmless client query mistakes captured by the auto-enabled Ariadne
+    integration. Real resolver errors carry an original_error and are kept.
+    """
+    exc_info = (hint or {}).get("exc_info")
+    if exc_info:
+        exc = exc_info[1]
+        try:
+            from graphql import GraphQLError
+        except ImportError:
+            return event
+        if isinstance(exc, GraphQLError) and exc.original_error is None:
+            return None
+    return event
+
 from shared.django_apps.db_settings import *
 from shared.helpers.redis import get_redis_url
 from shared.license import startup_license_logging
@@ -475,6 +494,7 @@ if SENTRY_DSN is not None:
             webhook_github_rate=SENTRY_WEBHOOK_GITHUB_SAMPLE_RATE,
         ),
         enable_backpressure_handling=False,
+        before_send=sentry_before_send,
         profiles_sample_rate=float(
             get_config("services", "sentry", "profile_sample_rate", default="0.01")
         ),
