@@ -349,6 +349,21 @@ class AsyncGraphqlView(GraphQLAsyncView):
         if debug or (not is_anonymous and is_bad_query):
             return format_error(error, debug)
         formatted = error.formatted
+        # GraphQL parse/validation errors (e.g. querying a field that doesn't exist
+        # in the schema) carry no `original_error`: they are caused by the client's
+        # query, not by a server-side failure. Don't leak schema details to
+        # anonymous users, but don't report them as internal server errors either.
+        if error.original_error is None:
+            log.info(
+                "GraphQL query validation error",
+                extra={
+                    "error_message": error.message,
+                    "is_anonymous": is_anonymous,
+                },
+            )
+            formatted["message"] = "Bad request"
+            formatted["type"] = "ValidationError"
+            return formatted
         formatted["message"] = "INTERNAL SERVER ERROR"
         formatted["type"] = "ServerError"
         # if this is one of our own command exception, we can tell a bit more
