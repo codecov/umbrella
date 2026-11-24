@@ -43,6 +43,19 @@ from .validation import (
 
 log = logging.getLogger(__name__)
 
+
+def is_graphql_validation_error(error: Any) -> bool:
+    """
+    A GraphQLError produced during query parsing/validation (e.g. querying a
+    field that doesn't exist) has no underlying exception and no execution path.
+    These are client errors, not server errors.
+    """
+    return (
+        getattr(error, "original_error", None) is None
+        and getattr(error, "path", None) is None
+    )
+
+
 GQL_HIT_COUNTER = Counter(
     "api_gql_counts_hits",
     "Number of times API GQL endpoint request starts",
@@ -353,7 +366,25 @@ class AsyncGraphqlView(GraphQLAsyncView):
         formatted["type"] = "ServerError"
         # if this is one of our own command exception, we can tell a bit more
         original_error = error.original_error
-        if isinstance(original_error, BaseException) or isinstance(
+        if is_graphql_validation_error(error):
+            # Query validation errors (unknown fields, syntax errors, ...) are
+            # caused by the client's query, not by our server. They are not
+            # internal errors, so record them as such instead of reporting.
+            formatted["message"] = "Invalid GraphQL query"
+            formatted["type"] = "ValidationError"
+            request_path = getattr(self.request, "path", None)
+            inc_counter(
+                GQL_ERROR_TYPE_COUNTER,
+                labels={"error_type": "validation_error", "path": request_path},
+            )
+            log.warning(
+                "GraphQL query validation error",
+                extra={
+                    "graphql_error": error.message,
+                    "is_anonymous": is_anonymous,
+                },
+            )
+        elif isinstance(original_error, BaseException) or isinstance(
             original_error, ServiceException
         ):
             formatted["message"] = original_error.message  # type: ignore
