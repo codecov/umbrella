@@ -171,7 +171,11 @@ class GithubWebhookHandler(APIView):
         return Response(data="pong")
 
     def repository(self, request, *args, **kwargs):
-        action, repo = request.data.get("action"), self._get_repo(request)
+        action = request.data.get("action")
+        if action == "transferred":
+            return self._repository_transferred(request)
+
+        repo = self._get_repo(request)
         if action == "publicized":
             # Public repos are not billed. activated=False with active still
             # true is the pair upload rejects.
@@ -204,6 +208,56 @@ class GithubWebhookHandler(APIView):
             log.warning(
                 f"Unknown repository action: {action}", extra={"repoid": repo.repoid}
             )
+        return Response()
+
+    def _repository_transferred(self, request):
+        repo_data = request.data.get("repository", {})
+        repo_service_id = repo_data.get("id")
+        repo = Repository.objects.filter(
+            author__service=self.service_name, service_id=repo_service_id
+        ).first()
+        if repo is None:
+            log.info(
+                "Received transfer for non-existent repository",
+                extra={"repo_service_id": repo_service_id},
+            )
+            self._inc_err("repo_not_found")
+            raise NotFound("Repository does not exist")
+
+        owner_data = repo_data.get("owner", {})
+        new_owner, _ = Owner.objects.get_or_create(
+            service=self.service_name,
+            service_id=owner_data.get("id"),
+            defaults={
+                "username": owner_data.get("login"),
+                "createstamp": timezone.now(),
+            },
+        )
+        if repo.author_id == new_owner.ownerid:
+            return Response()
+
+        if (
+            Repository.objects.filter(author=new_owner)
+            .exclude(pk=repo.pk)
+            .filter(Q(name=repo.name) | Q(service_id=repo.service_id))
+            .exists()
+        ):
+            log.warning(
+                "Cannot transfer repository, new owner already has a conflicting repository",
+                extra={"repoid": repo.repoid, "new_ownerid": new_owner.ownerid},
+            )
+            return Response()
+
+        repo.author = new_owner
+        repo.save(update_fields=["author"])
+        log.info(
+            "Repository transferred",
+            extra={
+                "repoid": repo.repoid,
+                "new_ownerid": new_owner.ownerid,
+                "github_webhook_event": self.event,
+            },
+        )
         return Response()
 
     def delete(self, request, *args, **kwargs):

@@ -54,7 +54,7 @@ def _publish_shelter_sync(sync_type: str, entity_id: int) -> None:
             extra={"sync_type": sync_type, "entity_id": entity_id},
         )
     except Exception as e:
-        log.warning(
+        log.error(
             "Failed to publish shelter sync message",
             extra={"sync_type": sync_type, "entity_id": entity_id, "error": e},
         )

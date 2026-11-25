@@ -44,7 +44,7 @@ class ShelterPubsub:
                 json.dumps(data).encode("utf-8"),
             )
         except Exception as e:
-            log.warning(
+            log.error(
                 "Failed to publish a message",
                 extra={"data_to_publish": data, "error": e},
             )

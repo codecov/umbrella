@@ -90,7 +90,7 @@ class TestCodecovAuthSignals(TestCase):
         mock_publish.assert_not_called()
 
 
-@mock.patch("logging.Logger.warning")
+@mock.patch("logging.Logger.error")
 @mock.patch("google.cloud.pubsub_v1.PublisherClient.publish")
 @mock.patch("utils.shelter.ShelterPubsub.get_instance")
 @override_settings(SHELTER_ENABLED=True)
