@@ -12,6 +12,7 @@ from sqlalchemy.exc import (
     DataError,
     IntegrityError,
     InvalidRequestError,
+    OperationalError,
     SQLAlchemyError,
 )
 
@@ -502,6 +503,19 @@ class BaseCodecovTask(celery_app.Task):
                     UploadFlow.log(UploadFlow.UNCAUGHT_RETRY_EXCEPTION)
                 if TestResultsFlow.has_begun():
                     TestResultsFlow.log(TestResultsFlow.UNCAUGHT_RETRY_EXCEPTION)
+            except SoftTimeLimitExceeded:
+                # The Redis notification lock (acquired inside run_impl) is released
+                # when SoftTimeLimitExceeded unwinds its context manager. Rolling back
+                # here ensures that any uncommitted DB writes (e.g. to commit_notifications)
+                # are discarded before wrap_up_dbsession runs, preventing a race where
+                # a newly-started task acquires the freed lock and deadlocks with our
+                # pending commit.
+                log.warning(
+                    "SoftTimeLimitExceeded raised during task; rolling back DB session to avoid deadlock on commit_notifications",
+                    extra={"task_args": args, "task_kwargs": kwargs},
+                )
+                db_session.rollback()
+                raise
             finally:
                 self.wrap_up_dbsession(db_session)
 
@@ -512,10 +526,29 @@ class BaseCodecovTask(celery_app.Task):
         `db_session.commit()`, which can leave the session in an unusable state.
         Since we reuse sessions across tasks, this would break future tasks in
         the same process, so we catch both timeout and invalid state exceptions.
+
+        Also handles PostgreSQL deadlocks (OperationalError) that can occur when
+        a timed-out task's session races with a newly-started task's writes on
+        the same rows (e.g. commit_notifications). On deadlock we roll back and
+        close so the session is returned cleanly to the pool.
         """
         try:
             db_session.commit()
             db_session.close()
+        except OperationalError:
+            log.warning(
+                "OperationalError (e.g. deadlock) during DB session commit; rolling back",
+                exc_info=True,
+            )
+            try:
+                db_session.rollback()
+                db_session.close()
+            except Exception:
+                log.warning(
+                    "Failed to rollback/close DB session after OperationalError",
+                    exc_info=True,
+                )
+                get_db_session.remove()
         except SoftTimeLimitExceeded:
             log.warning(
                 "We had an issue where a timeout happened directly during the DB commit",
