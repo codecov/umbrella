@@ -1237,7 +1237,7 @@ class TestGetRepoProviderServiceForSpecificCommit:
             "app_to_use_for_commit_15000": b"1200",
             "app_to_use_for_commit_10000": b"1000",
         }
-        mock_redis.get.side_effect = lambda key: redis_keys.get(key)
+        mock_redis.get.side_effect = redis_keys.get
 
         mock_get_repo_provider_service.return_value = "the TorngitAdapter"
 
@@ -1270,7 +1270,7 @@ class TestGetRepoProviderServiceForSpecificCommit:
         redis_keys = {
             f"app_to_use_for_commit_{commit.id}": str(app.id).encode(),
         }
-        mock_redis.get.side_effect = lambda key: redis_keys.get(key)
+        mock_redis.get.side_effect = redis_keys.get
         response = get_repo_provider_service_for_specific_commit(commit, "some_name")
         assert response == "the TorngitAdapter"
         mock_get_instance.assert_called_once()

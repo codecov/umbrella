@@ -76,7 +76,7 @@ class TestGetSetGithubAppsToCommits:
         fake_commit_gitlab = MagicMock(
             name="fake_commit", **{"id": 12, "repository": repo_gitlab}
         )
-        mock_redis.get.side_effect = lambda key: redis_keys.get(key)
+        mock_redis.get.side_effect = redis_keys.get
         assert get_github_app_for_commit(fake_commit_12) == "1200"
         assert get_github_app_for_commit(fake_commit_10) == "1000"
         assert get_github_app_for_commit(fake_commit_50) is None

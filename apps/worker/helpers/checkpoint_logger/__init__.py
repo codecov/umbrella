@@ -69,7 +69,7 @@ def _error(msg, flow, strict=False):
         logger.warning(msg)
 
 
-class BaseFlow(str, Enum):
+class BaseFlow(str, Enum):  # noqa: UP042
     """
     Base class for a flow. Defines optional functions which are added by the
     @success_events, @failure_events, @subflows, and @reliability_counters

@@ -25,7 +25,7 @@ class StatusResult(TypedDict):
     included_helper_text: dict[str, str]
 
 
-class HelperTextKey(str, Enum):
+class HelperTextKey(str, Enum):  # noqa: UP042
     CUSTOM_TARGET_PATCH = "custom_target_helper_text_patch"
     CUSTOM_TARGET_PROJECT = "custom_target_helper_text_project"
     RCB_INDIRECT_CHANGES = "rcb_indirect_changes_helper_text"
@@ -33,7 +33,7 @@ class HelperTextKey(str, Enum):
     RCB_ADJUST_BASE = "rcb_adjust_base_helper_text"
 
 
-class HelperTextTemplate(str, Enum):
+class HelperTextTemplate(str, Enum):  # noqa: UP042
     CUSTOM_TARGET = (
         "Your {context} {notification_type} has failed because the {point_of_comparison} coverage ({coverage}%) is below the target coverage ({target}%). "
         "You can increase the {point_of_comparison} coverage or adjust the "

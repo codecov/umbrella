@@ -32,8 +32,6 @@ class Component:
         ans = set()
         compiled_regexes = (re.compile(flag_regex) for flag_regex in self.flag_regexes)
         for regex_to_match in compiled_regexes:
-            matches_to_this_regex = filter(
-                lambda flag: regex_to_match.match(flag), current_flags
-            )
+            matches_to_this_regex = filter(regex_to_match.match, current_flags)
             ans.update(matches_to_this_regex)
         return list(ans)
