@@ -829,7 +829,7 @@ def test_bundle_analysis_notify_bundle_summary(
 
     mocker.patch(
         "shared.bundle_analysis.report.BundleAnalysisReport.bundle_report",
-        side_effect=lambda name: MockBundleReport(name),
+        side_effect=MockBundleReport,
     )
 
     hook_mock_pull(
@@ -1636,7 +1636,7 @@ def test_bundle_analysis_notify_individual_bundle_data(
 
     mocker.patch(
         "shared.bundle_analysis.report.BundleAnalysisReport.bundle_report",
-        side_effect=lambda name: MockBundleReport(name),
+        side_effect=MockBundleReport,
     )
 
     hook_mock_pull(

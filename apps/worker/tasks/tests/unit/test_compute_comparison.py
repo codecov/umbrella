@@ -326,11 +326,11 @@ class TestComputeComparisonTask:
         mocker.patch.object(
             ReportService,
             "get_existing_report_for_commit",
-            side_effect=lambda commit,
-            *args,
-            **kwargs: ReadOnlyReport.create_from_report(sample_report)
-            if commit == head_commit
-            else None,
+            side_effect=lambda commit, *args, **kwargs: (
+                ReadOnlyReport.create_from_report(sample_report)
+                if commit == head_commit
+                else None
+            ),
         )
         patch_totals = ReportTotals(
             files=3, lines=200, hits=100, misses=100, coverage="10.5"

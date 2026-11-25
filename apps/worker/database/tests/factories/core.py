@@ -27,7 +27,7 @@ class UserFactory(Factory):
     email = factory.Faker("email")
     is_staff = False
     is_superuser = False
-    external_id = factory.LazyFunction(lambda: uuid4())
+    external_id = factory.LazyFunction(uuid4)
 
 
 class OwnerFactory(Factory):

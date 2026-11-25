@@ -43,10 +43,10 @@ def test_record_and_read_pool_state():
     redis = MagicMock()
     record_pool_state(redis, "commit", remaining=7500, limit=15000, reset=4_000_000_000)
     assert redis.set.call_count == 2
-    redis.get.side_effect = lambda key: {
+    redis.get.side_effect = {
         f"{POOL_BUDGET_KEY_PREFIX}:commit": b"15000",
         f"{POOL_RESET_KEY_PREFIX}:commit": b"4000000000",
-    }.get(key)
+    }.get
     assert get_pool_budget(redis, "commit") == 15000
     assert get_pool_reset(redis, "commit") == 4_000_000_000
 
@@ -63,9 +63,9 @@ def test_record_and_sum_repo_usage(monkeypatch):
 
     redis = MagicMock()
     reset_ts = fixed_now + 1800
-    redis.get.side_effect = lambda key: {
+    redis.get.side_effect = {
         f"{POOL_RESET_KEY_PREFIX}:commit": str(reset_ts).encode(),
-    }.get(key)
+    }.get
 
     minute_bucket = fixed_now // 60
     key = f"{REPO_USAGE_KEY_PREFIX}:commit:org/repo:{minute_bucket}"
@@ -112,12 +112,12 @@ def test_list_repo_usage_aggregates_scan_results(monkeypatch):
         f"{REPO_USAGE_KEY_PREFIX}:commit:org/a:{minute_bucket}",
         f"{REPO_USAGE_KEY_PREFIX}:pull:org/b:{minute_bucket}",
     ]
-    redis.get.side_effect = lambda key: {
+    redis.get.side_effect = {
         f"{POOL_RESET_KEY_PREFIX}:commit": str(reset_ts).encode(),
         f"{POOL_RESET_KEY_PREFIX}:pull": str(reset_ts).encode(),
         f"{POOL_BUDGET_KEY_PREFIX}:commit": b"15000",
         f"{POOL_BUDGET_KEY_PREFIX}:pull": b"15000",
-    }.get(key)
+    }.get
     redis.mget.side_effect = [
         [b"10"],
         [b"20"],

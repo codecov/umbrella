@@ -12,7 +12,7 @@ class MeasurementFactory(factory.Factory):
     name = "testing"
     branch = "master"
     value = factory.LazyAttribute(lambda: random.random() * 1000)
-    timestamp = factory.LazyAttribute(lambda: datetime.now())
+    timestamp = factory.LazyAttribute(datetime.now)
 
     class Meta:
         model = Measurement

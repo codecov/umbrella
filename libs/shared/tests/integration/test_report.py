@@ -579,13 +579,15 @@ def test_add_session():
                 chunks="null\n[1]\n[1]\n[1]\n<<<<< end_of_chunk >>>>>\nnull\n[1]\n[1]\n[1]",
             ),
             {
-                "color": lambda cov: "purple"
-                if cov is None
-                else "#e1e1e1"
-                if cov == 0
-                else "green"
-                if cov > 0
-                else "red"
+                "color": lambda cov: (
+                    "purple"
+                    if cov is None
+                    else "#e1e1e1"
+                    if cov == 0
+                    else "green"
+                    if cov > 0
+                    else "red"
+                )
             },
             [
                 {
