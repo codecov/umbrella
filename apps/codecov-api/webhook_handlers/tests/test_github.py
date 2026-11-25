@@ -198,6 +198,85 @@ class GithubWebhookHandlerTests(APITestCase):
         assert self.repo.active is False
         assert self.repo.activated is False
 
+    @patch("utils.shelter.ShelterPubsub.publish")
+    def test_repository_transferred_moves_repo_to_new_owner(self, publish):
+        new_owner = OwnerFactory(service=Service.GITHUB.value, service_id=999)
+        old_ownerid = self.repo.author_id
+
+        response = self._post_event_data(
+            event=GitHubWebhookEvents.REPOSITORY,
+            data={
+                "action": "transferred",
+                "repository": {
+                    "id": self.repo.service_id,
+                    "name": self.repo.name,
+                    "owner": {"id": 999, "login": new_owner.username},
+                },
+            },
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        self.repo.refresh_from_db()
+        assert self.repo.author_id == new_owner.ownerid
+        assert self.repo.author_id != old_ownerid
+        publish.assert_called_with(
+            {"type": "repo", "sync": "one", "id": self.repo.repoid}
+        )
+
+    def test_repository_transferred_creates_unknown_new_owner(self):
+        response = self._post_event_data(
+            event=GitHubWebhookEvents.REPOSITORY,
+            data={
+                "action": "transferred",
+                "repository": {
+                    "id": self.repo.service_id,
+                    "name": self.repo.name,
+                    "owner": {"id": 4201409, "login": "midea-lan"},
+                },
+            },
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        self.repo.refresh_from_db()
+        assert self.repo.author.service_id == "4201409"
+        assert self.repo.author.username == "midea-lan"
+
+    def test_repository_transferred_unknown_repo_returns_not_found(self):
+        response = self._post_event_data(
+            event=GitHubWebhookEvents.REPOSITORY,
+            data={
+                "action": "transferred",
+                "repository": {
+                    "id": -1,
+                    "name": "missing",
+                    "owner": {"id": 999, "login": "newowner"},
+                },
+            },
+        )
+
+        assert response.status_code == status.HTTP_404_NOT_FOUND
+
+    def test_repository_transferred_skips_name_conflict(self):
+        new_owner = OwnerFactory(service=Service.GITHUB.value, service_id=999)
+        RepositoryFactory(author=new_owner, name=self.repo.name, service_id=1)
+        old_ownerid = self.repo.author_id
+
+        response = self._post_event_data(
+            event=GitHubWebhookEvents.REPOSITORY,
+            data={
+                "action": "transferred",
+                "repository": {
+                    "id": self.repo.service_id,
+                    "name": self.repo.name,
+                    "owner": {"id": 999, "login": new_owner.username},
+                },
+            },
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        self.repo.refresh_from_db()
+        assert self.repo.author_id == old_ownerid
+
     def test_repository_delete_renames_repo(self):
         self.repo.name = "testing"
         self.repo.save()
