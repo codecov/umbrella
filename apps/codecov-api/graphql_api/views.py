@@ -333,12 +333,13 @@ class AsyncGraphqlView(GraphQLAsyncView):
     def context_value(self, request: WSGIRequest, *_args: Any) -> dict[str, Any]:
         request_body = json.loads(request.body.decode("utf-8")) if request.body else {}
         self.request = request
+        self.clean_query = self.get_clean_query(request_body) if request_body else ""
 
         return {
             "request": request,
             "service": request.resolver_match.kwargs["service"],
             "executor": get_executor_from_request(request),
-            "clean_query": self.get_clean_query(request_body) if request_body else "",
+            "clean_query": self.clean_query,
         }
 
     def error_formatter(self, error: Any, debug: bool = False) -> dict[str, Any]:
@@ -349,6 +350,20 @@ class AsyncGraphqlView(GraphQLAsyncView):
         if debug or (not is_anonymous and is_bad_query):
             return format_error(error, debug)
         formatted = error.formatted
+        if is_bad_query and error.original_error is None:
+            # The query failed schema validation before any resolver ran, so
+            # this is a client error, not an internal server error. Anonymous
+            # users get a generic message so the schema isn't revealed.
+            log.warning(
+                "GraphQL query failed schema validation",
+                extra={
+                    "error_message": error.message,
+                    "query_slice": self._get_query_slice(),
+                },
+            )
+            formatted["message"] = "Invalid query"
+            formatted["type"] = "ValidationError"
+            return formatted
         formatted["message"] = "INTERNAL SERVER ERROR"
         formatted["type"] = "ServerError"
         # if this is one of our own command exception, we can tell a bit more
@@ -368,6 +383,12 @@ class AsyncGraphqlView(GraphQLAsyncView):
             log.error("GraphQL internal server error", exc_info=original_error)
             capture_exception(original_error)
         return formatted
+
+    def _get_query_slice(self) -> str | None:
+        query = getattr(self, "clean_query", None)
+        if not isinstance(query, str):
+            return None
+        return query[:100]
 
     @sync_to_async
     def _get_user(self, request: WSGIRequest) -> None:
