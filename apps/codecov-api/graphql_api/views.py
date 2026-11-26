@@ -21,7 +21,7 @@ from django.http import (
     HttpResponseNotAllowed,
     JsonResponse,
 )
-from graphql import DocumentNode
+from graphql import DocumentNode, GraphQLError
 from rest_framework.exceptions import APIException
 from sentry_sdk import capture_exception
 
@@ -349,10 +349,25 @@ class AsyncGraphqlView(GraphQLAsyncView):
         if debug or (not is_anonymous and is_bad_query):
             return format_error(error, debug)
         formatted = error.formatted
+        original_error = error.original_error
+        if original_error is None or isinstance(original_error, GraphQLError):
+            # GraphQL errors without an original error (or wrapping another
+            # GraphQLError) come from parsing, validation or variable coercion
+            # (e.g. an unknown field in an input object). They are rejected
+            # before any resolver runs, so they are client mistakes and not
+            # server failures.
+            log.warning(
+                "GraphQL request validation error",
+                extra={"message": error.message, "path": error.path},
+            )
+            formatted["message"] = (
+                "Invalid GraphQL request" if is_anonymous else error.message
+            )
+            formatted["type"] = "BadRequest"
+            return formatted
         formatted["message"] = "INTERNAL SERVER ERROR"
         formatted["type"] = "ServerError"
         # if this is one of our own command exception, we can tell a bit more
-        original_error = error.original_error
         if isinstance(original_error, BaseException) or isinstance(
             original_error, ServiceException
         ):
