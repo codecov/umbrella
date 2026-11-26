@@ -27,6 +27,7 @@ from sentry_sdk import capture_exception
 
 from codecov.commands.exceptions import BaseException
 from codecov.commands.executor import get_executor_from_request
+from codecov.sentry_filters import is_unknown_field_query_error
 from codecov_auth.helpers import get_client_ip_address
 from codecov_auth.middleware import jwt_middleware
 from services import ServiceException
@@ -349,6 +350,21 @@ class AsyncGraphqlView(GraphQLAsyncView):
         if debug or (not is_anonymous and is_bad_query):
             return format_error(error, debug)
         formatted = error.formatted
+        if is_unknown_field_query_error(error):
+            # Invalid client query (unknown field): a client error, not a server
+            # fault. Keep schema details hidden from anonymous users.
+            log.warning(
+                "GraphQL query requested unknown field",
+                extra={
+                    "error_message": error.message,
+                    "query_slice": self.request.body[:200].decode("utf-8", "replace")
+                    if self.request.body
+                    else "",
+                },
+            )
+            formatted["message"] = "Bad request"
+            formatted["type"] = "BadRequest"
+            return formatted
         formatted["message"] = "INTERNAL SERVER ERROR"
         formatted["type"] = "ServerError"
         # if this is one of our own command exception, we can tell a bit more
