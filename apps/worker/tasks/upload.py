@@ -43,7 +43,11 @@ from shared.django_apps.upload_breadcrumbs.models import Errors, Milestones
 from shared.django_apps.user_measurements.models import UserMeasurement
 from shared.helpers.redis import get_redis_connection
 from shared.metrics import Counter, Histogram, inc_counter
-from shared.torngit.exceptions import TorngitClientError, TorngitRepoNotFoundError
+from shared.torngit.exceptions import (
+    TorngitClientError,
+    TorngitRepoNotFoundError,
+    TorngitServerFailureError,
+)
 from shared.upload.types import UploaderType
 from shared.upload.utils import bulk_insert_coverage_measurements
 from shared.yaml import UserYaml
@@ -1075,6 +1079,20 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
                     repo_id=repository.repoid,
                     milestone=Milestones.COMPILING_UPLOADS,
                     error=Errors.GIT_CLIENT_ERROR,
+                )
+            except TorngitServerFailureError:
+                # Webhook setup is best-effort: a transient provider outage
+                # (timeout, network error, 5xx) must not fail the whole upload.
+                # The webhook secret is left unchanged so the next upload retries.
+                log.warning(
+                    "Git provider unavailable while creating or updating project webhook",
+                    extra={
+                        "repoid": repository.repoid,
+                        "commit": commit.commitid,
+                        "hookid": repository.hookid,
+                        "action": "SET" if should_post_webhook else "EDIT",
+                    },
+                    exc_info=True,
                 )
         return False
 

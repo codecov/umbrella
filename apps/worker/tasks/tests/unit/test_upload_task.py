@@ -28,7 +28,11 @@ from shared.django_apps.upload_breadcrumbs.models import (
 from shared.helpers.redis import get_redis_connection
 from shared.reports.enums import UploadState, UploadType
 from shared.torngit import GitlabEnterprise
-from shared.torngit.exceptions import TorngitClientError, TorngitRepoNotFoundError
+from shared.torngit.exceptions import (
+    TorngitClientError,
+    TorngitRepoNotFoundError,
+    TorngitServerUnreachableError,
+)
 from shared.torngit.gitlab import Gitlab
 from shared.utils.sessions import SessionType
 from shared.yaml.user_yaml import UserYaml
@@ -2062,6 +2066,63 @@ class TestUploadTaskUnit:
                 "sentry_trace_id": None,
             }
         )
+
+    def test_needs_webhook_secret_backfill_server_unreachable(
+        self, dbsession, mocker, mock_configuration, mock_self_app
+    ):
+        mock_configuration.set_params({"gitlab": {"bot": {"key": "somekey"}}})
+        repository = RepositoryFactory.create(
+            repoid="5679", hookid="1234", webhook_secret=None
+        )
+        dbsession.add(repository)
+        commit = CommitFactory.create(repository=repository)
+        dbsession.add(commit)
+        gitlab_provider = mocker.MagicMock(
+            Gitlab, get_commit_diff=mock.AsyncMock(return_value={})
+        )
+        mock_repo_provider = mocker.patch(
+            "services.repository._get_repo_provider_service_instance"
+        )
+        mock_repo_provider.return_value = gitlab_provider
+        gitlab_provider.data = mocker.MagicMock()
+        gitlab_provider.service = "gitlab"
+        gitlab_provider.edit_webhook.side_effect = TorngitServerUnreachableError(
+            "GitLab was not able to be reached. Gateway 502. Please try again."
+        )
+        task = UploadTask()
+
+        res = task.possibly_setup_webhooks(commit, gitlab_provider)
+        assert res is False
+        assert repository.webhook_secret is None
+        gitlab_provider.edit_webhook.assert_called_once()
+
+    def test_possibly_setup_webhooks_gitlab_server_unreachable(
+        self, dbsession, mocker, mock_configuration
+    ):
+        mock_configuration.set_params({"gitlab": {"bot": {"key": "somekey"}}})
+        repository = RepositoryFactory.create(hookid=None, webhook_secret=None)
+        dbsession.add(repository)
+        commit = CommitFactory.create(repository=repository)
+        dbsession.add(commit)
+        gitlab_provider = mocker.MagicMock(
+            Gitlab, get_commit_diff=mock.AsyncMock(return_value={})
+        )
+        mock_repo_provider = mocker.patch(
+            "services.repository._get_repo_provider_service_instance"
+        )
+        mock_repo_provider.return_value = gitlab_provider
+        gitlab_provider.data = mocker.MagicMock()
+        gitlab_provider.service = "gitlab"
+        gitlab_provider.post_webhook.side_effect = TorngitServerUnreachableError(
+            "GitLab was not able to be reached. Gateway 502. Please try again."
+        )
+        task = UploadTask()
+
+        res = task.possibly_setup_webhooks(commit, gitlab_provider)
+        assert res is False
+        assert repository.hookid is None
+        assert repository.webhook_secret is None
+        gitlab_provider.post_webhook.assert_called_once()
 
     def test_upload_not_ready_to_build_report(
         self,
