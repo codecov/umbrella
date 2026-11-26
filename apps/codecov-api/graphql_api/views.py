@@ -344,11 +344,20 @@ class AsyncGraphqlView(GraphQLAsyncView):
     def error_formatter(self, error: Any, debug: bool = False) -> dict[str, Any]:
         user = self.request.user
         is_anonymous = user.is_anonymous if user else True
-        # the only way to check for a malformed query
-        is_bad_query = "Cannot query field" in error.formatted["message"]
+        # Errors without an `original_error` come from parsing/validating the
+        # query document against the schema (e.g. "Cannot query field ..."),
+        # i.e. the client sent a malformed query. Nothing failed on our side.
+        is_bad_query = error.original_error is None
         if debug or (not is_anonymous and is_bad_query):
             return format_error(error, debug)
         formatted = error.formatted
+        if is_bad_query:
+            # Anonymous users get a generic message so the schema is not
+            # disclosed (e.g. via "Did you mean ...?" suggestions), but this is a
+            # client error, not an internal server error.
+            formatted["message"] = "Invalid query"
+            formatted["type"] = "ValidationError"
+            return formatted
         formatted["message"] = "INTERNAL SERVER ERROR"
         formatted["type"] = "ServerError"
         # if this is one of our own command exception, we can tell a bit more
