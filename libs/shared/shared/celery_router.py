@@ -1,11 +1,16 @@
 import fnmatch
+import logging
 import re
 from collections import OrderedDict
 from collections.abc import Mapping
 
+from django.db import InterfaceError, OperationalError, connections
+
 from shared.celery_config import BaseCeleryConfig, get_task_group
 from shared.config import get_config
 from shared.django_apps.codecov_auth.models import Plan
+
+log = logging.getLogger(__name__)
 
 Pattern = re.Pattern
 
@@ -68,6 +73,26 @@ def _get_enterprise_config(task_name: str, owner: int) -> tuple[str, dict]:
     return base_queue, queue_specific_config
 
 
+def _get_plan(user_plan: str) -> Plan:
+    """Fetch a Plan, recovering once from a stale/dropped DB connection.
+
+    Django only health-checks persistent connections at task boundaries, so a
+    connection closed by the server (or pooler) mid-task surfaces here as an
+    OperationalError/InterfaceError. Discard the dead connection and retry once.
+    """
+    try:
+        return Plan.objects.get(name=user_plan)
+    except (OperationalError, InterfaceError):
+        db_alias = Plan.objects.db
+        log.warning(
+            "Database connection lost while fetching plan for task routing, reconnecting",
+            extra={"user_plan": user_plan, "db_alias": db_alias},
+            exc_info=True,
+        )
+        connections[db_alias].close()
+        return Plan.objects.get(name=user_plan)
+
+
 def route_tasks_based_on_user_plan(task_name: str, user_plan: str, owner: int) -> dict:
     """Helper function to dynamically route tasks based on the user plan.
 
@@ -79,7 +104,7 @@ def route_tasks_based_on_user_plan(task_name: str, user_plan: str, owner: int) -
     Returns:
         Dict containing queue name and any extra configuration
     """
-    plan = Plan.objects.get(name=user_plan)
+    plan = _get_plan(user_plan)
 
     if not plan.is_enterprise_plan:
         return {"queue": _get_default_queue(task_name), "extra_config": {}}
