@@ -351,6 +351,15 @@ class AsyncGraphqlView(GraphQLAsyncView):
         formatted = error.formatted
         formatted["message"] = "INTERNAL SERVER ERROR"
         formatted["type"] = "ServerError"
+        if is_bad_query and error.original_error is None:
+            # Schema validation error caused by client input (e.g. an anonymous
+            # client querying a field that doesn't exist). This is not a server
+            # fault, so don't report it as an internal server error.
+            log.info(
+                "GraphQL query failed schema validation",
+                extra={"error_message": error.message},
+            )
+            return formatted
         # if this is one of our own command exception, we can tell a bit more
         original_error = error.original_error
         if isinstance(original_error, BaseException) or isinstance(
