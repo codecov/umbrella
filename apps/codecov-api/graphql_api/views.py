@@ -21,7 +21,7 @@ from django.http import (
     HttpResponseNotAllowed,
     JsonResponse,
 )
-from graphql import DocumentNode
+from graphql import DocumentNode, GraphQLError
 from rest_framework.exceptions import APIException
 from sentry_sdk import capture_exception
 
@@ -42,6 +42,22 @@ from .validation import (
 )
 
 log = logging.getLogger(__name__)
+
+
+def is_client_query_error(error: Any) -> bool:
+    """
+    True for errors caused by the client's query document itself (syntax errors
+    or schema validation failures such as "Cannot query field 'x' on type
+    'Query'"). These are raised before execution, so they carry neither an
+    `original_error` nor an execution `path`. They do not indicate a server-side
+    failure: no resolver or server code ran.
+    """
+    return (
+        isinstance(error, GraphQLError)
+        and error.original_error is None
+        and error.path is None
+    )
+
 
 GQL_HIT_COUNTER = Counter(
     "api_gql_counts_hits",
@@ -349,6 +365,17 @@ class AsyncGraphqlView(GraphQLAsyncView):
         if debug or (not is_anonymous and is_bad_query):
             return format_error(error, debug)
         formatted = error.formatted
+        if is_client_query_error(error):
+            # Malformed/invalid query from an anonymous client (typo or scanner).
+            # This is a client error, not an internal server error: keep the
+            # schema details hidden, but don't report it as a server failure.
+            formatted["message"] = "BAD REQUEST"
+            formatted["type"] = "BadRequest"
+            log.info(
+                "GraphQL client query error",
+                extra={"error_message": error.message},
+            )
+            return formatted
         formatted["message"] = "INTERNAL SERVER ERROR"
         formatted["type"] = "ServerError"
         # if this is one of our own command exception, we can tell a bit more
