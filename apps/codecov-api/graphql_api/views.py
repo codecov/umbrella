@@ -27,6 +27,7 @@ from sentry_sdk import capture_exception
 
 from codecov.commands.exceptions import BaseException
 from codecov.commands.executor import get_executor_from_request
+from codecov.sentry_filters import is_client_query_error
 from codecov_auth.helpers import get_client_ip_address
 from codecov_auth.middleware import jwt_middleware
 from services import ServiceException
@@ -349,6 +350,17 @@ class AsyncGraphqlView(GraphQLAsyncView):
         if debug or (not is_anonymous and is_bad_query):
             return format_error(error, debug)
         formatted = error.formatted
+        if is_bad_query and is_client_query_error(error):
+            # Malformed query from an anonymous user: a client mistake, not a
+            # server failure. Keep the schema details masked, but don't report
+            # it as an internal server error.
+            log.warning(
+                "GraphQL invalid query",
+                extra={"error_message": error.message, "path": error.path},
+            )
+            formatted["message"] = "INTERNAL SERVER ERROR"
+            formatted["type"] = "ValidationError"
+            return formatted
         formatted["message"] = "INTERNAL SERVER ERROR"
         formatted["type"] = "ServerError"
         # if this is one of our own command exception, we can tell a bit more
