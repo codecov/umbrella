@@ -21,7 +21,7 @@ from django.http import (
     HttpResponseNotAllowed,
     JsonResponse,
 )
-from graphql import DocumentNode
+from graphql import DocumentNode, GraphQLError
 from rest_framework.exceptions import APIException
 from sentry_sdk import capture_exception
 
@@ -346,6 +346,8 @@ class AsyncGraphqlView(GraphQLAsyncView):
         is_anonymous = user.is_anonymous if user else True
         # the only way to check for a malformed query
         is_bad_query = "Cannot query field" in error.formatted["message"]
+        # graphql-core reports invalid variable values with this message prefix
+        is_variable_error = error.formatted["message"].startswith("Variable '$")
         if debug or (not is_anonymous and is_bad_query):
             return format_error(error, debug)
         formatted = error.formatted
@@ -363,6 +365,21 @@ class AsyncGraphqlView(GraphQLAsyncView):
             # (e.g., unauthorized, forbidden) that shouldn't be sent to Sentry
             formatted["message"] = str(original_error.detail)
             formatted["type"] = type(original_error).__name__
+        elif is_variable_error and (
+            original_error is None or isinstance(original_error, GraphQLError)
+        ):
+            # Variable coercion errors (e.g. passing a string where an input
+            # object is expected) are raised by graphql-core before any resolver
+            # runs, wrapping a nested GraphQLError as original_error. They are
+            # caused by malformed client input, not server bugs, so return the
+            # real message to the client and log a warning instead of reporting
+            # an internal server error to Sentry.
+            formatted["message"] = error.message
+            formatted["type"] = "ValidationError"
+            log.warning(
+                "GraphQL variable validation error",
+                extra={"error_message": error.message},
+            )
         else:
             # otherwise it's not supposed to happen, so we log it
             log.error("GraphQL internal server error", exc_info=original_error)

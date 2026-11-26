@@ -153,6 +153,35 @@ class AriadneViewTestCase(GraphQLTestHelper, TestCase):
         assert data["errors"] is not None
         assert data["errors"][0]["message"] == "INTERNAL SERVER ERROR"
 
+    @override_settings(DEBUG=False)
+    @patch("graphql_api.views.capture_exception")
+    async def test_when_invalid_variable_value(self, mock_capture_exception):
+        schema = make_executable_schema(
+            """
+            input Ordering {
+                direction: String
+            }
+            input Filters {
+                ordering: Ordering
+            }
+            type Query {
+                stuff(filters: Filters!): String
+            }
+            """,
+            ObjectType("Query"),
+        )
+        data = await self.do_query(
+            schema,
+            "query Q($filters: Filters!) { stuff(filters: $filters) }",
+            variables={"filters": {"ordering": "NAME"}},
+        )
+        assert data["errors"] is not None
+        assert data["errors"][0]["message"].startswith(
+            "Variable '$filters' got invalid value 'NAME'"
+        )
+        assert data["errors"][0]["type"] == "ValidationError"
+        mock_capture_exception.assert_not_called()
+
     @override_settings(DEBUG=False, GRAPHQL_QUERY_COST_THRESHOLD=1000)
     @patch("logging.Logger.error")
     async def test_when_costly_query(self, mock_error_logger):
