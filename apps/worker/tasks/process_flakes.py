@@ -2,6 +2,7 @@ import logging
 from typing import Any
 
 import sentry_sdk
+from django.db import InterfaceError, OperationalError
 from sqlalchemy.orm import Session
 
 from app import celery_app
@@ -29,6 +30,19 @@ class ProcessFlakesTask(BaseCodecovTask, name=process_flakes_task_name):
         try:
             process_flakes_for_repo(repo_id)
             return {"successful": True}
+        except (OperationalError, InterfaceError) as e:
+            # Transient database connectivity problems (e.g. pgbouncer briefly not
+            # resolvable). Unprocessed commits have been requeued, so retry later.
+            log.warning(
+                "Database unavailable while processing flakes for repo %s, retrying: %s",
+                repo_id,
+                str(e),
+            )
+            self.safe_retry(exc=e)
+            # safe_retry only returns when max retries were exceeded (and reports it)
+            log.error("Error processing flakes for repo %s: %s", repo_id, str(e))
+            sentry_sdk.capture_exception(e)
+            return {"successful": False}
         except Exception as e:
             log.error("Error processing flakes for repo %s: %s", repo_id, str(e))
             sentry_sdk.capture_exception(e)
