@@ -353,6 +353,21 @@ class AsyncGraphqlView(GraphQLAsyncView):
         formatted["type"] = "ServerError"
         # if this is one of our own command exception, we can tell a bit more
         original_error = error.original_error
+        if is_bad_query and original_error is None:
+            # The client sent a query that does not match our schema (rejected
+            # during validation, before any resolver ran). This is a client
+            # error, not a server fault, so we don't report it as one. The
+            # message stays opaque for anonymous users to avoid leaking schema
+            # details.
+            formatted["type"] = "ValidationError"
+            log.warning(
+                "GraphQL query failed schema validation",
+                extra={
+                    "error_message": error.message,
+                    "query_slice": self._get_query_slice(),
+                },
+            )
+            return formatted
         if isinstance(original_error, BaseException) or isinstance(
             original_error, ServiceException
         ):
@@ -368,6 +383,14 @@ class AsyncGraphqlView(GraphQLAsyncView):
             log.error("GraphQL internal server error", exc_info=original_error)
             capture_exception(original_error)
         return formatted
+
+    def _get_query_slice(self) -> str | None:
+        try:
+            request_body = json.loads(self.request.body.decode("utf-8"))
+            clean_query = self.get_clean_query(request_body)
+        except Exception:
+            return None
+        return clean_query[:100] if clean_query else None
 
     @sync_to_async
     def _get_user(self, request: WSGIRequest) -> None:

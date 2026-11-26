@@ -147,11 +147,38 @@ class AriadneViewTestCase(GraphQLTestHelper, TestCase):
         )
 
     @override_settings(DEBUG=False)
-    async def test_when_bad_query_and_anonymous(self):
+    @patch("graphql_api.views.capture_exception")
+    @patch("graphql_api.views.log.warning")
+    @patch("graphql_api.views.log.error")
+    async def test_when_bad_query_and_anonymous(
+        self, mock_log_error, mock_log_warning, mock_capture_exception
+    ):
         schema = generate_schema_that_raise_with(Unauthorized())
         data = await self.do_query(schema, " { fieldThatDoesntExist }")
         assert data["errors"] is not None
         assert data["errors"][0]["message"] == "INTERNAL SERVER ERROR"
+        assert data["errors"][0]["type"] == "ValidationError"
+        # A client query that doesn't match the schema is not a server error
+        mock_capture_exception.assert_not_called()
+        mock_log_error.assert_not_called()
+        mock_log_warning.assert_called_once()
+        assert (
+            mock_log_warning.call_args.args[0]
+            == "GraphQL query failed schema validation"
+        )
+        assert mock_log_warning.call_args.kwargs["extra"]["query_slice"] == (
+            "{ fieldThatDoesntExist }"
+        )
+
+    @override_settings(DEBUG=False)
+    @patch("graphql_api.views.capture_exception")
+    async def test_when_debug_is_false_and_random_exception_is_captured(
+        self, mock_capture_exception
+    ):
+        schema = generate_schema_that_raise_with(Exception("hello"))
+        data = await self.do_query(schema)
+        assert data["errors"][0]["type"] == "ServerError"
+        mock_capture_exception.assert_called_once()
 
     @override_settings(DEBUG=False, GRAPHQL_QUERY_COST_THRESHOLD=1000)
     @patch("logging.Logger.error")
