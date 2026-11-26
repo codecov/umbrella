@@ -363,6 +363,15 @@ class AsyncGraphqlView(GraphQLAsyncView):
             # (e.g., unauthorized, forbidden) that shouldn't be sent to Sentry
             formatted["message"] = str(original_error.detail)
             formatted["type"] = type(original_error).__name__
+        elif is_bad_query and original_error is None:
+            # Schema validation error caused by a malformed client query (e.g. an
+            # anonymous user querying a field that doesn't exist). This is a client
+            # error, not a server fault: keep the masked response so the schema
+            # isn't leaked, and log it instead of reporting it to Sentry.
+            log.warning(
+                "GraphQL invalid query from anonymous user",
+                extra={"error_message": error.message},
+            )
         else:
             # otherwise it's not supposed to happen, so we log it
             log.error("GraphQL internal server error", exc_info=original_error)
