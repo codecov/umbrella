@@ -153,6 +153,36 @@ class AriadneViewTestCase(GraphQLTestHelper, TestCase):
         assert data["errors"] is not None
         assert data["errors"][0]["message"] == "INTERNAL SERVER ERROR"
 
+    @override_settings(DEBUG=False)
+    @patch("graphql_api.views.capture_exception")
+    async def test_when_variable_has_invalid_type(self, mock_capture_exception):
+        types = """
+        input Ordering {
+            direction: String
+        }
+        type Query {
+            stuff(ordering: Ordering): String
+        }
+        """
+        schema = make_executable_schema(types, ObjectType("Query"))
+        data = await self.do_query(
+            schema,
+            "query Stuff($ordering: Ordering) { stuff(ordering: $ordering) }",
+            variables={"ordering": "MISSES"},
+        )
+        assert data["errors"] is not None
+        assert data["errors"][0]["type"] == "ValidationError"
+        message = data["errors"][0]["message"]
+        assert "Expected type 'Ordering' to be a mapping" in message
+        mock_capture_exception.assert_not_called()
+
+    @override_settings(DEBUG=False)
+    @patch("graphql_api.views.capture_exception")
+    async def test_random_exception_is_captured(self, mock_capture_exception):
+        schema = generate_schema_that_raise_with(Exception("hello"))
+        await self.do_query(schema)
+        mock_capture_exception.assert_called_once()
+
     @override_settings(DEBUG=False, GRAPHQL_QUERY_COST_THRESHOLD=1000)
     @patch("logging.Logger.error")
     async def test_when_costly_query(self, mock_error_logger):
