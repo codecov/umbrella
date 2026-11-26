@@ -155,6 +155,17 @@ class FileReportViewSetTestCase(TestCase):
         )
 
     @patch("shared.reports.api_report_service.build_report_from_commit")
+    def test_file_report_invalid_walk_back(
+        self, build_report_from_commit, get_repo_permissions
+    ):
+        get_repo_permissions.return_value = (True, True)
+        build_report_from_commit.return_value = sample_report()
+
+        res = self._request_file_report(path="foo/file1.py", walk_back="2'")
+        assert res.status_code == 400
+        assert "walk_back" in res.json()
+
+    @patch("shared.reports.api_report_service.build_report_from_commit")
     def test_file_report_with_walk_back(
         self, build_report_from_commit, get_repo_permissions
     ):
