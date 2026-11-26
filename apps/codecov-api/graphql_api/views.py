@@ -22,6 +22,7 @@ from django.http import (
     JsonResponse,
 )
 from graphql import DocumentNode
+from graphql.error import GraphQLSyntaxError
 from rest_framework.exceptions import APIException
 from sentry_sdk import capture_exception
 
@@ -349,6 +350,21 @@ class AsyncGraphqlView(GraphQLAsyncView):
         if debug or (not is_anonymous and is_bad_query):
             return format_error(error, debug)
         formatted = error.formatted
+        if isinstance(error, GraphQLSyntaxError):
+            # The client sent an unparsable query document. This is a client
+            # input problem, not a server fault, so return the parser message
+            # (it only describes the client's own query) and log a warning
+            # instead of reporting an internal server error.
+            body = getattr(self.request, "body", None) or b""
+            log.warning(
+                "GraphQL syntax error in request",
+                extra={
+                    "error_message": error.message,
+                    "request_body": body[:1000].decode("utf-8", errors="replace"),
+                },
+            )
+            formatted["type"] = "GraphQLSyntaxError"
+            return formatted
         formatted["message"] = "INTERNAL SERVER ERROR"
         formatted["type"] = "ServerError"
         # if this is one of our own command exception, we can tell a bit more
