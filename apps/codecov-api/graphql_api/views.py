@@ -349,6 +349,23 @@ class AsyncGraphqlView(GraphQLAsyncView):
         if debug or (not is_anonymous and is_bad_query):
             return format_error(error, debug)
         formatted = error.formatted
+        if is_bad_query and error.original_error is None:
+            # Client-side validation error from an anonymous user: this is a
+            # malformed request, not a server failure. Don't leak schema details
+            # in the response, but keep a record of the offending query.
+            log.warning(
+                "GraphQL bad query from anonymous user",
+                extra={
+                    "error_message": error.message,
+                    "locations": [
+                        {"line": loc.line, "column": loc.column}
+                        for loc in (error.locations or [])
+                    ],
+                },
+            )
+            formatted["message"] = "INVALID QUERY"
+            formatted["type"] = "BadQuery"
+            return formatted
         formatted["message"] = "INTERNAL SERVER ERROR"
         formatted["type"] = "ServerError"
         # if this is one of our own command exception, we can tell a bit more
