@@ -9,6 +9,8 @@ from pathlib import Path
 
 import pytest
 import test_results_parser
+from django.db import connections
+from django.test.utils import CaptureQueriesContext
 
 from services.processing.types import UploadArguments
 from services.test_analytics.ta_processor import (
@@ -484,3 +486,50 @@ def test_insert_testruns_timeseries(snapshot):
         testrun["test_id"] = testrun["test_id"].hex()
 
     assert snapshot("json") == testruns_list
+
+
+@pytest.mark.django_db(databases=["default", "ta_timeseries"])
+def test_insert_testruns_timeseries_queries_flags_once():
+    upload = UploadFactory()
+    flag = RepositoryFlagFactory.create(
+        repository=upload.report.commit.repository, flag_name="unit"
+    )
+    UploadFlagMembershipFactory.create(report_session=upload, flag=flag)
+
+    def make_parsing_info(i: int) -> test_results_parser.ParsingInfo:
+        return {
+            "framework": "Pytest",
+            "testruns": [
+                {
+                    "name": f"test_{i}_name",
+                    "classname": f"test_{i}_classname",
+                    "duration": 1,
+                    "outcome": "pass",
+                    "testsuite": f"test_{i}_testsuite",
+                    "failure_message": None,
+                    "filename": f"test_{i}_file",
+                    "build_url": None,
+                    "computed_name": f"test_{i}_computed_name",
+                }
+            ],
+        }
+
+    parsing_infos = [make_parsing_info(i) for i in range(5)]
+
+    with CaptureQueriesContext(connections["default"]) as ctx:
+        insert_testruns_timeseries(
+            repoid=upload.report.commit.repository.repoid,
+            commitid=upload.report.commit.commitid,
+            branch="main",
+            upload=upload,
+            parsing_infos=parsing_infos,
+        )
+
+    flag_queries = [
+        q for q in ctx.captured_queries if "reports_uploadflagmembership" in q["sql"]
+    ]
+    assert len(flag_queries) == 1
+
+    testruns = Testrun.objects.filter(upload_id=upload.id)
+    assert testruns.count() == 5
+    assert all(t.flags == ["unit"] for t in testruns)
