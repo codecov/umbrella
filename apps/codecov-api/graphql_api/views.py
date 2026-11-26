@@ -363,6 +363,22 @@ class AsyncGraphqlView(GraphQLAsyncView):
             # (e.g., unauthorized, forbidden) that shouldn't be sent to Sentry
             formatted["message"] = str(original_error.detail)
             formatted["type"] = type(original_error).__name__
+        elif original_error is None:
+            # No underlying exception means the request was rejected during
+            # parsing/validation (e.g. querying a field that doesn't exist).
+            # This is a client error, not a server failure: keep the generic
+            # message for anonymous users (don't leak schema details) but
+            # don't report it to Sentry as an internal server error.
+            formatted["type"] = "BadRequest"
+            request_body = getattr(self.request, "body", b"") or b""
+            log.warning(
+                "GraphQL query validation failed",
+                extra={
+                    "error_message": error.message,
+                    "query": request_body.decode("utf-8", errors="replace")[:1000],
+                    "is_anonymous": is_anonymous,
+                },
+            )
         else:
             # otherwise it's not supposed to happen, so we log it
             log.error("GraphQL internal server error", exc_info=original_error)
