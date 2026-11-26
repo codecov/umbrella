@@ -351,6 +351,15 @@ class AsyncGraphqlView(GraphQLAsyncView):
         formatted = error.formatted
         formatted["message"] = "INTERNAL SERVER ERROR"
         formatted["type"] = "ServerError"
+        if is_bad_query:
+            # Schema validation failure from an anonymous client: this is a
+            # client-side mistake, not a server fault. Keep the message masked
+            # (don't leak schema details) but don't report it as an internal error.
+            log.warning(
+                "GraphQL bad query from anonymous user",
+                extra={"error_message": error.message},
+            )
+            return formatted
         # if this is one of our own command exception, we can tell a bit more
         original_error = error.original_error
         if isinstance(original_error, BaseException) or isinstance(
