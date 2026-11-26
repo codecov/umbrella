@@ -353,7 +353,20 @@ class AsyncGraphqlView(GraphQLAsyncView):
         formatted["type"] = "ServerError"
         # if this is one of our own command exception, we can tell a bit more
         original_error = error.original_error
-        if isinstance(original_error, BaseException) or isinstance(
+        if is_bad_query and original_error is None:
+            # Schema validation error caused by the client querying a field that
+            # does not exist. The query is never executed, so this is a client
+            # error rather than a server error. We keep the masked message for
+            # anonymous users (to avoid leaking the schema) but don't report it
+            # as an internal server error.
+            log.warning(
+                "GraphQL validation error",
+                extra={
+                    "error_message": error.message,
+                    "is_anonymous": is_anonymous,
+                },
+            )
+        elif isinstance(original_error, BaseException) or isinstance(
             original_error, ServiceException
         ):
             formatted["message"] = original_error.message  # type: ignore
