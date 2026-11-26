@@ -153,6 +153,25 @@ class AriadneViewTestCase(GraphQLTestHelper, TestCase):
         assert data["errors"] is not None
         assert data["errors"][0]["message"] == "INTERNAL SERVER ERROR"
 
+    @override_settings(DEBUG=False)
+    @patch("graphql_api.views.capture_exception")
+    @patch("logging.Logger.error")
+    @patch("logging.Logger.warning")
+    async def test_when_bad_query_and_anonymous_is_not_reported_as_server_error(
+        self, mock_warning, mock_error, mock_capture
+    ):
+        schema = generate_schema_that_raise_with(Unauthorized())
+        data = await self.do_query(schema, " { fieldThatDoesntExist }")
+        assert data["errors"][0]["message"] == "INTERNAL SERVER ERROR"
+        mock_warning.assert_any_call(
+            "GraphQL query failed schema validation",
+            extra={
+                "error_message": "Cannot query field 'fieldThatDoesntExist' on type 'Query'."
+            },
+        )
+        mock_error.assert_not_called()
+        mock_capture.assert_not_called()
+
     @override_settings(DEBUG=False, GRAPHQL_QUERY_COST_THRESHOLD=1000)
     @patch("logging.Logger.error")
     async def test_when_costly_query(self, mock_error_logger):
