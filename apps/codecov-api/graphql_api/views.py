@@ -21,7 +21,7 @@ from django.http import (
     HttpResponseNotAllowed,
     JsonResponse,
 )
-from graphql import DocumentNode
+from graphql import DocumentNode, GraphQLError
 from rest_framework.exceptions import APIException
 from sentry_sdk import capture_exception
 
@@ -363,6 +363,26 @@ class AsyncGraphqlView(GraphQLAsyncView):
             # (e.g., unauthorized, forbidden) that shouldn't be sent to Sentry
             formatted["message"] = str(original_error.detail)
             formatted["type"] = type(original_error).__name__
+        elif original_error is None or isinstance(original_error, GraphQLError):
+            # Errors with no underlying exception, or wrapping another
+            # GraphQLError, are raised by graphql-core itself while parsing /
+            # validating the request or coercing its variables (e.g. an unknown
+            # field on an input type). This is a malformed client request, not
+            # a server fault: record it as a warning + metric instead of an
+            # internal server error.
+            req_path = getattr(self.request, "path", None)
+            inc_counter(
+                GQL_ERROR_TYPE_COUNTER,
+                labels={"error_type": "validation_error", "path": req_path},
+            )
+            log.warning(
+                "GraphQL request validation error",
+                extra={
+                    "error_message": error.message,
+                    "request_path": req_path,
+                    "user_id": getattr(user, "pk", None),
+                },
+            )
         else:
             # otherwise it's not supposed to happen, so we log it
             log.error("GraphQL internal server error", exc_info=original_error)
