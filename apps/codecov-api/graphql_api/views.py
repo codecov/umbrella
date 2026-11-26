@@ -351,6 +351,20 @@ class AsyncGraphqlView(GraphQLAsyncView):
         formatted = error.formatted
         formatted["message"] = "INTERNAL SERVER ERROR"
         formatted["type"] = "ServerError"
+        if error.original_error is None:
+            # Parse/validation errors (e.g. querying a field that does not
+            # exist) are raised by graphql-core before any resolver runs and
+            # carry no original exception. They are caused by the client
+            # sending an invalid query, nothing failed server-side, and the
+            # client still receives an error response, so they are not
+            # reported as internal server errors. The real message stays
+            # masked for anonymous users to avoid exposing the schema.
+            formatted["type"] = "BadRequest"
+            log.info(
+                "GraphQL query validation error",
+                extra={"error_message": error.message},
+            )
+            return formatted
         # if this is one of our own command exception, we can tell a bit more
         original_error = error.original_error
         if isinstance(original_error, BaseException) or isinstance(
