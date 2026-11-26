@@ -27,6 +27,7 @@ from sentry_sdk import capture_exception
 
 from codecov.commands.exceptions import BaseException
 from codecov.commands.executor import get_executor_from_request
+from codecov.sentry_filters import is_graphql_client_query_error
 from codecov_auth.helpers import get_client_ip_address
 from codecov_auth.middleware import jwt_middleware
 from services import ServiceException
@@ -363,6 +364,19 @@ class AsyncGraphqlView(GraphQLAsyncView):
             # (e.g., unauthorized, forbidden) that shouldn't be sent to Sentry
             formatted["message"] = str(original_error.detail)
             formatted["type"] = type(original_error).__name__
+        elif is_graphql_client_query_error(error):
+            # The client's query failed parsing/validation (e.g. unknown field)
+            # before anything was executed. This is a client error, not a
+            # server bug: keep the masked message for anonymous users, but
+            # record it as a warning rather than an internal server error.
+            log.warning(
+                "GraphQL query rejected during validation",
+                extra={
+                    "error_message": error.message,
+                    "user_id": getattr(user, "pk", None),
+                    "is_anonymous": is_anonymous,
+                },
+            )
         else:
             # otherwise it's not supposed to happen, so we log it
             log.error("GraphQL internal server error", exc_info=original_error)
